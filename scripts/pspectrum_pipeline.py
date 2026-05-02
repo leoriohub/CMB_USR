@@ -36,6 +36,16 @@ def ensure_k_pivot(k_grid, k_pivot_phys, rtol=1e-6):
     return k_grid, pivot_idx
 
 
+def build_weighted_kgrid(k_min, k_max, k_pivot_phys, dense_zone=(1e-4, 1e-2), n_dense=120, n_outer=60):
+    k_low = np.logspace(np.log10(k_min), np.log10(dense_zone[0]), n_outer // 2)
+    k_dense = np.logspace(np.log10(dense_zone[0]), np.log10(dense_zone[1]), n_dense)
+    k_high = np.logspace(np.log10(dense_zone[1]), np.log10(k_max), n_outer // 2)
+    k_grid = np.unique(np.concatenate([k_low, k_dense, k_high]))
+    if not np.any(np.isclose(k_grid, k_pivot_phys)):
+        k_grid = np.sort(np.append(k_grid, k_pivot_phys))
+    return k_grid
+
+
 def get_k_pivot_code(bg_sol, derived_bg, end_idx, N_pivot):
     N_total = derived_bg["N"][end_idx]
     if N_total < N_pivot:
@@ -268,6 +278,9 @@ def parse_args():
     parser.add_argument("--T-max", type=float, default=5000.0)
     parser.add_argument("--ms-steps", type=int, default=5000)
     parser.add_argument("--n-workers", type=int, default=1, help="parallel workers (1 = serial)")
+    parser.add_argument("--use-weighted", action="store_true", help="dense sampling in USR zone 1e-4..1e-2")
+    parser.add_argument("--n-dense", type=int, default=120, help="k-modes in dense zone")
+    parser.add_argument("--n-outer", type=int, default=60, help="k-modes outside dense zone")
     parser.add_argument("--normalize-to-As", action="store_true")
     parser.add_argument("--As", type=float, default=2.1e-9)
     parser.add_argument("--output-dir", default="outputs/cmb_results/pspectra")
@@ -278,6 +291,12 @@ def parse_args():
 def main():
     args = parse_args()
     model = build_model(args)
+    k_grid = None
+    if args.use_weighted:
+        k_grid = build_weighted_kgrid(
+            args.k_min, args.k_max, args.k_pivot_phys,
+            n_dense=args.n_dense, n_outer=args.n_outer,
+        )
     result = run_pspectrum_pipeline(
         model=model,
         phi0=args.phi0,
@@ -293,6 +312,7 @@ def main():
         T_max=args.T_max,
         ms_steps=args.ms_steps,
         n_workers=args.n_workers,
+        k_phys_grid=k_grid,
         normalize_to_As=args.normalize_to_As,
         As=args.As,
         output_dir=args.output_dir,
