@@ -148,6 +148,10 @@ def run_pspectrum_pipeline(
     # Build background interpolation once — avoids re-integrating background per k-mode
     bg_interp = ms_solver.build_bg_interpolators(bg_sol, T_span_bg)
 
+    n_modes = len(k_code_grid)
+    progress_interval = max(n_modes // 10, 1)
+    print(f"  Computing {n_modes} k-modes (n_workers={n_workers})...", end="")
+
     if n_workers > 1:
         from concurrent.futures import ProcessPoolExecutor
         tasks = [
@@ -155,21 +159,27 @@ def run_pspectrum_pipeline(
             for idx, k_code in enumerate(k_code_grid)
         ]
         with ProcessPoolExecutor(max_workers=n_workers) as executor:
-            for idx, ps, pt, si in executor.map(_compute_single_mode, tasks):
+            for done, (idx, ps, pt, si) in enumerate(executor.map(_compute_single_mode, tasks), 1):
                 P_S_raw[idx] = ps
                 P_T_raw[idx] = pt
                 start_indices[idx] = si
+                if done == n_modes or done % progress_interval == 0:
+                    print(f"\r  Computing {n_modes} k-modes (n_workers={n_workers})... {done}/{n_modes} ({100*done//n_modes}%)", end="")
+        print()
     else:
-        for idx, k_code in enumerate(k_code_grid):
+        for idx, k_code in enumerate(k_code_grid, 1):
             xi, yi_val, zi, ni, t_start, t_end, start_idx = extract_mode_initial_conditions(
                 bg_sol, T_span_bg, end_idx, k_code, k_start_factor
             )
             T_ms = np.linspace(t_start, t_end, ms_steps)
             ms_sol = ms_solver.run_ms_simulation(bg_interp, ni, T_ms, k_code, model)
             derived_ms = ms_solver.get_ms_derived_quantities_with_bg(ms_sol, bg_interp, T_ms, model, k_code, ni)
-            P_S_raw[idx] = float(derived_ms["P_S"][-1])
-            P_T_raw[idx] = float(derived_ms["P_T"][-1])
-            start_indices[idx] = start_idx
+            P_S_raw[idx - 1] = float(derived_ms["P_S"][-1])
+            P_T_raw[idx - 1] = float(derived_ms["P_T"][-1])
+            start_indices[idx - 1] = start_idx
+            if idx == n_modes or idx % progress_interval == 0:
+                print(f"\r  Computing {n_modes} k-modes (n_workers=1)... {idx}/{n_modes} ({100*idx//n_modes}%)", end="")
+        print()
 
     scale_factor = 1.0
     if normalize_to_As:
