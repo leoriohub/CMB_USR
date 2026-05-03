@@ -69,11 +69,18 @@ def worker_fn(task_tuple):
         k = ps_result["k_phys"]
         P = ps_result["P_S"]
 
-        mask = k < 0.5
-        i_dip = int(np.argmin(P[mask]))
-        k_dip = float(k[mask][i_dip])
-        P_dip = float(P[mask][i_dip])
-        dip_sup = float((1 - P_dip / As) * 100)
+        dip_sup = 0.0
+        k_dip = -1.0
+        P_dip = float(As)
+        i_dip_local = None
+        for i in range(2, len(k) - 2):
+            if P[i] < P[i - 1] and P[i] < P[i + 1] and P[i] < As:
+                if i_dip_local is None or P[i] < P[i_dip_local]:
+                    i_dip_local = i
+        if i_dip_local is not None and k[i_dip_local] < 0.1:
+            k_dip = float(k[i_dip_local])
+            P_dip = float(P[i_dip_local])
+            dip_sup = float((1 - P_dip / As) * 100)
 
         mask_low = k < 0.01
         low_k_sup = (
@@ -84,7 +91,7 @@ def worker_fn(task_tuple):
 
         ns_score = float(np.exp(-0.5 * ((ns_ms - ns_target) / ns_tol) ** 2))
         sup_score = float(min(dip_sup / 15.0, 1.0))
-        k_score = 1.0 if k_dip < 0.01 else 0.0
+        k_score = 1.0 if 0 < k_dip < 0.01 else 0.0
         total_score = ns_score + sup_score + k_score
 
         return {
