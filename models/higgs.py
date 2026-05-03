@@ -7,17 +7,17 @@ from .base import InflationModel
 
 class HiggsModel(InflationModel):
 
-    def __init__(self, lam=0.1, xi=1000.0):
+    def __init__(self, lam=0.13, xi=15000.0):
         super().__init__("Higgs Inflation")
         self.alpha = np.sqrt(2/3)
         self.lam = lam
         self.xi_val = xi
-   
+    
         self.v0 = self.lam / (4 * self.xi_val**2)
         
         # Default Initial Conditions (USR Exploration Defaults)
-        self.phi0 = 5.8
-        self.yi = -0.01
+        self.phi0 = 5.70
+        self.yi = -0.10
 
     def f(self, x):
         return (1 - np.exp(-self.alpha * x))**2

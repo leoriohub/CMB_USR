@@ -161,7 +161,7 @@ def save_results_to_json(model, ns, r_val, ns_SR, r_SR, delta, k_pivot_code, N_t
         },
         "background_info": {
             "total_efolds": float(N_total),
-            "exit_N_simulation": float(N_pivot)
+            "N_pivot": float(N_pivot)
         },
         "observables": {
             "n_s": float(ns), 

@@ -10,6 +10,7 @@ Errors are diagonal approximations — the full Planck low-ell likelihood
 is non-Gaussian, but diagonal chi^2 is adequate for model scoping.
 """
 import numpy as np
+from scripts.constants import T_cmb
 
 planck_lowl_tt = dict(
     ell=[
@@ -41,7 +42,7 @@ def d_ell_to_C_ell(ells, D_ell):
     """Convert D_ell [muK^2] to dimensionless C_ell."""
     return D_ell * 2.0 * np.pi / (ells * (ells + 1.0))
 
-def C_ell_to_d_ell(ells, C_ell, Tcmb=2.7255):
+def C_ell_to_d_ell(ells, C_ell, Tcmb=T_cmb):
     """Convert dimensionless C_ell to D_ell [muK^2]."""
     conv = (Tcmb * 1e6) ** 2
     return C_ell * ells * (ells + 1.0) * conv / (2.0 * np.pi)

@@ -11,18 +11,19 @@ if ROOT_DIR not in sys.path:
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+from scripts.constants import As, k_pivot_phys, N_star_default, ell_max_default, r_ls
 from scripts.pspectrum_pipeline import run_pspectrum_pipeline
 from scripts.camb_wrapper import compute_cl_sw, compute_cl_sw_powerlaw
 from scripts.planck_data import get_planck_data, C_ell_to_d_ell
 from models import HiggsModel
 
 
-def run_single_point(phi0, yi, xi, lam, num_k, k_pivot_phys, N_pivot, As, ell_max, r_ls):
+def run_single_point(phi0, yi, xi, lam, num_k, k_pivot_phys, N_star, As, ell_max, r_ls):
     model = HiggsModel(lam=lam, xi=xi)
     result = run_pspectrum_pipeline(
         model=model, phi0=phi0, yi=yi,
         k_min=1e-5, k_max=1.0, num_k=num_k,
-        k_pivot_phys=k_pivot_phys, N_pivot=N_pivot,
+        k_pivot_phys=k_pivot_phys, N_star=N_star,
         normalize_to_As=True, As=As, save_outputs=False,
     )
     if result["status"] != "success":
@@ -85,11 +86,11 @@ def main():
                         default=[-0.001, -0.01, -0.03, -0.05, -0.07, -0.10, -0.12, -0.15],
                         help="yi values (e.g. --yi -0.001 -0.10 -0.03)")
     parser.add_argument("--num-k", type=int, default=100)
-    parser.add_argument("--k-pivot-phys", type=float, default=0.05)
-    parser.add_argument("--N-pivot", type=float, default=60)
-    parser.add_argument("--As", type=float, default=2.1e-9)
-    parser.add_argument("--ell-max", type=int, default=29)
-    parser.add_argument("--r-ls", type=float, default=14000.0)
+    parser.add_argument("--k-pivot-phys", type=float, default=k_pivot_phys)
+    parser.add_argument("--N-star", type=float, default=N_star_default)
+    parser.add_argument("--As", type=float, default=As)
+    parser.add_argument("--ell-max", type=int, default=ell_max_default)
+    parser.add_argument("--r-ls", type=float, default=r_ls)
     parser.add_argument("--n-workers", type=int, default=1)
     parser.add_argument("--output-dir", default="outputs/cmb_results/scans")
     args = parser.parse_args()
@@ -108,7 +109,7 @@ def main():
         with ProcessPoolExecutor(max_workers=args.n_workers) as executor:
             futures = {
                 executor.submit(run_single_point, p, y, args.xi, args.lam, args.num_k,
-                                args.k_pivot_phys, args.N_pivot, args.As,
+                                args.k_pivot_phys, args.N_star, args.As,
                                 args.ell_max, args.r_ls): (p, y)
                 for p, y in grid
             }
@@ -123,7 +124,7 @@ def main():
     else:
         for i, (p, y) in enumerate(grid, 1):
             r = run_single_point(p, y, args.xi, args.lam, args.num_k,
-                                 args.k_pivot_phys, args.N_pivot, args.As,
+                                 args.k_pivot_phys, args.N_star, args.As,
                                  args.ell_max, args.r_ls)
             results.append(r)
             if r["status"] == "success":
@@ -141,7 +142,7 @@ def main():
         "config": {
             "xi": args.xi,
             "lam": args.lam,
-            "N_pivot": args.N_pivot,
+            "N_star": args.N_star,
             "As": args.As,
             "num_k": args.num_k,
             "ell_max": args.ell_max,
