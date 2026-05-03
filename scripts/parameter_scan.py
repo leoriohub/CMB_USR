@@ -1,3 +1,15 @@
+"""
+Grid scan over (phi0, yi) for Higgs USR model, evaluating chi^2 vs Planck low-ell.
+
+For each point on the grid:
+    1. Run the P_S(k) pipeline
+    2. Compute Sachs-Wolfe C_ell
+    3. Compute chi^2 against Planck 2018 binned low-ell data
+    4. Compare to LCDM power-law baseline chi^2
+
+Results are saved as JSON for analysis in notebooks.
+"""
+
 import argparse
 import json
 import os
@@ -19,6 +31,7 @@ from models import HiggsModel
 
 
 def run_single_point(phi0, yi, xi, lam, num_k, k_pivot_phys, N_star, As, ell_max, r_ls):
+    """Run the full pipeline for a single (phi0, yi) and return chi^2 results."""
     model = HiggsModel(lam=lam, xi=xi)
     result = run_pspectrum_pipeline(
         model=model, phi0=phi0, yi=yi,

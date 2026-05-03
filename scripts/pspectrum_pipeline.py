@@ -1,3 +1,23 @@
+"""
+Primordial power spectrum pipeline: background + Mukhanov-Sasaki per k-mode.
+
+Orchestrates:
+1. Background integration (inf_dyn_background)
+2. End-of-inflation detection and pivot-scale mapping
+3. Mukhanov-Sasaki integration for each k-mode (inf_dyn_MS_full)
+4. Normalisation to Planck A_s at pivot
+5. Caching to JSON
+
+K-space conventions
+-------------------
+- k_phys : physical wavenumber (Mpc^-1), same convention as Planck
+- k_code : code-unit wavenumber used internally by the MS solver
+- pivot : Planck pivot scale k_* = 0.05 Mpc^-1 at which P_R(k_*) = A_s
+
+The weighted k-grid concentrates modes in the USR dip region
+(10^-4 to 10^-2 Mpc^-1) to resolve the spectral feature.
+"""
+
 import argparse
 import json
 import os
@@ -18,6 +38,11 @@ from models import HiggsModel, FullHiggsModel
 
 
 def find_end_of_inflation(epsH):
+    """
+    Find index where epsilon_H first crosses 1 after starting inflation.
+
+    Returns -1 if inflation never begins or never ends within the window.
+    """
     in_inflation = False
     for idx, eps in enumerate(epsH):
         if not in_inflation:
@@ -30,6 +55,7 @@ def find_end_of_inflation(epsH):
 
 
 def ensure_k_pivot(k_grid, k_pivot_phys, rtol=1e-6):
+    """Ensure the pivot scale is exactly present in k_grid. Adds it if missing."""
     if np.any(np.isclose(k_grid, k_pivot_phys, rtol=rtol, atol=0.0)):
         pivot_idx = int(np.where(np.isclose(k_grid, k_pivot_phys, rtol=rtol, atol=0.0))[0][0])
         return k_grid, pivot_idx
@@ -39,6 +65,13 @@ def ensure_k_pivot(k_grid, k_pivot_phys, rtol=1e-6):
 
 
 def build_weighted_kgrid(k_min, k_max, k_pivot_phys, dense_zone=(1e-4, 1e-2), n_dense=120, n_outer=60):
+    """
+    Build a k-grid with dense logarithmic sampling in the USR dip zone.
+
+    The USR feature typically appears at k ~ 10^-4 to 10^-2 Mpc^-1.
+    Standard uniform log-spacing would undersample this region.
+    This grid concentrates ~2/3 of modes there for adequate resolution.
+    """
     k_low = np.logspace(np.log10(k_min), np.log10(dense_zone[0]), n_outer // 2)
     k_dense = np.logspace(np.log10(dense_zone[0]), np.log10(dense_zone[1]), n_dense)
     k_high = np.logspace(np.log10(dense_zone[1]), np.log10(k_max), n_outer // 2)
@@ -49,6 +82,16 @@ def build_weighted_kgrid(k_min, k_max, k_pivot_phys, dense_zone=(1e-4, 1e-2), n_
 
 
 def get_k_pivot_code(bg_sol, derived_bg, end_idx, N_star):
+    """
+    Find the code-unit wavenumber k_code at pivot exit.
+
+    The pivot exits N_star e-folds before the end of inflation.
+    k_code = a_pivot * z_pivot (dimensionless code units),
+    used to scale all physical k-modes into the MS solver.
+
+    Returns (k_pivot_code, pivot_bg_idx, N_total) or (None, None, None)
+    if total e-folds are insufficient for N_star.
+    """
     N_total = derived_bg["N"][end_idx]
     if N_total < N_star:
         return None, None, None
@@ -61,6 +104,13 @@ def get_k_pivot_code(bg_sol, derived_bg, end_idx, N_star):
 
 
 def extract_mode_initial_conditions(bg_sol, T_span_bg, end_idx, k_code, k_start_factor):
+    """
+    Extract Bunch-Davies initial conditions for a given k-mode.
+
+    Finds the time when k/(aH) = k_start_factor (typically 100), i.e.
+    sufficiently deep inside the horizon for vacuum initial conditions.
+    Uses the background trajectory to locate this crossing.
+    """
     n_bg = bg_sol[3]
     z_bg = bg_sol[2]
     log_az = n_bg + np.log(z_bg)
@@ -77,6 +127,7 @@ def extract_mode_initial_conditions(bg_sol, T_span_bg, end_idx, k_code, k_start_
 
 
 def _compute_single_mode(args):
+    """Worker function for parallel k-mode execution. Returns (idx, P_S, P_T, start_idx)."""
     idx, k_code, bg_sol, T_span_bg, end_idx, bg_interp, k_start_factor, ms_steps, model = args
     xi, yi_val, zi, ni, t_start, t_end, start_idx = extract_mode_initial_conditions(
         bg_sol, T_span_bg, end_idx, k_code, k_start_factor
@@ -108,6 +159,45 @@ def run_pspectrum_pipeline(
     k_phys_grid=None,
     n_workers=1,
 ):
+    """
+    Compute P_S(k) for a grid of k-modes for a given inflation model.
+
+    Pipeline:
+        1. Integrate background ODE
+        2. Find when inflation ends (eps_H = 1)
+        3. Locate pivot exit N_star e-folds before end
+        4. For each k-mode: extract initial conditions, integrate MS equations,
+           read off P_S and P_T at end of inflation
+        5. Normalise to Planck A_s at the pivot scale
+
+    Parameters
+    ----------
+    model : InflationModel instance
+    phi0, yi : float, optional — overrides model defaults
+    k_min, k_max : float, physical k-range (Mpc^-1)
+    num_k : int, modes per decade if k_phys_grid not provided
+    k_pivot_phys : float, Planck pivot scale (default 0.05 Mpc^-1)
+    N_star : float, e-folds before end where pivot exits
+    k_start_factor : float, k/(aH) at which to start MS integration (default 100)
+    T_span_bg : array or None, background time grid
+    bg_steps, T_max : background integration parameters
+    ms_steps : int, steps per k-mode MS integration
+    normalize_to_As : bool, rescale P_S to match As at pivot
+    As : float, target amplitude at pivot (Planck 2018: 2.1e-9)
+    output_dir : str, where to save JSON cache
+    save_outputs : bool, write JSON file
+    k_phys_grid : array or None, custom physical k-grid (overrides num_k)
+    n_workers : int, parallel workers (1 = serial)
+
+    Returns
+    -------
+    dict with keys:
+        "status" : "success" or "error"
+        "message" : error description if status is "error"
+        "k_phys", "P_S", "P_T" : arrays
+        "metadata" : dict of run configuration
+        "output_file" : path to saved JSON (if save_outputs=True)
+    """
     if phi0 is not None:
         model.phi0 = float(phi0)
     if yi is not None:
@@ -262,6 +352,7 @@ def run_pspectrum_pipeline(
 
 
 def build_model(args):
+    """Construct an InflationModel instance from parsed CLI arguments."""
     if args.model == "HiggsModel":
         return HiggsModel(lam=args.lam, xi=args.xi)
     if args.model == "FullHiggsModel":
@@ -270,6 +361,7 @@ def build_model(args):
 
 
 def parse_args():
+    """Parse CLI arguments for the P_S(k) pipeline."""
     parser = argparse.ArgumentParser(description="Compute P_S(k) across k grid for a model.")
     parser.add_argument("--model", default="HiggsModel", choices=[
         "HiggsModel", "FullHiggsModel"
@@ -302,6 +394,7 @@ def parse_args():
 
 
 def main():
+    """CLI entry point: parse args, build model, run pipeline, print result path."""
     args = parse_args()
     model = build_model(args)
     k_grid = None
@@ -339,6 +432,10 @@ def main():
 
 
 def load_pspectrum(path):
+    """Load a cached P_S(k) JSON file into a dict of numpy arrays.
+
+    Matches the return format expected by compute_cl_sw and analyse.
+    """
     with open(path) as f:
         record = json.load(f)
     meta = record["metadata"]

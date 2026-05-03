@@ -25,7 +25,13 @@ from scripts.planck_data import get_planck_data, C_ell_to_d_ell
 
 def compute_chi2(ells_model, C_ell_model, ells_data, D_ell_data, D_ell_err,
                  Tcmb=None):
-    """Diagonal chi^2 comparing model C_ell to Planck binned D_ell."""
+    """
+    Diagonal chi^2 comparing model C_ell to Planck binned D_ell.
+
+    Interpolates the model D_ell onto the Planck ell grid and computes
+    chi^2 = sum((D_model - D_data) / sigma)^2.
+    Uses a diagonal approximation — neglects bin-bin correlations.
+    """
     if Tcmb is None:
         Tcmb = T_cmb
     D_ell_model = C_ell_to_d_ell(ells_model, C_ell_model, Tcmb=Tcmb)
@@ -34,7 +40,24 @@ def compute_chi2(ells_model, C_ell_model, ells_data, D_ell_data, D_ell_err,
 
 
 def analyse(pspectrum_path, ell_max=30, r_ls=None, verbose=True):
-    """Full chi^2 analysis for a given P_S(k) file vs Planck low-ell."""
+    """
+    Full chi^2 analysis for a given P_S(k) file vs Planck low-ell.
+
+    Parameters
+    ----------
+    pspectrum_path : str, path to P_S(k) JSON file
+    ell_max : int, max multipole (default 30, capped at Planck data max)
+    r_ls : float, comoving distance to last scattering
+    verbose : bool, print per-ell table and summary
+
+    Returns
+    -------
+    dict with keys:
+        model, phi0, yi, xi, N_total, N_star, ell_max, dof,
+        chi2_usr, chi2_lcdm, delta_chi2,
+        chi2_reduced_usr, chi2_reduced_lcdm,
+        ells, D_planck, D_err, D_ell_usr, D_ell_lcdm
+    """
     if r_ls is None:
         r_ls = _r_ls
     data = load_pspectrum(pspectrum_path)
@@ -110,6 +133,7 @@ def analyse(pspectrum_path, ell_max=30, r_ls=None, verbose=True):
 
 
 def save_chi2_results(result, output_dir="outputs/cmb_results/chi2"):
+    """Save chi^2 analysis results to JSON for later inspection."""
     os.makedirs(output_dir, exist_ok=True)
     safe = f"Higgs_Inflation_phi{result['phi0']:.2f}_yi{result['yi']:.3f}"
     path = os.path.join(output_dir, f"chi2_{safe}.json")
