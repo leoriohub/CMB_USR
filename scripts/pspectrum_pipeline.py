@@ -10,6 +10,8 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
+from scripts.constants import As, k_pivot_phys, N_star_default
+
 import inf_dyn_background as bg_solver
 import inf_dyn_MS_full as ms_solver
 from models import HiggsModel, FullHiggsModel
@@ -46,12 +48,12 @@ def build_weighted_kgrid(k_min, k_max, k_pivot_phys, dense_zone=(1e-4, 1e-2), n_
     return k_grid
 
 
-def get_k_pivot_code(bg_sol, derived_bg, end_idx, N_pivot):
+def get_k_pivot_code(bg_sol, derived_bg, end_idx, N_star):
     N_total = derived_bg["N"][end_idx]
-    if N_total < N_pivot:
+    if N_total < N_star:
         return None, None, None
-    N_pivot_val = N_total - N_pivot
-    pivot_idx = int(np.argmin(np.abs(derived_bg["N"][:end_idx] - N_pivot_val)))
+    N_pivot = N_total - N_star
+    pivot_idx = int(np.argmin(np.abs(derived_bg["N"][:end_idx] - N_pivot)))
     z_pivot = bg_sol[2][pivot_idx]
     a_pivot = np.exp(bg_sol[3][pivot_idx])
     k_pivot_code = a_pivot * z_pivot
@@ -92,15 +94,15 @@ def run_pspectrum_pipeline(
     k_min=1e-5,
     k_max=1.0,
     num_k=80,
-    k_pivot_phys=0.05,
-    N_pivot=60.0,
+    k_pivot_phys=k_pivot_phys,
+    N_star=N_star_default,
     k_start_factor=100.0,
     T_span_bg=None,
     bg_steps=10000,
     T_max=5000.0,
     ms_steps=5000,
     normalize_to_As=True,
-    As=2.1e-9,
+    As=As,
     output_dir="outputs/cmb_results/pspectra",
     save_outputs=True,
     k_phys_grid=None,
@@ -121,11 +123,11 @@ def run_pspectrum_pipeline(
     if end_idx == -1:
         return {"status": "error", "message": "Inflation did not end in background window."}
 
-    k_pivot_code, pivot_bg_idx, N_total = get_k_pivot_code(bg_sol, derived_bg, end_idx, N_pivot)
+    k_pivot_code, pivot_bg_idx, N_total = get_k_pivot_code(bg_sol, derived_bg, end_idx, N_star)
     if k_pivot_code is None:
         return {
             "status": "error",
-            "message": f"Total inflation ({derived_bg['N'][end_idx]:.2f}) is less than N_pivot ({N_pivot}).",
+            "message": f"Total inflation ({derived_bg['N'][end_idx]:.2f}) is less than N_star ({N_star}).",
         }
 
     if not (k_min <= k_pivot_phys <= k_max):
@@ -203,7 +205,8 @@ def run_pspectrum_pipeline(
         "num_k": int(len(k_phys_grid)),
         "k_pivot_phys": float(k_pivot_phys),
         "k_pivot_code": float(k_pivot_code),
-        "N_pivot": float(N_pivot),
+        "N_star": float(N_star),
+        "N_pivot": float(N_total - N_star),
         "N_total": float(N_total),
         "pivot_bg_idx": int(pivot_bg_idx),
         "pivot_k_idx": int(pivot_idx),
@@ -273,15 +276,15 @@ def parse_args():
     ])
     parser.add_argument("--phi0", type=float, default=None)
     parser.add_argument("--yi", type=float, default=None)
-    parser.add_argument("--xi", type=float, default=1000.0)
-    parser.add_argument("--lam", type=float, default=0.1)
+    parser.add_argument("--xi", type=float, default=15000.0)
+    parser.add_argument("--lam", type=float, default=0.13)
     parser.add_argument("--v-vev", type=float, default=0.0)
 
     parser.add_argument("--k-min", type=float, default=1e-5)
     parser.add_argument("--k-max", type=float, default=1.0)
     parser.add_argument("--num-k", type=int, default=80)
-    parser.add_argument("--k-pivot-phys", type=float, default=0.05)
-    parser.add_argument("--N-pivot", type=float, default=60.0)
+    parser.add_argument("--k-pivot-phys", type=float, default=k_pivot_phys)
+    parser.add_argument("--N-star", type=float, default=N_star_default)
     parser.add_argument("--k-start-factor", type=float, default=100.0)
 
     parser.add_argument("--bg-steps", type=int, default=10000)
@@ -292,7 +295,7 @@ def parse_args():
     parser.add_argument("--n-dense", type=int, default=120, help="k-modes in dense zone")
     parser.add_argument("--n-outer", type=int, default=60, help="k-modes outside dense zone")
     parser.add_argument("--normalize-to-As", action="store_true")
-    parser.add_argument("--As", type=float, default=2.1e-9)
+    parser.add_argument("--As", type=float, default=As)
     parser.add_argument("--output-dir", default="outputs/cmb_results/pspectra")
     parser.add_argument("--no-save", action="store_true")
     return parser.parse_args()
@@ -315,7 +318,7 @@ def main():
         k_max=args.k_max,
         num_k=args.num_k,
         k_pivot_phys=args.k_pivot_phys,
-        N_pivot=args.N_pivot,
+        N_star=args.N_star,
         k_start_factor=args.k_start_factor,
         T_span_bg=None,
         bg_steps=args.bg_steps,

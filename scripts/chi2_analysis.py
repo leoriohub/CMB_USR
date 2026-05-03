@@ -19,19 +19,24 @@ if ROOT_DIR not in sys.path:
 
 from scripts.camb_wrapper import compute_cl_sw, compute_cl_sw_powerlaw
 from scripts.pspectrum_pipeline import load_pspectrum
+from scripts.constants import T_cmb, r_ls as _r_ls
 from scripts.planck_data import get_planck_data, C_ell_to_d_ell
 
 
 def compute_chi2(ells_model, C_ell_model, ells_data, D_ell_data, D_ell_err,
-                 Tcmb=2.7255):
+                 Tcmb=None):
     """Diagonal chi^2 comparing model C_ell to Planck binned D_ell."""
+    if Tcmb is None:
+        Tcmb = T_cmb
     D_ell_model = C_ell_to_d_ell(ells_model, C_ell_model, Tcmb=Tcmb)
     chi2 = np.sum(((D_ell_model - D_ell_data) / D_ell_err) ** 2)
     return chi2, D_ell_model
 
 
-def analyse(pspectrum_path, ell_max=30, r_ls=14000.0, verbose=True):
+def analyse(pspectrum_path, ell_max=30, r_ls=None, verbose=True):
     """Full chi^2 analysis for a given P_S(k) file vs Planck low-ell."""
+    if r_ls is None:
+        r_ls = _r_ls
     data = load_pspectrum(pspectrum_path)
     meta = data["metadata"]
     k_phys = data["k_phys"]
@@ -67,7 +72,7 @@ def analyse(pspectrum_path, ell_max=30, r_ls=14000.0, verbose=True):
         print(f"\n{'='*60}")
         print(f"Chi2 Analysis: {meta['model']}, "
               f"phi0={meta['phi0']}, yi={meta['yi']}, xi={meta.get('xi','N/A')}")
-        print(f"N_total={meta['N_total']:.2f}, N_pivot={meta['N_pivot']:.0f}")
+        print(f"N_total={meta['N_total']:.2f}, N_star={meta.get('N_star', meta.get('N_pivot', '?')):.0f}")
         print(f"{'='*60}")
         print(f"{'ell':>4s}  {'D_Planck':>10s}  {'D_USR':>10s}  {'D_LCDM':>10s}  {'Pull_USR':>8s}")
         for j in range(len(ells_p)):
@@ -88,7 +93,7 @@ def analyse(pspectrum_path, ell_max=30, r_ls=14000.0, verbose=True):
         yi=meta["yi"],
         xi=meta.get("xi"),
         N_total=meta["N_total"],
-        N_pivot=meta["N_pivot"],
+        N_star=meta.get("N_star", meta.get("N_pivot")),
         ell_max=ell_max,
         dof=dof,
         chi2_usr=chi2_usr,
@@ -121,7 +126,7 @@ if __name__ == "__main__":
     parser.add_argument("pspectrum_path",
                         help="Path to P_S(k) JSON file or directory")
     parser.add_argument("--ell-max", type=int, default=29)
-    parser.add_argument("--r-ls", type=float, default=14000.0)
+    parser.add_argument("--r-ls", type=float, default=_r_ls)
     parser.add_argument("--save", action="store_true")
     args = parser.parse_args()
 

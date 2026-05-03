@@ -12,14 +12,15 @@ if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
 from scripts.pspectrum_pipeline import load_pspectrum
+from scripts.constants import As, k_pivot_phys, r_ls, T_cmb
 
 # Planck 2018 best-fit LCDM (Aghanim et al. 2020, TT+lowE)
 PLANCK_LCDM = dict(
-    As=2.1e-9,
+    As=As,
     ns=0.965,
-    k_pivot=0.05,
-    r_ls=14000.0,
-    Tcmb=2.7255,
+    k_pivot=k_pivot_phys,
+    r_ls=r_ls,
+    Tcmb=T_cmb,
 )
 
 
@@ -37,7 +38,7 @@ def interpolate_ps(k_phys, P_S, k_min=None, k_max=None, n_fine=30000):
     return k_dense, P_S_dense
 
 
-def compute_cl_sw(data, ell_max=30, r_ls=14000.0, n_fine=30000):
+def compute_cl_sw(data, ell_max=30, r_ls=r_ls, n_fine=30000):
     """Sachs-Wolfe C_ell with dense k-sampling for Bessel convergence."""
     k_phys = np.asarray(data["k_phys"])
     P_S = np.asarray(data["P_S"])
@@ -57,8 +58,8 @@ def compute_cl_sw(data, ell_max=30, r_ls=14000.0, n_fine=30000):
     return ells, C_ell_TT
 
 
-def compute_cl_sw_powerlaw(k_min=1e-5, k_max=5.0, As=2.1e-9, ns=0.965,
-                           k_pivot=0.05, ell_max=30, r_ls=14000.0, n_fine=30000):
+def compute_cl_sw_powerlaw(k_min=1e-5, k_max=5.0, As=As, ns=0.965,
+                           k_pivot=k_pivot_phys, ell_max=30, r_ls=r_ls, n_fine=30000):
     """Sachs-Wolfe C_ell for a power-law primordial spectrum (LCDM baseline)."""
     k_dense = np.logspace(np.log10(k_min), np.log10(k_max), n_fine)
     Ps_pl = As * (k_dense / k_pivot) ** (ns - 1.0)
@@ -77,7 +78,7 @@ def compute_cl_sw_powerlaw(k_min=1e-5, k_max=5.0, As=2.1e-9, ns=0.965,
     return ells, C_ell_TT, Ps_pl
 
 
-def compute_cl_sw_from_file(path, ell_max=30, r_ls=14000.0):
+def compute_cl_sw_from_file(path, ell_max=30, r_ls=r_ls):
     data = load_pspectrum(path)
     return compute_cl_sw(data, ell_max=ell_max, r_ls=r_ls)
 
@@ -104,7 +105,7 @@ if __name__ == "__main__":
     parser.add_argument("pspectrum_path",
                         help="Path to P_S(k) JSON file or directory")
     parser.add_argument("--ell-max", type=int, default=30)
-    parser.add_argument("--r-ls", type=float, default=14000.0)
+    parser.add_argument("--r-ls", type=float, default=r_ls)
     parser.add_argument("--output-dir", default="outputs/cmb_results/c_ell")
     args = parser.parse_args()
 
