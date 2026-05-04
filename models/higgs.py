@@ -17,7 +17,7 @@ class HiggsModel(InflationModel):
         
         # Default Initial Conditions (USR Exploration Defaults)
         self.phi0 = 5.70
-        self.yi = -0.10
+        self.y0 = -0.10
 
     def f(self, x):
         return (1 - np.exp(-self.alpha * x))**2
@@ -47,7 +47,7 @@ class FullHiggsModel(InflationModel):
         
         # Standard Initial Conditions
         self.phi0 = 5.5
-        self.yi = -1
+        self.y0 = -1
 
         # Precompute the inverse transformation grid: psi(x) where psi = h/M_P, x = chi/M_P
         self.psi_max = 100.0 / np.sqrt(self.xi_val) # Enough to reach way past the plateau

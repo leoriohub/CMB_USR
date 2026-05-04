@@ -1,5 +1,5 @@
 """
-Grid scan over (phi0, yi) for Higgs USR model, evaluating chi^2 vs Planck low-ell.
+Grid scan over (phi0, y0) for Higgs USR model, evaluating chi^2 vs Planck low-ell.
 
 For each point on the grid:
     1. Run the P_S(k) pipeline
@@ -30,18 +30,18 @@ from scripts.planck_data import get_planck_data, C_ell_to_d_ell
 from models import HiggsModel
 
 
-def run_single_point(phi0, yi, xi, lam, num_k, k_pivot_phys, N_star, As, ell_max, r_ls):
-    """Run the full pipeline for a single (phi0, yi) and return chi^2 results."""
+def run_single_point(phi0, y0, xi, lam, num_k, k_pivot_phys, N_star, As, ell_max, r_ls):
+    """Run the full pipeline for a single (phi0, y0) and return chi^2 results."""
     model = HiggsModel(lam=lam, xi=xi)
     result = run_pspectrum_pipeline(
-        model=model, phi0=phi0, yi=yi,
+        model=model, phi0=phi0, y0=y0,
         k_min=1e-5, k_max=1.0, num_k=num_k,
         k_pivot_phys=k_pivot_phys, N_star=N_star,
         normalize_to_As=True, As=As, save_outputs=False,
     )
     if result["status"] != "success":
         return {
-            "phi0": phi0, "yi": yi, "status": "error",
+            "phi0": phi0, "y0": y0, "status": "error",
             "message": result.get("message", "unknown"),
         }
 
@@ -76,7 +76,7 @@ def run_single_point(phi0, yi, xi, lam, num_k, k_pivot_phys, N_star, As, ell_max
 
     return {
         "phi0": phi0,
-        "yi": yi,
+        "y0": y0,
         "status": "success",
         "N_total": meta["N_total"],
         "chi2_usr": chi2_usr,
@@ -89,15 +89,15 @@ def run_single_point(phi0, yi, xi, lam, num_k, k_pivot_phys, N_star, As, ell_max
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Grid scan over (phi0, yi) for Higgs USR model.")
+    parser = argparse.ArgumentParser(description="Grid scan over (phi0, y0) for Higgs USR model.")
     parser.add_argument("--xi", type=float, default=15000.0)
     parser.add_argument("--lam", type=float, default=0.13)
     parser.add_argument("--phi0-min", type=float, default=5.4)
     parser.add_argument("--phi0-max", type=float, default=6.4)
     parser.add_argument("--phi0-step", type=float, default=0.1)
-    parser.add_argument("--yi", type=float, nargs="+",
+    parser.add_argument("--y0", type=float, nargs="+",
                         default=[-0.001, -0.01, -0.03, -0.05, -0.07, -0.10, -0.12, -0.15],
-                        help="yi values (e.g. --yi -0.001 -0.10 -0.03)")
+                        help="y0 values (e.g. --y0 -0.001 -0.10 -0.03)")
     parser.add_argument("--num-k", type=int, default=100)
     parser.add_argument("--k-pivot-phys", type=float, default=k_pivot_phys)
     parser.add_argument("--N-star", type=float, default=N_star_default)
@@ -108,14 +108,14 @@ def main():
     parser.add_argument("--output-dir", default="outputs/cmb_results/scans")
     args = parser.parse_args()
 
-    yi_vals = args.yi
+    y0_vals = args.y0
     phi0_vals = np.round(np.arange(args.phi0_min, args.phi0_max + args.phi0_step / 2, args.phi0_step), 2)
 
-    grid = [(float(p), float(y)) for p in phi0_vals for y in yi_vals]
+    grid = [(float(p), float(y)) for p in phi0_vals for y in y0_vals]
     total = len(grid)
     results = []
 
-    print(f"Scanning {total} points ({len(phi0_vals)}x phi0 × {len(yi_vals)} yi) on {args.n_workers} workers...")
+    print(f"Scanning {total} points ({len(phi0_vals)}x phi0 × {len(y0_vals)} y0) on {args.n_workers} workers...")
 
     t0 = time.time()
     if args.n_workers > 1:
@@ -161,7 +161,7 @@ def main():
             "ell_max": args.ell_max,
             "r_ls": args.r_ls,
             "phi0_vals": phi0_vals_list,
-            "yi_vals": yi_vals,
+            "y0_vals": y0_vals,
         },
         "results": results,
     }

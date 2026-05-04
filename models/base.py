@@ -7,7 +7,7 @@ class InflationModel:
         self.S = S
         self.v0 = None # Potential scale, to be defined in subclasses
         self.phi0 = None
-        self.yi = None
+        self.y0 = None
         self.Ai = 1e-5
 
     def f(self, x):
@@ -23,10 +23,10 @@ class InflationModel:
         raise NotImplementedError
 
     def get_initial_conditions(self):
-        """Returns [phi0, yi, zi, Ai]"""
+        """Returns [phi0, y0, zi, Ai]"""
         # zi depends on potential, calculating here ensures consistency
-        zi = np.sqrt(self.yi**2/6 + (self.v0 * self.f(self.phi0) / (3 * self.S**2)))
+        zi = np.sqrt(self.y0**2/6 + (self.v0 * self.f(self.phi0) / (3 * self.S**2)))
         # Return Ni (log scale factor) instead of Ai
         # Default Ai was 1e-5. Ni = ln(1e-5) approx -11.51
         Ni = np.log(self.Ai)
-        return [self.phi0, self.yi, zi, Ni]
+        return [self.phi0, self.y0, zi, Ni]

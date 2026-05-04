@@ -92,7 +92,7 @@ class SmoothUSRTransitionModel(InflationModel):
         self.phi0 = phi_vals[idx_i]
         
         H_initial_val = H_vals[idx_i]
-        self.yi = dphi_dN[idx_i] * (H_initial_val / self.S)
+        self.y0 = dphi_dN[idx_i] * (H_initial_val / self.S)
     
     def f(self, x):
         return self.v_spline(x) / self.v0
@@ -161,5 +161,5 @@ class SmoothUSRTransitionModel(InflationModel):
 
     def get_initial_conditions(self):
         # Multiply f by v0 since the potential function is now dimensionless
-        zi = np.sqrt(self.yi**2/6 + (self.v0 * self.f(self.phi0))/(3*self.S**2))
-        return self.phi0, self.yi, zi, -15.0
+        zi = np.sqrt(self.y0**2/6 + (self.v0 * self.f(self.phi0))/(3*self.S**2))
+        return self.phi0, self.y0, zi, -15.0

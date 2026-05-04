@@ -1,5 +1,5 @@
 """
-USR Chi^2 Optimizer: Automated (phi0, yi, N_star) search.
+USR Chi^2 Optimizer: Automated (phi0, y0, N_star) search.
 
 Searches the Higgs USR parameter space for configurations that:
   1. Minimize low-ell chi^2 against Planck 2018 Commander data
@@ -97,7 +97,7 @@ def build_objective(model_kwargs, num_kwargs, ns_target, ns_tol,
 
     def objective(params):
         phi0 = float(params[0])
-        yi = float(params[1])
+        y0 = float(params[1])
         N_star = float(params[2])
         _eval_counter[0] += 1
         eval_num = _eval_counter[0]
@@ -106,7 +106,7 @@ def build_objective(model_kwargs, num_kwargs, ns_target, ns_tol,
 
         try:
             result = run_pspectrum_pipeline(
-                model=model, phi0=phi0, yi=yi,
+                model=model, phi0=phi0, y0=y0,
                 k_min=num_kwargs["k_min"],
                 k_max=num_kwargs["k_max"],
                 k_pivot_phys=num_kwargs["k_pivot_phys"],
@@ -118,12 +118,12 @@ def build_objective(model_kwargs, num_kwargs, ns_target, ns_tol,
                 save_outputs=False,
             )
         except Exception as exc:
-            _log_eval(log_file, eval_num, phi0, yi, N_star,
+            _log_eval(log_file, eval_num, phi0, y0, N_star,
                       loss=1000.0, status="exception", error=str(exc))
             return 1000.0
 
         if result["status"] != "success":
-            _log_eval(log_file, eval_num, phi0, yi, N_star,
+            _log_eval(log_file, eval_num, phi0, y0, N_star,
                       loss=1000.0, status="failed",
                       error=result.get("message", "unknown"))
             return 1000.0
@@ -136,7 +136,7 @@ def build_objective(model_kwargs, num_kwargs, ns_target, ns_tol,
             )
             k_dip = find_k_dip(result["k_phys"], result["P_S"])
         except Exception as exc:
-            _log_eval(log_file, eval_num, phi0, yi, N_star,
+            _log_eval(log_file, eval_num, phi0, y0, N_star,
                       loss=1000.0, status="analysis_error", error=str(exc))
             return 1000.0
 
@@ -147,7 +147,7 @@ def build_objective(model_kwargs, num_kwargs, ns_target, ns_tol,
             k_penalty = 50.0
         loss = chi2 + ns_penalty + k_penalty
 
-        _log_eval(log_file, eval_num, phi0, yi, N_star,
+        _log_eval(log_file, eval_num, phi0, y0, N_star,
                   chi2=chi2, ns_MS=ns_MS, k_dip=k_dip,
                   loss=loss, status="ok")
 
@@ -155,7 +155,7 @@ def build_objective(model_kwargs, num_kwargs, ns_target, ns_tol,
             s = (f"\r  [{eval_num:5d}] loss={loss:.2f}  "
                  f"chi2={chi2:.2f}  ns={ns_MS:.5f}  "
                  f"k_dip={k_dip:.3e}  "
-                 f"phi0={phi0:.3f}  yi={yi:.4f}  N*={N_star:.1f}")
+                 f"phi0={phi0:.3f}  y0={y0:.4f}  N*={N_star:.1f}")
             print(s, end="", flush=True)
 
         return loss
@@ -163,13 +163,13 @@ def build_objective(model_kwargs, num_kwargs, ns_target, ns_tol,
     return objective
 
 
-def _log_eval(log_file, eval_num, phi0, yi, N_star, **kw):
+def _log_eval(log_file, eval_num, phi0, y0, N_star, **kw):
     if log_file is None:
         return
     entry = {
         "eval": eval_num,
         "phi0": round(phi0, 6),
-        "yi": round(yi, 6),
+        "y0": round(y0, 6),
         "N_star": round(N_star, 4),
         "timestamp": datetime.now().isoformat(),
     }
@@ -210,7 +210,7 @@ def run_optimizer(args):
 
     bounds = [
         (args.phi0_range[0], args.phi0_range[1]),
-        (args.yi_range[0], args.yi_range[1]),
+        (args.y0_range[0], args.y0_range[1]),
         (args.nstar_range[0], args.nstar_range[1]),
     ]
 
@@ -234,7 +234,7 @@ def run_optimizer(args):
     elapsed = time.time() - t0
     print(flush=True)
     print(f"\n  Optimization complete in {elapsed:.0f}s", flush=True)
-    print(f"  Best: phi0={result.x[0]:.4f}, yi={result.x[1]:.4f}, "
+    print(f"  Best: phi0={result.x[0]:.4f}, y0={result.x[1]:.4f}, "
           f"N_star={result.x[2]:.2f}, loss={result.fun:.3f}", flush=True)
 
     return result
@@ -245,9 +245,9 @@ def run_optimizer(args):
 
 def re_run_best(best_params, args):
     """Full pipeline at best config with diagnostics and plots."""
-    phi0, yi, N_star = best_params
+    phi0, y0, N_star = best_params
     print(f"\n{'='*60}", flush=True)
-    print(f"  Re-running at best: phi0={phi0:.4f}, yi={yi:.4f}, "
+    print(f"  Re-running at best: phi0={phi0:.4f}, y0={y0:.4f}, "
           f"N_star={N_star:.2f}", flush=True)
     print(f"{'='*60}", flush=True)
 
@@ -259,7 +259,7 @@ def re_run_best(best_params, args):
     k_grid = build_weighted_kgrid(args.k_min, args.k_max, k_pivot_phys)
 
     result = run_pspectrum_pipeline(
-        model=model, phi0=phi0, yi=yi,
+        model=model, phi0=phi0, y0=y0,
         k_min=args.k_min, k_max=args.k_max,
         k_pivot_phys=k_pivot_phys,
         N_star=N_star,
@@ -309,7 +309,7 @@ def re_run_best(best_params, args):
     os.makedirs(sim_dir, exist_ok=True)
     date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     summary = {
-        "params": {"phi0": phi0, "yi": yi, "N_star": N_star},
+        "params": {"phi0": phi0, "y0": y0, "N_star": N_star},
         "chi2": chi2, "chi2_lcdm": chi2_lcdm,
         "dchi2_vs_lcdm": chi2 - chi2_lcdm, "dof": dof,
         "ns_MS": ns_MS, "k_dip": k_dip,
@@ -329,7 +329,7 @@ def re_run_best(best_params, args):
         D_usr = C_ell_to_d_ell(ells_usr, C_usr)
         plot_dashboard(ells_usr, D_usr, ells_lcdm, D_lcdm,
                        ells_pl[pl_mask], D_pl[pl_mask], D_err[pl_mask],
-                       phi0, yi, N_star, k_dip, chi2, chi2_lcdm, date_str)
+                       phi0, y0, N_star, k_dip, chi2, chi2_lcdm, date_str)
         print(f"  Plot saved", flush=True)
     except Exception as exc:
         print(f"  Warning: plot failed: {exc}", flush=True)
@@ -338,7 +338,7 @@ def re_run_best(best_params, args):
 
 
 def plot_dashboard(ells_usr, D_usr, ells_lcdm, D_lcdm,
-                   ells_pl, D_pl, D_err, phi0, yi, N_star,
+                   ells_pl, D_pl, D_err, phi0, y0, N_star,
                    k_dip, chi2, chi2_lcdm, date_str):
     """D_ell comparison and suppression ratio plot."""
     import matplotlib
@@ -375,7 +375,7 @@ def plot_dashboard(ells_usr, D_usr, ells_lcdm, D_lcdm,
     ax2.grid(True, alpha=0.3)
 
     plt.suptitle(
-        f"Best USR: $\\phi_0$={phi0:.2f}, $y_i$={yi:.3f}, "
+        f"Best USR: $\\phi_0$={phi0:.2f}, $y_0$={y0:.3f}, "
         f"$N_{{*}}$={N_star:.0f}, $k_{{\\rm dip}}$={k_dip:.2e}\n"
         f"$\\chi^2$={chi2:.1f}  LCDM $\\chi^2$={chi2_lcdm:.1f}  "
         f"$\\Delta\\chi^2$={chi2 - chi2_lcdm:+.1f}",
@@ -456,14 +456,14 @@ def plot_convergence(log_path):
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(
-        description="USR Chi^2 Optimizer: search (phi0, yi, N_star) for "
+        description="USR Chi^2 Optimizer: search (phi0, y0, N_star) for "
                     "best Planck low-ell fit"
     )
     p.add_argument("--method", default="differential_evolution",
                    choices=["differential_evolution"])
     p.add_argument("--phi0-range", nargs=2, type=float, default=[5.20, 5.90],
                    metavar=("MIN", "MAX"))
-    p.add_argument("--yi-range", nargs=2, type=float, default=[-0.20, -0.03],
+    p.add_argument("--y0-range", nargs=2, type=float, default=[-0.20, -0.03],
                    metavar=("MIN", "MAX"))
     p.add_argument("--nstar-range", nargs=2, type=float, default=[45.0, 62.0],
                    metavar=("MIN", "MAX"))
@@ -502,7 +502,7 @@ def main():
     print(f"{'='*60}", flush=True)
     print(f"  USR Chi^2 Optimizer", flush=True)
     print(f"  phi0=[{args.phi0_range[0]:.2f}, {args.phi0_range[1]:.2f}]  "
-          f"yi=[{args.yi_range[0]:.3f}, {args.yi_range[1]:.3f}]  "
+          f"y0=[{args.y0_range[0]:.3f}, {args.y0_range[1]:.3f}]  "
           f"N*=[{args.nstar_range[0]:.1f}, {args.nstar_range[1]:.1f}]",
           flush=True)
     print(f"  ns_target={args.ns_target}  ns_tol={args.ns_tol}  "

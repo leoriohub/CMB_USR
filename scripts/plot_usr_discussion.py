@@ -41,7 +41,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ── Configuration ──────────────────────────────────────────────────────────
 PHI0 = 5.76
-YI = -0.12
+Y0 = -0.12
 XI = 15000.0
 LAM = 0.13
 N_WORKERS = max(1, os.cpu_count() // 2)
@@ -51,7 +51,7 @@ RECOMPUTE = "--recompute" in sys.argv
 model = HiggsModel(lam=LAM, xi=XI)
 
 # ── Load or compute P_S(k) ────────────────────────────────────────────────
-pattern = f"*_phi{PHI0:.2f}_yi{YI:.3f}_run_*.json"
+pattern = f"*_phi{PHI0:.2f}_y0{Y0:.3f}_run_*.json"
 matches = sorted(glob.glob(os.path.join(CACHE_DIR, pattern)),
                  key=os.path.getmtime, reverse=True)
 
@@ -74,10 +74,10 @@ else:
         k_min=1e-5, k_max=1.0, k_pivot_phys=k_pivot_phys,
         n_dense=n_dense, n_outer=n_outer,
     )
-    print(f"Running P_S(k) pipeline for phi0={PHI0}, yi={YI} "
+    print(f"Running P_S(k) pipeline for phi0={PHI0}, y0={Y0} "
           f"({len(k_grid)} modes)...")
     result = run_pspectrum_pipeline(
-        model=model, phi0=PHI0, yi=YI,
+        model=model, phi0=PHI0, y0=Y0,
         k_phys_grid=k_grid,
         normalize_to_As=True, As=As,
         n_workers=N_WORKERS,
@@ -135,7 +135,7 @@ fig1, ax1 = plt.subplots(figsize=(8, 6))
 ax1.loglog(k_phys, P_S_lcdm, "-", color=COL_LCDM, lw=2, alpha=0.7,
            label=r"Power-law ($n_s = 0.965$)")
 ax1.loglog(k_phys, P_S, "-", color=COL_USR, lw=2,
-           label=rf"USR Higgs ($\phi_0={PHI0},\ y_i = {YI})$")
+             label=rf"USR Higgs ($\phi_0={PHI0},\ y_0 = {Y0})$")
 
 k_dip = k_phys[np.argmin(P_S[k_phys < 1.0])]
 P_dip = P_S[k_phys < 1.0][np.argmin(P_S[k_phys < 1.0])]
@@ -180,7 +180,7 @@ ax2.errorbar(
 )
 
 ax2.semilogy(ells, D_ell_usr, "-", color=COL_USR, lw=2.5,
-             label=rf"USR Higgs ($\phi_0={PHI0},\ y_i = {YI})$")
+           label=rf"USR Higgs ($\phi_0={PHI0},\ y_0 = {Y0})$")
 ax2.semilogy(ells, D_ell_lcdm, "--", color=COL_LCDM, lw=2, alpha=0.7,
              label=r"Power-law ($n_s = 0.965$, SW approx.)")
 

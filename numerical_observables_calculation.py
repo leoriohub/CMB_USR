@@ -18,7 +18,7 @@ from typing import Dict, Any
 import inf_dyn_background as bg_solver
 import inf_dyn_MS_full as ms_solver
 
-def run_inflation_protocol(model, phi0: float, yi: float, delta: float = 1e-4, N_star: float = 60.0, output_dir: str = "outputs/results", T_span_bg: np.ndarray = None, save_to_file: bool = True) -> Dict[str, Any]:
+def run_inflation_protocol(model, phi0: float, y0: float, delta: float = 1e-4, N_star: float = 60.0, output_dir: str = "outputs/results", T_span_bg: np.ndarray = None, save_to_file: bool = True) -> Dict[str, Any]:
     """
     Coordinates the calculation of cosmological observables by mapping them from the end of inflation.
     
@@ -29,7 +29,7 @@ def run_inflation_protocol(model, phi0: float, yi: float, delta: float = 1e-4, N
     """
     # Anchor the specified initial conditions to the model instance.
     model.phi0 = phi0
-    model.yi = yi
+    model.y0 = y0
     
     # Evolve the background fields to capture the full dynamic trajectory.
     if T_span_bg is None:
@@ -57,7 +57,7 @@ def run_inflation_protocol(model, phi0: float, yi: float, delta: float = 1e-4, N
                 break
 
     if end_idx == -1:
-        return {"status": "error", "message": f"Inflation did not end in window for phi0={phi0}, yi={yi}"}
+        return {"status": "error", "message": f"Inflation did not end in window for phi0={phi0}, y0={y0}"}
 
     
     N_total = N_efolds[end_idx]
@@ -152,7 +152,7 @@ def save_results_to_json(model, ns, r_val, ns_SR, r_SR, delta, k_pivot_code, N_t
             "xi": getattr(model, 'xi_val', None), 
             "lambda": getattr(model, 'lam', None),
             "phi0": float(model.phi0), 
-            "yi": float(model.yi), 
+            "y0": float(model.y0), 
             "S": float(model.S)
         },
         "numerical_settings": {
@@ -183,7 +183,7 @@ def save_results_to_json(model, ns, r_val, ns_SR, r_SR, delta, k_pivot_code, N_t
     }
     
     safe_name = model.name.replace(' ', '_').replace('(', '').replace(')', '')
-    filename = f"{safe_name}_phi{model.phi0:.2f}_yi{model.yi:.3f}_run_{run_id}.json"
+    filename = f"{safe_name}_phi{model.phi0:.2f}_y0{model.y0:.3f}_run_{run_id}.json"
     filepath = os.path.join(output_dir, filename)
     with open(filepath, 'w') as f:
         json.dump(data, f, indent=4)

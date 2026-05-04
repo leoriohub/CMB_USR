@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sweep (phi0, yi) to find configurations matching both n_s^MS and CMB
+Sweep (phi0, y0) to find configurations matching both n_s^MS and CMB
 low-ℓ power suppression from USR dynamics.
 
 Output: JSON with per-point results sorted by score.
@@ -26,16 +26,16 @@ from scripts.constants import As, k_pivot_phys
 
 
 def worker_fn(task_tuple):
-    phi0, yi, xi, lam, N_star, ns_target, ns_tol, k_grid = task_tuple
+    phi0, y0, xi, lam, N_star, ns_target, ns_tol, k_grid = task_tuple
     try:
         model = HiggsModel(lam=lam, xi=xi)
         ns_result = run_inflation_protocol(
-            model, phi0=phi0, yi=yi, N_star=N_star, save_to_file=False,
+            model, phi0=phi0, y0=y0, N_star=N_star, save_to_file=False,
         )
         if ns_result["status"] != "success":
             return {
                 "phi0": phi0,
-                "yi": yi,
+                "y0": y0,
                 "status": "error",
                 "message": "ns: " + ns_result.get("message", ""),
             }
@@ -49,7 +49,7 @@ def worker_fn(task_tuple):
         ps_result = run_pspectrum_pipeline(
             model=model_ps,
             phi0=phi0,
-            yi=yi,
+            y0=y0,
             k_phys_grid=k_grid,
             N_star=N_star,
             normalize_to_As=True,
@@ -58,7 +58,7 @@ def worker_fn(task_tuple):
         if ps_result["status"] != "success":
             return {
                 "phi0": phi0,
-                "yi": yi,
+                "y0": y0,
                 "status": "error",
                 "message": "P_S: " + ps_result.get("message", ""),
                 "ns_MS": ns_ms,
@@ -96,7 +96,7 @@ def worker_fn(task_tuple):
 
         return {
             "phi0": phi0,
-            "yi": yi,
+            "y0": y0,
             "status": "ok",
             "ns_MS": ns_ms,
             "ns_SR": ns_sr,
@@ -114,7 +114,7 @@ def worker_fn(task_tuple):
     except Exception as e:
         return {
             "phi0": phi0,
-            "yi": yi,
+            "y0": y0,
             "status": "error",
             "message": f"{type(e).__name__}: {e}",
         }
@@ -133,14 +133,14 @@ class NumpyEncoder(json.JSONEncoder):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Sweep (phi0, yi) for n_s + CMB power suppression match",
+        description="Sweep (phi0, y0) for n_s + CMB power suppression match",
     )
     parser.add_argument("--phi0-min", type=float, default=5.70)
     parser.add_argument("--phi0-max", type=float, default=6.00)
     parser.add_argument("--phi0-step", type=float, default=0.01)
-    parser.add_argument("--yi-min", type=float, default=-0.15)
-    parser.add_argument("--yi-max", type=float, default=-0.05)
-    parser.add_argument("--yi-step", type=float, default=0.01)
+    parser.add_argument("--y0-min", type=float, default=-0.15)
+    parser.add_argument("--y0-max", type=float, default=-0.05)
+    parser.add_argument("--y0-step", type=float, default=0.01)
     parser.add_argument("--xi", type=float, default=15000.0)
     parser.add_argument("--lam", type=float, default=0.13)
     parser.add_argument("--N-star", type=float, default=60.0)
@@ -159,10 +159,10 @@ def main():
     phi0_vals = np.arange(
         args.phi0_min, args.phi0_max + 0.5 * args.phi0_step, args.phi0_step
     )
-    yi_vals = np.arange(
-        args.yi_min, args.yi_max + 0.5 * args.yi_step, args.yi_step
+    y0_vals = np.arange(
+        args.y0_min, args.y0_max + 0.5 * args.y0_step, args.y0_step
     )
-    grid = [(float(phi0), float(yi)) for phi0 in phi0_vals for yi in yi_vals]
+    grid = [(float(phi0), float(y0)) for phi0 in phi0_vals for y0 in y0_vals]
 
     k_grid = np.logspace(np.log10(1e-5), np.log10(1.0), args.num_k)
     k_grid, _ = ensure_k_pivot(k_grid, k_pivot_phys)
@@ -170,7 +170,7 @@ def main():
     n_total = len(grid)
     print(f"Sweeping {n_total} grid points")
     print(f"  phi0: {args.phi0_min:.2f} -> {args.phi0_max:.2f}  step {args.phi0_step:.2f}")
-    print(f"  yi:   {args.yi_min:.3f} -> {args.yi_max:.3f}  step {args.yi_step:.3f}")
+    print(f"  y0:   {args.y0_min:.3f} -> {args.y0_max:.3f}  step {args.y0_step:.3f}")
     print(f"  n_s target: {args.ns_target:.3f} +/- {args.ns_tol:.3f}")
     print(f"  n_workers:  {args.n_workers}")
     print(f"  k-modes:    {len(k_grid)}")
@@ -184,7 +184,7 @@ def main():
         task_args = [
             (
                 phi0,
-                yi,
+                y0,
                 args.xi,
                 args.lam,
                 args.N_star,
@@ -192,7 +192,7 @@ def main():
                 args.ns_tol,
                 k_grid,
             )
-            for phi0, yi in grid
+            for phi0, y0 in grid
         ]
         with ProcessPoolExecutor(max_workers=args.n_workers) as executor:
             futures = {
@@ -201,7 +201,7 @@ def main():
             for i, future in enumerate(as_completed(futures), 1):
                 r = future.result()
                 results.append(r)
-                label = f"phi0={r['phi0']:.2f}, yi={r['yi']:.3f}"
+                label = f"phi0={r['phi0']:.2f}, y0={r['y0']:.3f}"
                 if r["status"] == "ok":
                     print(
                         f"  [{i}/{n_total}] {label} -> "
@@ -214,11 +214,11 @@ def main():
                         f"ERROR: {r.get('message', '')[:60]}"
                     )
     else:
-        for i, (phi0, yi) in enumerate(grid, 1):
+        for i, (phi0, y0) in enumerate(grid, 1):
             r = worker_fn(
                 (
                     phi0,
-                    yi,
+                    y0,
                     args.xi,
                     args.lam,
                     args.N_star,
@@ -228,7 +228,7 @@ def main():
                 )
             )
             results.append(r)
-            label = f"phi0={r['phi0']:.2f}, yi={r['yi']:.3f}"
+            label = f"phi0={r['phi0']:.2f}, y0={r['y0']:.3f}"
             if r["status"] == "ok":
                 print(
                     f"  [{i}/{n_total}] {label} -> "
@@ -276,13 +276,13 @@ def main():
     print(f"{'TOP 20 CANDIDATES (ranked by total_score)':^68}")
     print(f"{'=' * 68}")
     print(
-        f"  {'#':>3} {'phi0':>6} {'yi':>7} {'n_s^MS':>8} {'dip%':>6} "
+        f"  {'#':>3} {'phi0':>6} {'y0':>7} {'n_s^MS':>8} {'dip%':>6} "
         f"{'k_dip':>10} {'ns_scr':>7} {'sup_scr':>7} {'score':>6}"
     )
     print(f"  {'-' * 60}")
     for rank, r in enumerate(top, 1):
         print(
-            f"  {rank:>3} {r['phi0']:>6.2f} {r['yi']:>7.3f} {r['ns_MS']:>8.4f} "
+            f"  {rank:>3} {r['phi0']:>6.2f} {r['y0']:>7.3f} {r['ns_MS']:>8.4f} "
             f"{r['dip_sup_pct']:>5.1f}% {r['k_dip']:>10.2e} "
             f"{r['ns_score']:>7.3f} {r['sup_score']:>7.3f} {r['total_score']:>6.3f}"
         )
