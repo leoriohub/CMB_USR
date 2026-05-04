@@ -24,7 +24,7 @@ data/                — Empty placeholder dirs for Planck/ACT likelihood data
 
 ## No build system, tests, or CI
 
-This is a research physics codebase. There are no tests, linting, typechecking, Makefiles, pyproject.toml, or requirements.txt. Dependencies: `numpy`, `scipy`, `matplotlib`, `camb` (optional, for full Boltzmann code). To verify changes, run relevant notebook cells or Python scripts directly.
+This is a research physics codebase. There are minimal tests, but no linting, typechecking, Makefiles, pyproject.toml, or requirements.txt. Dependencies: `numpy`, `scipy`, `matplotlib`, `camb` (optional, for full Boltzmann code). To verify changes, run relevant notebook cells or Python scripts directly.
 
 ## Path setup (critical for notebooks)
 
