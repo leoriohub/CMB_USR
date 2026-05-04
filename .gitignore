@@ -22,5 +22,7 @@ Thumbs.db
 docs/
 
 .opencode/
-
+.agents/
 paper/
+skills-lock.json
+.worktrees/
