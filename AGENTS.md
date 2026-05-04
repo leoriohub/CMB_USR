@@ -12,8 +12,7 @@ numerical_observables_calculation.py — High-level orchestrator: run_inflation_
 scripts/
   pspectrum_pipeline.py — Batch P_S(k) across k-modes: run_pspectrum_pipeline(), load_pspectrum()
   camb_wrapper.py       — Sachs-Wolfe C_ell + CAMB integration wrappers
-  planck_data.py        — Hardcoded Planck 2018 low-ℓ TT binned data
-  chi2_analysis.py      — χ² comparison vs Planck data
+  planck_data.py        — Planck 2018 low-ℓ TT data loader (Commander, IRSA R3)
 notebooks/           — Jupyter analysis notebooks (see .opencode/agents/notebook.md for editing rules)
 outputs/cmb_results/ — Cached simulation results (JSON)
   pspectra/          — P_S(k) cache, named Higgs_Inflation_phi{X}_yi{Y}_run_{uuid}.json
