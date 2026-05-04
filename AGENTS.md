@@ -13,6 +13,7 @@ scripts/
   pspectrum_pipeline.py — Batch P_S(k) across k-modes: run_pspectrum_pipeline(), load_pspectrum()
   camb_wrapper.py       — Sachs-Wolfe C_ell + CAMB integration wrappers
   planck_data.py        — Planck 2018 low-ℓ TT data loader (Commander)
+  usr_chi2_optimizer.py — (phi0, yi, N_star) parameter search: differential_evolution + chi² + ns + k_dip penalty
 notebooks/           — Jupyter analysis notebooks (see .opencode/agents/notebook.md for editing rules)
 outputs/cmb_results/ — Cached simulation results (JSON)
   pspectra/          — P_S(k) cache, named Higgs_Inflation_phi{X}_yi{Y}_run_{uuid}.json
@@ -88,3 +89,21 @@ See `.opencode/agents/notebook.md` for full rules. Key points:
 - The `loss_vs_sr` variable is computed in diagnostics cells but may not be in scope in save cells — compute inline.
 - Matplotlib `alpha` must be in [0,1]. When doubling alpha for emphasis, clamp: `min(max(alpha*2, 0.5), 1.0)`.
 - Notebook `source` arrays: each line is a separate string. Join with `""`, not `"\n"`. Split with `.splitlines(keepends=True)`.
+
+## USR Chi^2 Optimizer
+
+```
+scripts/usr_chi2_optimizer.py  — CLI optimizer for (phi0, yi, N_star) search
+
+Usage (quick test):
+  python scripts/usr_chi2_optimizer.py --maxiter 2 --popsize 15 --workers 4 --phi0-range 5.20 5.90 --yi-range -0.20 -0.03 --nstar-range 45 62
+
+Usage (full search on lab machine, ~2-3 hours):
+  python scripts/usr_chi2_optimizer.py --maxiter 200 --popsize 15 --workers 8 --re-run-best --save-best
+```
+
+Objective: `loss = chi² + ns_penalty + k_penalty` where:
+- `ns_penalty = ((ns_MS - 0.975) / 0.01)²` (soft ACT constraint)
+- `k_penalty = 50 if k_dip ∉ [1e-4, 5e-4]` (dip at ℓ≲5)
+
+Uses `scipy.optimize.differential_evolution` (global, population-based). Logs all evaluations to JSONL. Generates convergence + comparison plots.
