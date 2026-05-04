@@ -39,18 +39,27 @@ from models import HiggsModel, FullHiggsModel
 
 def find_end_of_inflation(epsH):
     """
-    Find index where epsilon_H first crosses 1 after starting inflation.
+    Find index where epsilon_H last crosses 1 (true end of inflation).
 
     Returns -1 if inflation never begins or never ends within the window.
+    Scans backward so the USR peak (eps > 1 in the middle) isn't mistaken
+    for the end of inflation.
     """
     in_inflation = False
+    start_idx = -1
     for idx, eps in enumerate(epsH):
         if not in_inflation:
             if eps < 1.0:
                 in_inflation = True
+                start_idx = idx
         else:
-            if eps >= 1.0:
-                return idx
+            pass
+    if start_idx == -1:
+        return -1
+    # Scan backward from end to find the LAST time eps >= 1
+    for idx in range(len(epsH) - 1, start_idx - 1, -1):
+        if epsH[idx] >= 1.0:
+            return idx
     return -1
 
 
