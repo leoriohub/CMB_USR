@@ -1,48 +1,74 @@
 """
 Planck 2018 low-ℓ TT binned power spectrum data.
-Source: Planck 2018 results. VI. Cosmological parameters (Aghanim et al. 2020)
-Table 4: Binned temperature power spectrum from the Commander component-separation algorithm.
+Source: Planck 2018 results. V. CMB power spectra and likelihoods
+(Aghanim et al. 2020, A&A 641, A5).
+Data file: COM_PowerSpect_CMB-TT-full_R3.01.txt from IRSA Planck Release 3
+(https://irsa.ipac.caltech.edu/data/Planck/release_3/ancillary-data/cosmoparams/)
 
-D_ell = ell * (ell+1) * C_ell / (2*pi) in micro-K^2
+For ℓ = 2-29, the spectrum is derived from the Commander component-separation
+algorithm applied to Planck 2018 temperature maps between 30 and 857 GHz.
 
-For the low-ell range (ell <= 29), we use the Commander likelihood.
-Errors are diagonal approximations — the full Planck low-ell likelihood
-is non-Gaussian, but diagonal chi^2 is adequate for model scoping.
+D_ell = ℓ(ℓ+1) C_ℓ T_cmb^2 / (2π)  [μK^2]
+
+The errors are asymmetric 68% confidence limits including foreground
+subtraction uncertainties. For the low-ℓ range (ℓ ≤ 29), we use the
+Commander likelihood. A diagonal chi^2 approximation is used for model
+scoping (the full Planck low-ℓ likelihood is non-Gaussian).
 """
+import os
+
 import numpy as np
 from scripts.constants import T_cmb
 
-planck_lowl_tt = dict(
-    ell=[
-        2, 3, 4, 5, 6, 7, 8, 9, 10,
-        11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-        21, 22, 23, 24, 25, 26, 27, 28, 29
-    ],
-    D_ell=[
-        102.4, 774.3, 640.7, 981.2, 1017.5, 986.0, 915.8, 978.8, 1048.5,
-        878.1, 1041.6, 806.0, 901.8, 666.3, 627.1, 583.0, 677.7, 507.0,
-        625.8, 502.5, 549.6, 487.2, 445.2, 488.3, 413.6, 476.7, 365.1,
-        371.8
-    ],
-    D_ell_err=[
-        443.9, 412.2, 555.5, 481.1, 504.4, 508.0, 411.1, 416.6, 401.8,
-        316.7, 228.2, 175.3, 172.8, 115.6, 100.7, 122.8, 133.2, 103.0,
-        87.3, 76.0, 69.9, 64.0, 63.1, 56.4, 58.5, 57.6, 52.5, 53.2
-    ],
-)
+DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "Planck")
+DATA_FILE = os.path.join(DATA_DIR, "planck_2018_low_ell_tt.csv")
+
+_planck_data = None
+
+
+def _load_data():
+    """Load low-ℓ Commander data from CSV, caching the result."""
+    global _planck_data
+    if _planck_data is not None:
+        return _planck_data
+    data = np.loadtxt(DATA_FILE, skiprows=1, delimiter=",")
+    _planck_data = {
+        "ell": data[:, 0].astype(int),
+        "D_ell": data[:, 1],
+        "D_ell_err_lower": data[:, 2],
+        "D_ell_err_upper": data[:, 3],
+    }
+    return _planck_data
+
 
 def get_planck_data():
-    """Return (ells, D_ell, D_ell_err) arrays for Planck 2018 low-ell TT."""
-    d = planck_lowl_tt
-    return (np.array(d["ell"]),
-            np.array(d["D_ell"]),
-            np.array(d["D_ell_err"]))
+    """Return (ells, D_ell, D_ell_err_sym) for Planck 2018 low-ℓ TT.
 
-def d_ell_to_C_ell(ells, D_ell):
-    """Convert D_ell [muK^2] to dimensionless C_ell."""
-    return D_ell * 2.0 * np.pi / (ells * (ells + 1.0))
+    D_ell_err_sym is the average of the lower and upper 68% confidence
+    limits. Use `get_planck_data_asymmetric()` for the full asymmetric
+    error bars.
+    """
+    d = _load_data()
+    err_sym = 0.5 * (d["D_ell_err_lower"] + d["D_ell_err_upper"])
+    return (d["ell"], d["D_ell"], err_sym)
+
+
+def get_planck_data_asymmetric():
+    """Return (ells, D_ell, D_ell_err_lower, D_ell_err_upper).
+
+    The errors are the 68% confidence limits from the Commander
+    component-separation algorithm.
+    """
+    d = _load_data()
+    return (d["ell"], d["D_ell"], d["D_ell_err_lower"], d["D_ell_err_upper"])
+
+
+def d_ell_to_C_ell(ells, D_ell, Tcmb=T_cmb):
+    """Convert D_ell [μK^2] to dimensionless C_ell."""
+    return D_ell * 2.0 * np.pi / (ells * (ells + 1.0)) / (Tcmb * 1e6) ** 2
+
 
 def C_ell_to_d_ell(ells, C_ell, Tcmb=T_cmb):
-    """Convert dimensionless C_ell to D_ell [muK^2]."""
+    """Convert dimensionless C_ell to D_ell [μK^2]."""
     conv = (Tcmb * 1e6) ** 2
     return C_ell * ells * (ells + 1.0) * conv / (2.0 * np.pi)
