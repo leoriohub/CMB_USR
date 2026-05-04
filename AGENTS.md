@@ -13,10 +13,10 @@ scripts/
   pspectrum_pipeline.py — Batch P_S(k) across k-modes: run_pspectrum_pipeline(), load_pspectrum()
   camb_wrapper.py       — Sachs-Wolfe C_ell + CAMB integration wrappers
   planck_data.py        — Planck 2018 low-ℓ TT data loader (Commander)
-  usr_chi2_optimizer.py — (phi0, yi, N_star) parameter search: differential_evolution + chi² + ns + k_dip penalty
+  usr_chi2_optimizer.py — (phi0, y0, N_star) parameter search: differential_evolution + chi² + ns + k_dip penalty
 notebooks/           — Jupyter analysis notebooks (see .opencode/agents/notebook.md for editing rules)
 outputs/cmb_results/ — Cached simulation results (JSON)
-  pspectra/          — P_S(k) cache, named Higgs_Inflation_phi{X}_yi{Y}_run_{uuid}.json
+  pspectra/          — P_S(k) cache, named Higgs_Inflation_phi{X}_y0{Y}_run_{uuid}.json
   simulations/       — Full dashboard outputs from notebooks
   c_ell/             — CMB angular power spectra
   plots/             — Generated figures
@@ -39,7 +39,7 @@ The `scripts/` modules do this internally via `ROOT_DIR = os.path.abspath(os.pat
 ## Pipeline execution flow
 
 ```
-HiggsModel(lam, xi) → model.phi0, model.yi
+HiggsModel(lam, xi) → model.phi0, model.y0
   → run_background_simulation(model, T_span)    # ~0.008s, returns (x,y,z,n) over time
   → get_derived_quantities(sol, model)           # extracts epsH, etaH, ns, r, P_S
   → run_ms_simulation(model, bg_sol, k_modes)    # ~0.007s per k-mode
@@ -50,14 +50,14 @@ Full P_S(k) with 80 k-modes: ~3s. With dense weighted grid (~181 modes): ~1 min.
 
 ## Caching pattern
 
-`run_or_load()` in notebooks checks `outputs/cmb_results/pspectra/` for matching (phi0, yi, xi, N_pivot). If found, loads cached JSON. Force recompute with `force_recompute=True`.
+`run_or_load()` in notebooks checks `outputs/cmb_results/pspectra/` for matching (phi0, y0, xi, N_pivot). If found, loads cached JSON. Force recompute with `force_recompute=True`.
 
 ## Model classes
 
-- `HiggsModel(xi, lam)` — High-field approximation. `f(x) = (1 - exp(-αx))²`, `α = √(2/3)`. Default ICs: `phi0=5.8, yi=-0.01`.
+- `HiggsModel(xi, lam)` — High-field approximation. `f(x) = (1 - exp(-αx))²`, `α = √(2/3)`. Default ICs: `phi0=5.8, y0=-0.01`.
 - `FullHiggsModel(xi, lam)` — Exact conformal inversion via numerical integration on a grid. Slower but more accurate.
 - `SmoothUSRTransitionModel` — Analytical smooth USR transition model for comparison.
-- All inherit from `InflationModel` (models/base.py). Key method: `get_initial_conditions()` returns `[phi0, yi, zi, Ni]`.
+- All inherit from `InflationModel` (models/base.py). Key method: `get_initial_conditions()` returns `[phi0, y0, zi, Ni]`.
 
 ## Physical constants and conventions
 
@@ -66,7 +66,7 @@ Full P_S(k) with 80 k-modes: ~3s. With dense weighted grid (~181 modes): ~1 min.
 - Last scattering distance: `r_ls = 14000 Mpc`
 - CMB temperature: `T_cmb = 2.7255 K`
 - End of inflation: `ε_H ≥ 1` (Hubble slow-roll parameter)
-- USR phase: triggered by negative initial velocity `yi < -0.05` (vs `yi ≈ -0.001` for SR)
+- USR phase: triggered by negative initial velocity `y0 < -0.05` (vs `y0 ≈ -0.001` for SR)
 
 ## Notebook editing rules
 
@@ -78,8 +78,8 @@ See `.opencode/agents/notebook.md` for full rules. Key points:
 
 ## Output file naming
 
-- pspectra cache: `Higgs_Inflation_phi{phi0:.2f}_yi{yi:.3f}_run_{uuid8}.json`
-- dashboard results: `powerloss_phi{phi0:.2f}_yi{yi:.3f}_xi{xi:.0f}_Npivot{N_pivot}.json`
+- pspectra cache: `Higgs_Inflation_phi{phi0:.2f}_y0{y0:.3f}_run_{uuid8}.json`
+- dashboard results: `powerloss_phi{phi0:.2f}_y0{y0:.3f}_xi{xi:.0f}_Npivot{N_pivot}.json`
 - JSON structure: `{metadata, k_phys, P_S}` for pspectra; `{config, primordial, cmb_sw, stats}` for simulations
 
 ## Common pitfalls
@@ -93,10 +93,10 @@ See `.opencode/agents/notebook.md` for full rules. Key points:
 ## USR Chi^2 Optimizer
 
 ```
-scripts/usr_chi2_optimizer.py  — CLI optimizer for (phi0, yi, N_star) search
+scripts/usr_chi2_optimizer.py  — CLI optimizer for (phi0, y0, N_star) search
 
 Usage (quick test):
-  python scripts/usr_chi2_optimizer.py --maxiter 2 --popsize 15 --workers 4 --phi0-range 5.20 5.90 --yi-range -0.20 -0.03 --nstar-range 45 62
+  python scripts/usr_chi2_optimizer.py --maxiter 2 --popsize 15 --workers 4 --phi0-range 5.20 5.90 --y0-range -0.20 -0.03 --nstar-range 45 62
 
 Usage (full search on lab machine, ~2-3 hours):
   python scripts/usr_chi2_optimizer.py --maxiter 200 --popsize 15 --workers 8 --re-run-best --save-best

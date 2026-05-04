@@ -118,18 +118,18 @@ def extract_mode_initial_conditions(bg_sol, T_span_bg, end_idx, k_code, k_start_
     start_idx = int(np.argmin(np.abs(log_az[:end_idx] - target_start)))
     start_idx = max(start_idx, 0)
     xi = bg_sol[0][start_idx]
-    yi = bg_sol[1][start_idx]
+    y0 = bg_sol[1][start_idx]
     zi = bg_sol[2][start_idx]
     ni = bg_sol[3][start_idx]
     t_start = T_span_bg[start_idx]
     t_end = T_span_bg[end_idx]
-    return xi, yi, zi, ni, t_start, t_end, start_idx
+    return xi, y0, zi, ni, t_start, t_end, start_idx
 
 
 def _compute_single_mode(args):
     """Worker function for parallel k-mode execution. Returns (idx, P_S, P_T, start_idx)."""
     idx, k_code, bg_sol, T_span_bg, end_idx, bg_interp, k_start_factor, ms_steps, model = args
-    xi, yi_val, zi, ni, t_start, t_end, start_idx = extract_mode_initial_conditions(
+    xi, y0_val, zi, ni, t_start, t_end, start_idx = extract_mode_initial_conditions(
         bg_sol, T_span_bg, end_idx, k_code, k_start_factor
     )
     T_ms = np.linspace(t_start, t_end, ms_steps)
@@ -141,7 +141,7 @@ def _compute_single_mode(args):
 def run_pspectrum_pipeline(
     model,
     phi0=None,
-    yi=None,
+    y0=None,
     k_min=1e-5,
     k_max=1.0,
     num_k=80,
@@ -173,7 +173,7 @@ def run_pspectrum_pipeline(
     Parameters
     ----------
     model : InflationModel instance
-    phi0, yi : float, optional — overrides model defaults
+    phi0, y0 : float, optional — overrides model defaults
     k_min, k_max : float, physical k-range (Mpc^-1)
     num_k : int, modes per decade if k_phys_grid not provided
     k_pivot_phys : float, Planck pivot scale (default 0.05 Mpc^-1)
@@ -200,8 +200,8 @@ def run_pspectrum_pipeline(
     """
     if phi0 is not None:
         model.phi0 = float(phi0)
-    if yi is not None:
-        model.yi = float(yi)
+    if y0 is not None:
+        model.y0 = float(y0)
 
     if T_span_bg is None:
         T_span_bg = np.linspace(0.0, T_max, bg_steps)
@@ -260,7 +260,7 @@ def run_pspectrum_pipeline(
         print()
     else:
         for idx, k_code in enumerate(k_code_grid, 1):
-            xi, yi_val, zi, ni, t_start, t_end, start_idx = extract_mode_initial_conditions(
+            xi, y0_val, zi, ni, t_start, t_end, start_idx = extract_mode_initial_conditions(
                 bg_sol, T_span_bg, end_idx, k_code, k_start_factor
             )
             T_ms = np.linspace(t_start, t_end, ms_steps)
@@ -286,7 +286,7 @@ def run_pspectrum_pipeline(
     metadata = {
         "model": model.name,
         "phi0": float(model.phi0),
-        "yi": float(model.yi),
+        "y0": float(model.y0),
         "xi": getattr(model, "xi_val", None),
         "lam": getattr(model, "lam", None),
         "v_vev": getattr(model, "v_vev", None),
@@ -314,7 +314,7 @@ def run_pspectrum_pipeline(
         os.makedirs(output_dir, exist_ok=True)
         run_id = str(uuid.uuid4())[:8]
         safe_model = model.name.replace(" ", "_").replace("(", "").replace(")", "")
-        filename = f"{safe_model}_phi{model.phi0:.2f}_yi{model.yi:.3f}_run_{run_id}.json"
+        filename = f"{safe_model}_phi{model.phi0:.2f}_y0{model.y0:.3f}_run_{run_id}.json"
         output_path = os.path.join(output_dir, filename)
 
         def convert(val):
@@ -367,7 +367,7 @@ def parse_args():
         "HiggsModel", "FullHiggsModel"
     ])
     parser.add_argument("--phi0", type=float, default=None)
-    parser.add_argument("--yi", type=float, default=None)
+    parser.add_argument("--y0", type=float, default=None)
     parser.add_argument("--xi", type=float, default=15000.0)
     parser.add_argument("--lam", type=float, default=0.13)
     parser.add_argument("--v-vev", type=float, default=0.0)
@@ -406,7 +406,7 @@ def main():
     result = run_pspectrum_pipeline(
         model=model,
         phi0=args.phi0,
-        yi=args.yi,
+        y0=args.y0,
         k_min=args.k_min,
         k_max=args.k_max,
         num_k=args.num_k,

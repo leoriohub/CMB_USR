@@ -6,7 +6,7 @@ class QuadraticModel(InflationModel):
         M = 5.9e-6
         self.v0 = 0.5 * M**2
         self.phi0 = 17.5 # Approx 60 e-folds
-        self.yi = -0.05 # Slow-roll initial velocity
+        self.y0 = -0.05 # Slow-roll initial velocity
 
 
     def f(self, x):
