@@ -14,7 +14,7 @@ def test_agents_md_has_no_chi2_entry():
     content = agents_md.read_text(encoding="utf-8")
     lowered = content.lower()
 
-    assert "chi2_analysis.py" not in content
+    assert "chi2_analysis.py" not in lowered
     assert "chi^2" not in lowered
     assert "chi squared" not in lowered
     assert "χ²" not in content
