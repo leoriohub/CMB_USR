@@ -2,8 +2,8 @@
 Plot P_S(k) and D_ell from a cached spectrum JSON.
 
 Usage:
-  python scripts/plot_pspectrum.py outputs/cmb_results/pspectra/Punctuated_*.json
-  python scripts/plot_pspectrum.py outputs/cmb_results/pspectra/Punctuated_*.json --save plots/
+  python scripts/plot_pspectrum.py outputs/simulations/pspectra/Punctuated_*.json
+  python scripts/plot_pspectrum.py outputs/simulations/pspectra/Punctuated_*.json --save plots/
 """
 
 import argparse

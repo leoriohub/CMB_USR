@@ -7,7 +7,7 @@ Usage:
     python scripts/plot_usr_discussion.py            # load cache if available
     python scripts/plot_usr_discussion.py --recompute # force fresh pipeline run
 
-Outputs: outputs/powerloss/plots/
+Outputs: outputs/plots/powerloss/
     fig1_ps_usr_vs_powerlaw.png
     fig2_dell_usr_vs_planck.png
 """
@@ -35,8 +35,8 @@ from scripts.planck_data import get_planck_data
 from scripts.constants import As, k_pivot_phys, r_ls, T_cmb
 from models import HiggsModel
 
-OUTPUT_DIR = os.path.join(ROOT_DIR, "outputs/powerloss/plots")
-CACHE_DIR = os.path.join(ROOT_DIR, "outputs/cmb_results/pspectra")
+OUTPUT_DIR = os.path.join(ROOT_DIR, "outputs/plots/powerloss")
+CACHE_DIR = os.path.join(ROOT_DIR, "outputs/simulations/pspectra")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ── Configuration ──────────────────────────────────────────────────────────
@@ -194,4 +194,4 @@ fig2.savefig(os.path.join(OUTPUT_DIR, "fig2_dell_usr_vs_planck.png"),
 print(f"  Saved: {os.path.join(OUTPUT_DIR, 'fig2_dell_usr_vs_planck.png')}")
 
 plt.close("all")
-print("\nDone. Both figures saved to outputs/powerloss/plots/")
+print("\nDone. Both figures saved to outputs/plots/powerloss/")

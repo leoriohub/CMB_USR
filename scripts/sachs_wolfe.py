@@ -164,7 +164,7 @@ if __name__ == "__main__":
                         help="Path to P_S(k) JSON file or directory")
     parser.add_argument("--ell-max", type=int, default=30)
     parser.add_argument("--r-ls", type=float, default=r_ls)
-    parser.add_argument("--output-dir", default="outputs/cmb_results/c_ell")
+    parser.add_argument("--output-dir", default="outputs/simulations/c_ell")
     args = parser.parse_args()
 
     if os.path.isdir(args.pspectrum_path):

@@ -253,7 +253,7 @@ def re_run_best(best_params, args):
 
     model = HiggsModel(lam=args.lam, xi=args.xi)
 
-    output_dir = os.path.join(ROOT_DIR, "outputs/cmb_results/pspectra")
+    output_dir = os.path.join(ROOT_DIR, "outputs/simulations/pspectra")
     os.makedirs(output_dir, exist_ok=True)
 
     k_grid = build_weighted_kgrid(args.k_min, args.k_max, k_pivot_phys)
@@ -305,7 +305,7 @@ def re_run_best(best_params, args):
           f"dip_sup={dip_sup:.1f}%  N_total={N_total:.1f}", flush=True)
 
     # Save summary
-    sim_dir = os.path.join(ROOT_DIR, "outputs/cmb_results/simulations")
+    sim_dir = os.path.join(ROOT_DIR, "outputs/simulations/configs")
     os.makedirs(sim_dir, exist_ok=True)
     date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     summary = {
@@ -382,7 +382,7 @@ def plot_dashboard(ells_usr, D_usr, ells_lcdm, D_lcdm,
         fontsize=11, fontweight="bold",
     )
 
-    plot_dir = os.path.join(ROOT_DIR, "outputs/cmb_results/plots")
+    plot_dir = os.path.join(ROOT_DIR, "outputs/plots/optimizer")
     os.makedirs(plot_dir, exist_ok=True)
     path = os.path.join(plot_dir, f"best_config_{date_str}.png")
     plt.tight_layout()
@@ -497,7 +497,7 @@ def main():
     if args.log is None:
         ds = datetime.now().strftime("%Y%m%d_%H%M%S")
         args.log = os.path.join(ROOT_DIR,
-                                f"outputs/sweeps/optimizer_log_{ds}.jsonl")
+                                f"outputs/simulations/logs/optimizer_log_{ds}.jsonl")
 
     print(f"{'='*60}", flush=True)
     print(f"  USR Chi^2 Optimizer", flush=True)

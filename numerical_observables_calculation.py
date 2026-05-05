@@ -18,7 +18,7 @@ from typing import Dict, Any
 import inf_dyn_background as bg_solver
 import inf_dyn_MS_full as ms_solver
 
-def run_inflation_protocol(model, phi0: float, y0: float, delta: float = 1e-4, N_star: float = 60.0, output_dir: str = "outputs/results", T_span_bg: np.ndarray = None, save_to_file: bool = True) -> Dict[str, Any]:
+def run_inflation_protocol(model, phi0: float, y0: float, delta: float = 1e-4, N_star: float = 60.0, output_dir: str = "outputs/simulations/configs", T_span_bg: np.ndarray = None, save_to_file: bool = True) -> Dict[str, Any]:
     """
     Coordinates the calculation of cosmological observables by mapping them from the end of inflation.
     
@@ -135,7 +135,7 @@ def run_inflation_protocol(model, phi0: float, y0: float, delta: float = 1e-4, N
         "output_file": output_path
     }
 
-def save_results_to_json(model, ns, r_val, ns_SR, r_SR, delta, k_pivot_code, N_total, N_pivot, results_list, ks_code_list, output_dir="outputs/results") -> str:
+def save_results_to_json(model, ns, r_val, ns_SR, r_SR, delta, k_pivot_code, N_total, N_pivot, results_list, ks_code_list, output_dir="outputs/simulations/configs") -> str:
     """Utility function to save the standardized JSON output."""
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
