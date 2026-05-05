@@ -11,15 +11,23 @@ inf_dyn_MS_full.py    — Mukhanov-Sasaki perturbation solver: run_ms_simulation
 numerical_observables_calculation.py — High-level orchestrator: run_inflation_protocol() → (ns, r, P_S)
 scripts/
   pspectrum_pipeline.py — Batch P_S(k) across k-modes: run_pspectrum_pipeline(), load_pspectrum()
-  camb_wrapper.py       — Sachs-Wolfe C_ell + CAMB integration wrappers
+  sachs_wolfe.py        — Sachs-Wolfe C_ell approximation for ℓ≤30
   planck_data.py        — Planck 2018 low-ℓ TT data loader (Commander)
   usr_chi2_optimizer.py — (phi0, y0, N_star) parameter search: differential_evolution + chi² + ns + k_dip penalty
 notebooks/           — Jupyter analysis notebooks (see .opencode/agents/notebook.md for editing rules)
-outputs/cmb_results/ — Cached simulation results (JSON)
-  pspectra/          — P_S(k) cache, named Higgs_Inflation_phi{X}_y0{Y}_run_{uuid}.json
-  simulations/       — Full dashboard outputs from notebooks
-  c_ell/             — CMB angular power spectra
-  plots/             — Generated figures
+outputs/
+  plots/               — Generated figures
+    powerloss/         — USR golden figures (publication quality)
+    diagnostics/       — Background evolution and mode checks
+    optimizer/         — Optimizer convergence and comparison plots
+  simulations/         — Cached run data (JSON)
+    pspectra/          — P_S(k) cache, named PS_{Model}_m{...}_phi{...}_y0{...}_Nstar{...}_{uuid}.json
+    configs/           — Simulation configuration snapshots
+    c_ell/             — CMB angular power spectra (Sachs-Wolfe)
+    background/        — Background trajectory data
+    logs/              — Optimizer log files (JSONL)
+    scans/             — Parameter sweep summaries
+data/                — Empty placeholder dirs for Planck/ACT likelihood data
 data/                — Empty placeholder dirs for Planck/ACT likelihood data
 ```
 
@@ -50,7 +58,7 @@ Full P_S(k) with 80 k-modes: ~3s. With dense weighted grid (~181 modes): ~1 min.
 
 ## Caching pattern
 
-`run_or_load()` in notebooks checks `outputs/cmb_results/pspectra/` for matching (phi0, y0, xi, N_pivot). If found, loads cached JSON. Force recompute with `force_recompute=True`.
+`run_or_load()` in notebooks checks `outputs/simulations/pspectra/` for matching (phi0, y0, xi, N_pivot). If found, loads cached JSON. Force recompute with `force_recompute=True`.
 
 ## Model classes
 

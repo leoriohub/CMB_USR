@@ -191,7 +191,7 @@ def run_pspectrum_pipeline(
     ms_steps=5000,
     normalize_to_As=True,
     As=As,
-    output_dir="outputs/cmb_results/pspectra",
+    output_dir="outputs/simulations/pspectra",
     save_outputs=True,
     k_phys_grid=None,
     n_workers=1,
@@ -564,7 +564,7 @@ def parse_args():
     parser.add_argument("--n-outer", type=int, default=60, help="k-modes outside dense zone")
     parser.add_argument("--normalize-to-As", action="store_true")
     parser.add_argument("--As", type=float, default=As)
-    parser.add_argument("--output-dir", default="outputs/cmb_results/pspectra")
+    parser.add_argument("--output-dir", default="outputs/simulations/pspectra")
     parser.add_argument("--no-save", action="store_true")
     return parser.parse_args()
 
