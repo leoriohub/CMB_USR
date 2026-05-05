@@ -4,30 +4,41 @@ from .base import InflationModel
 
 class PunctuatedInflationModel(InflationModel):
 
-    def __init__(self, m=1.1323e-7, lam=3.3299e-15, name="Punctuated Inflation"):
+    def __init__(self, m=1.1323e-7, lam=3.3299e-15, phi0=None, name="Punctuated Inflation"):
         super().__init__(name)
         self.m = m
         self.lam = lam
         self.sqrt_lam = np.sqrt(lam)
-        # Inflection point at φ₀ = m/√λ for n=3
-        self.phi0_inflection = m / self.sqrt_lam
-        # v₀ = V(φ₀) = m⁴/(12λ)
-        self.v0 = m**4 / (12 * lam)
-        # Paper ICs: φ_ini = 10, φ̇_ini = 0 (attractor trajectory)
-        self.phi0 = 10.0
+
+        # When phi0 is given independently, use general coefficient α = (m²+λφ₀²)/φ₀
+        # so that V'(φ₀) = 0 but V''(φ₀) ≠ 0 (broken inflection point).
+        # When phi0=None, recover the perfect inflection point at m/√λ.
+        if phi0 is not None:
+            self.phi0_inflection = float(phi0)
+            self._alpha = (m**2 + lam * phi0**2) / phi0  # general V'=0 coefficient
+        else:
+            self.phi0_inflection = m / self.sqrt_lam
+            self._alpha = 2 * self.sqrt_lam * m  # perfect inflection (2√λ m)
+
+        # v₀ = V(φ₀) for normalization
+        x0 = self.phi0_inflection
+        self.v0 = (m**2/2 * x0**2 - self._alpha/3 * x0**3 + lam/4 * x0**4)
+
+        # Paper ICs: φ_ini = 12, φ̇_ini via slow-roll approximation
+        self.phi0 = 12.0
         self.y0 = 0.0
 
     def f(self, x):
         return (self.m**2 / 2 * x**2
-                - 2 * self.sqrt_lam * self.m / 3 * x**3
+                - self._alpha / 3 * x**3
                 + self.lam / 4 * x**4) / self.v0
 
     def dfdx(self, x):
         return (self.m**2 * x
-                - 2 * self.sqrt_lam * self.m * x**2
+                - self._alpha * x**2
                 + self.lam * x**3) / self.v0
 
     def d2fdx2(self, x):
         return (self.m**2
-                - 4 * self.sqrt_lam * self.m * x
+                - 2 * self._alpha * x
                 + 3 * self.lam * x**2) / self.v0

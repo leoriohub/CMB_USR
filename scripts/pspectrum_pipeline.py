@@ -500,7 +500,7 @@ def build_model(args):
     if args.model == "FullHiggsModel":
         return FullHiggsModel(lam=args.lam, xi=args.xi, v_vev=args.v_vev)
     if args.model == "PunctuatedInflationModel":
-        return PunctuatedInflationModel(m=args.m, lam=args.lam)
+        return PunctuatedInflationModel(m=args.m, lam=args.lam, phi0=args.phi0_inflection)
     raise ValueError(f"Unknown model: {args.model} — use HiggsModel, FullHiggsModel, or PunctuatedInflationModel")
 
 
@@ -511,6 +511,8 @@ def parse_args():
         "HiggsModel", "FullHiggsModel", "PunctuatedInflationModel"
     ])
     parser.add_argument("--phi0", type=float, default=None)
+    parser.add_argument("--phi0-inflection", type=float, default=None, dest="phi0_inflection",
+                        help="Inflection point location (breaks perfect inflection when ≠ m/√λ)")
     parser.add_argument("--y0", type=float, default=None)
     parser.add_argument("--xi", type=float, default=15000.0)
     parser.add_argument("--lam", type=float, default=0.13)
