@@ -25,7 +25,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from scripts.constants import As, k_pivot_phys, N_star_default, ell_max_default, r_ls
 from scripts.pspectrum_pipeline import run_pspectrum_pipeline
-from scripts.camb_wrapper import compute_cl_sw, compute_cl_sw_powerlaw
+from scripts.sachs_wolfe import compute_cl_sw, compute_cl_sw_powerlaw
 from scripts.planck_data import get_planck_data, C_ell_to_d_ell
 from models import HiggsModel
 

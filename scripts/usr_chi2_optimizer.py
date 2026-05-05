@@ -24,7 +24,7 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 from scripts.pspectrum_pipeline import run_pspectrum_pipeline, build_weighted_kgrid
-from scripts.camb_wrapper import compute_cl_sw, compute_cl_sw_powerlaw
+from scripts.sachs_wolfe import compute_cl_sw, compute_cl_sw_powerlaw
 from scripts.planck_data import get_planck_data, C_ell_to_d_ell
 from scripts.constants import As, k_pivot_phys, r_ls, T_cmb
 from models import HiggsModel
