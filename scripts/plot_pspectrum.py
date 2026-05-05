@@ -14,7 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import numpy as np
 import matplotlib.pyplot as plt
 from scripts.pspectrum_pipeline import load_pspectrum
-from scripts.camb_wrapper import compute_cl_sw, compute_cl_sw_powerlaw
+from scripts.sachs_wolfe import compute_cl_sw, compute_cl_sw_powerlaw
 from scripts.constants import T_cmb
 
 
