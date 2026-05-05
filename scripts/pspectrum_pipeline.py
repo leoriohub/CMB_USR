@@ -423,7 +423,22 @@ def run_pspectrum_pipeline(
     if save_outputs:
         os.makedirs(output_dir, exist_ok=True)
         safe_model = model.name.replace(" ", "_").replace("(", "").replace(")", "")
-        filename = f"{safe_model}_phi{model.phi0:.2f}_y0{model.y0:.3f}_run_{run_id}.json"
+        try:
+            m_str = f"_m{model.m:.3e}" if hasattr(model, 'm') and model.m else ""
+        except Exception:
+            m_str = ""
+        try:
+            xi_str = f"_xi{int(model.xi_val)}" if hasattr(model, 'xi_val') and model.xi_val else ""
+        except Exception:
+            xi_str = ""
+        try:
+            lam_str = f"_lam{model.lam:.3e}" if hasattr(model, 'lam') and model.lam else ""
+        except Exception:
+            lam_str = ""
+        filename = (f"PS_{safe_model}{m_str}{xi_str}{lam_str}"
+                    f"_phi{model.phi0:.2f}_y0{model.y0:.3f}"
+                    f"_Nstar{metadata['N_star']:.0f}"
+                    f"_{run_id}.json")
         output_path = os.path.join(output_dir, filename)
 
         def convert(val):
