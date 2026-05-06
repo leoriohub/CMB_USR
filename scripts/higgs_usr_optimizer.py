@@ -202,7 +202,7 @@ def run_grid_scan(args):
                 "chi2": round(chi2, 2),
                 "k_dip": k_dip,
                 "suppression_pct": round(suppression, 1),
-                "P_S_pivot_raw": round(ns_local, 4e-9),
+                "P_S_pivot_raw": float(ns_local),
             })
             _write_log(log_file, entry)
             results.append(entry)
