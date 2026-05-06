@@ -183,7 +183,7 @@ def run_grid_scan(args):
                 k_dip = find_k_dip(result["k_phys"], result["P_S"])
                 suppression, _ = compute_dip_suppression(
                     result["k_phys"], result["P_S"])
-                ns_local = float(np.interp(
+                ps_pivot_raw = float(np.interp(
                     k_pivot_phys, result["k_phys"], result["P_S"]))
             except Exception as exc:
                 entry.update({"status": "analysis_fail", "N_star": N_star,
@@ -202,7 +202,7 @@ def run_grid_scan(args):
                 "chi2": round(chi2, 2),
                 "k_dip": k_dip,
                 "suppression_pct": round(suppression, 1),
-                "P_S_pivot_raw": float(ns_local),
+                "P_S_pivot_raw": float(ps_pivot_raw),
             })
             _write_log(log_file, entry)
             results.append(entry)
