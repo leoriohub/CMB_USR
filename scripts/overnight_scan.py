@@ -175,17 +175,24 @@ def main(args):
     phi0_vals = np.linspace(args.phi0_min, args.phi0_max, args.n_phi0)
     y0_vals = np.linspace(args.y0_min, args.y0_max, args.n_y0)
 
-    # Estimate total: for each (phi0, y0), ~21 N_star values
+    # Estimate realistic total: most low-phi0 will skip, maybe ~30% survive
     n_nstar_per = int(2 * args.nstar_window / args.nstar_step) + 1
     total_est = len(phi0_vals) * len(y0_vals) * n_nstar_per
+    viable_est = int(len(phi0_vals) * len(y0_vals) * args.viability_guess)
+    total_realistic = viable_est * n_nstar_per
 
     print(f"{'='*65}", flush=True)
     print(f"  Overnight Scan — Higgs USR", flush=True)
     print(f"  Parameters: (phi0, y0, N_star)", flush=True)
-    print(f"  phi0: [{args.phi0_min:.2f}, {args.phi0_max:.2f}] x {args.n_phi0}", flush=True)
-    print(f"  y0:   [{args.y0_min:.3f}, {args.y0_max:.3f}] x {args.n_y0}", flush=True)
-    print(f"  N_star: auto_N +/- {args.nstar_window} step {args.nstar_step}", flush=True)
-    print(f"  Estimated evaluations: ~{total_est}", flush=True)
+    print(f"  phi0: [{args.phi0_min:.2f}, {args.phi0_max:.2f}] x {args.n_phi0}  "
+          f"(step {(args.phi0_max-args.phi0_min)/(args.n_phi0-1):.3f})", flush=True)
+    print(f"  y0:   [{args.y0_min:.3f}, {args.y0_max:.3f}] x {args.n_y0}  "
+          f"(step {(args.y0_max-args.y0_min)/(args.n_y0-1):.3f})", flush=True)
+    print(f"  N_star: auto_N +/- {args.nstar_window} step {args.nstar_step}  "
+          f"-> {n_nstar_per} values/pair", flush=True)
+    print(f"  Grid: {len(phi0_vals)} x {len(y0_vals)} = {len(phi0_vals)*len(y0_vals)} pairs", flush=True)
+    print(f"  Viability guess: ~{args.viability_guess*100:.0f}% -> ~{total_realistic} evals", flush=True)
+    print(f"  k-modes: {args.num_k}, workers: {args.workers}", flush=True)
     print(f"  Log: {args.log}", flush=True)
     print(f"{'='*65}", flush=True)
 
@@ -234,6 +241,12 @@ def main(args):
                       f"SKIP (sr_only)", end="", flush=True)
                 continue
             dip_N = float(d["N"][np.argmin(eps_inf[10:]) + 10])
+            # Real USR dip must be at least 5 e-folds before end of inflation
+            if N_total - dip_N < 5:
+                done[0] += n_nstar_per
+                print(f"\r  [{done[0]:4d}/{total_est}] phi0={phi0:.2f} y0={y0:+.3f} "
+                      f"SKIP (dip_at_end)", end="", flush=True)
+                continue
             N_after_dip = N_total - dip_N
             delta_N = np.log(k_pivot_phys / k_dip_center)
             nstar_auto = N_after_dip - delta_N
@@ -295,6 +308,8 @@ if __name__ == "__main__":
                    help="Target k_dip for auto-N_star computation")
     p.add_argument("--eps-min-threshold", type=float, default=1e-2,
                    help="Skip if epsH min stays above this (SR-only)")
+    p.add_argument("--viability-guess", type=float, default=0.30,
+                   help="Fraction of (phi0,y0) expected to produce USR (for ETA est)")
     # Pipeline
     p.add_argument("--num-k", type=int, default=60)
     p.add_argument("--k-min", type=float, default=5e-6)
