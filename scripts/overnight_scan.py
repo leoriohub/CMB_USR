@@ -1,7 +1,9 @@
 """
 Overnight 3D scan over (phi0, y0, N_star) for Higgs USR.
 
-Launched on lab machine (uni) to run for ~8-12 hours.
+Wide, coarse reconnaissance across a large (phi0, y0) window with
+N_star scanned around an auto-solved center. Intended for iterative
+coarse-to-fine search planning.
 Saves EVERY evaluation instantly to JSONL with flush().
 If power fails, the JSONL log is preserved and the scan can resume by
 reading existing entries on restart.
@@ -225,6 +227,12 @@ def main(args):
                 print(f"\r  [{done[0]:4d}/{total_est}] phi0={phi0:.2f} y0={y0:+.3f} "
                       f"SKIP (no_usr)", end="", flush=True)
                 continue
+            eps_min = float(np.min(eps_inf))
+            if eps_min > args.eps_min_threshold:
+                done[0] += n_nstar_per
+                print(f"\r  [{done[0]:4d}/{total_est}] phi0={phi0:.2f} y0={y0:+.3f} "
+                      f"SKIP (sr_only)", end="", flush=True)
+                continue
             dip_N = float(d["N"][np.argmin(eps_inf[10:]) + 10])
             N_after_dip = N_total - dip_N
             delta_N = np.log(k_pivot_phys / k_dip_center)
@@ -272,24 +280,26 @@ if __name__ == "__main__":
     p.add_argument("--xi", type=float, default=15000.0)
     p.add_argument("--lam", type=float, default=0.13)
     # Grid
-    p.add_argument("--phi0-min", type=float, default=5.55)
-    p.add_argument("--phi0-max", type=float, default=5.85)
-    p.add_argument("--y0-min", type=float, default=-0.18)
-    p.add_argument("--y0-max", type=float, default=-0.05)
-    p.add_argument("--n-phi0", type=int, default=7)
-    p.add_argument("--n-y0", type=int, default=14)
+    p.add_argument("--phi0-min", type=float, default=4.0)
+    p.add_argument("--phi0-max", type=float, default=7.0)
+    p.add_argument("--y0-min", type=float, default=-1.0)
+    p.add_argument("--y0-max", type=float, default=-0.01)
+    p.add_argument("--n-phi0", type=int, default=16)
+    p.add_argument("--n-y0", type=int, default=16)
     # N_star
-    p.add_argument("--nstar-window", type=float, default=3.0,
+    p.add_argument("--nstar-window", type=float, default=5.0,
                    help="Scan N_star in [auto - window, auto + window]")
-    p.add_argument("--nstar-step", type=float, default=0.3,
+    p.add_argument("--nstar-step", type=float, default=0.5,
                    help="N_star step size")
     p.add_argument("--k-dip-target", type=float, default=1.8e-4,
                    help="Target k_dip for auto-N_star computation")
+    p.add_argument("--eps-min-threshold", type=float, default=1e-2,
+                   help="Skip if epsH min stays above this (SR-only)")
     # Pipeline
     p.add_argument("--num-k", type=int, default=60)
     p.add_argument("--k-min", type=float, default=5e-6)
     p.add_argument("--k-max", type=float, default=5.0)
-    p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--workers", type=int, default=8)
     # Logging
     p.add_argument("--log", type=str, default=None)
     args = p.parse_args()
