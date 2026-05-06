@@ -18,7 +18,9 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from scripts.pspectrum_pipeline import run_pspectrum_pipeline, find_end_of_inflation
+from scripts.pspectrum_pipeline import (
+    run_pspectrum_pipeline, find_end_of_inflation, build_weighted_kgrid,
+)
 from scripts.sachs_wolfe import compute_cl_sw, compute_cl_sw_powerlaw
 from scripts.planck_data import get_planck_data, C_ell_to_d_ell
 from scripts.constants import As, k_pivot_phys
@@ -243,3 +245,172 @@ def run_grid_scan(args):
     print(f"\n\n  Grid scan complete in {elapsed:.0f}s ({elapsed/3600:.1f}h)",
           flush=True)
     return results
+
+
+# ── Post-processing ────────────────────────────────────────────────────────────
+
+
+def print_best_results(results, args):
+    """Print sorted table of best configurations and save a summary JSON."""
+    ok = [r for r in results if r.get("status") == "ok"]
+    if not ok:
+        print("  No configurations with dip in target range.", flush=True)
+        return None, None
+
+    ok.sort(key=lambda r: r.get("chi2", 1e9))
+
+    print(f"\n{'='*70}", flush=True)
+    print(f"  Top configurations (k_dip in [{args.k_dip_range[0]:.1e}, "
+          f"{args.k_dip_range[1]:.1e}]):", flush=True)
+    print(f"  {'#':>3}  {'phi0':>6}  {'y0':>8}  {'N*':>7}  "
+          f"{'chi2':>7}  {'k_dip':>10}  {'supp%':>7}", flush=True)
+    print(f"  {'-'*57}", flush=True)
+    for i, r in enumerate(ok[:20]):
+        print(f"  {i+1:3d}  {r['phi0']:6.2f}  {r['y0']:+8.4f}  "
+              f"{r['N_star']:7.1f}  {r['chi2']:7.1f}  "
+              f"{r['k_dip']:10.2e}  {r['suppression_pct']:+6.1f}%",
+              flush=True)
+
+    sim_dir = os.path.join(ROOT_DIR, "outputs/simulations/scans")
+    os.makedirs(sim_dir, exist_ok=True)
+    date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    summary_path = os.path.join(sim_dir, f"higgs_scan_{date_str}.json")
+    with open(summary_path, "w") as f:
+        json.dump(ok, f, indent=2)
+    print(f"\n  Full results saved -> {summary_path}", flush=True)
+    return ok, date_str
+
+
+def plot_scan_results(ok, args, date_str):
+    """Generate chi^2 heatmap, suppression heatmap, and best P_S(k) overlay."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    phi0_vals = sorted(set(r["phi0"] for r in ok))
+    y0_vals = sorted(set(r["y0"] for r in ok))
+    chi2_map = np.full((len(y0_vals), len(phi0_vals)), np.nan)
+    supp_map = np.full((len(y0_vals), len(phi0_vals)), np.nan)
+
+    for r in ok:
+        ip = phi0_vals.index(r["phi0"])
+        iy = y0_vals.index(r["y0"])
+        chi2_map[iy, ip] = r["chi2"]
+        supp_map[iy, ip] = r["suppression_pct"]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5))
+
+    im1 = ax1.pcolormesh(phi0_vals, y0_vals, chi2_map, shading="auto",
+                          cmap="viridis_r")
+    ax1.set_xlabel("$\\phi_0$")
+    ax1.set_ylabel("$y_0$")
+    ax1.set_title(f"$\\chi^2$ vs Planck low-$\\ell$")
+    plt.colorbar(im1, ax=ax1, label="$\\chi^2$")
+
+    im2 = ax2.pcolormesh(phi0_vals, y0_vals, supp_map, shading="auto",
+                          cmap="coolwarm", vmin=-50, vmax=50)
+    ax2.set_xlabel("$\\phi_0$")
+    ax2.set_ylabel("$y_0$")
+    ax2.set_title("Dip Suppression [%]")
+    plt.colorbar(im2, ax=ax2, label="suppression %")
+
+    plt.suptitle("Higgs USR Grid Scan Results", fontsize=13, fontweight="bold")
+    plt.tight_layout()
+
+    plot_dir = os.path.join(ROOT_DIR, "outputs/plots/optimizer")
+    os.makedirs(plot_dir, exist_ok=True)
+    path = os.path.join(plot_dir, f"higgs_scan_{date_str}.png")
+    plt.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  Scan plot saved -> {path}", flush=True)
+
+
+def plot_best_spectrum(best, args, date_str):
+    """Re-run the pipeline at the best config with save and produce
+    a dashboard plot (P_S(k) + C_ell comparison)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    phi0 = best["phi0"]
+    y0 = best["y0"]
+    N_star = best["N_star"]
+
+    print(f"\n  Re-running best at phi0={phi0:.4f} y0={y0:.4f} "
+          f"N_star={N_star:.2f}", flush=True)
+
+    model = HiggsModel(lam=args.lam, xi=args.xi)
+    k_grid = build_weighted_kgrid(args.k_min, args.k_max, k_pivot_phys)
+    output_dir = os.path.join(ROOT_DIR, "outputs/simulations/pspectra")
+
+    result = run_pspectrum_pipeline(
+        model=model, phi0=phi0, y0=y0,
+        k_min=args.k_min, k_max=args.k_max,
+        k_pivot_phys=k_pivot_phys, N_star=N_star,
+        normalize_to_As=True, As=As,
+        output_dir=output_dir, save_outputs=True,
+        k_phys_grid=k_grid, n_workers=args.workers,
+    )
+
+    if result["status"] != "success":
+        print(f"  Pipeline failed: {result.get('message','')}", flush=True)
+        return
+
+    # P_S(k) plot
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+    ax1.loglog(result["k_phys"], result["P_S"], "b-", lw=1.5)
+    ax1.axvline(k_pivot_phys, color="k", ls="--", alpha=0.5,
+                label=f"pivot ({k_pivot_phys} Mpc$^{{-1}}$)")
+    kd = best.get("k_dip", -1.0)
+    if kd > 0:
+        ax1.axvline(kd, color="r", ls=":", alpha=0.7,
+                    label=f"dip ({kd:.2e} Mpc$^{{-1}}$)")
+    ax1.set_xlabel("$k$ [Mpc$^{-1}$]")
+    ax1.set_ylabel("$\\mathcal{P}_\\mathcal{R}(k)$")
+    ax1.set_title("Primordial Power Spectrum (best)")
+    ax1.legend(fontsize=8)
+    ax1.grid(True, alpha=0.3)
+
+    # C_ell comparison
+    ells_usr, C_usr = compute_cl_sw(result, ell_max=args.ell_max)
+    D_usr = C_ell_to_d_ell(ells_usr, C_usr)
+
+    ells_lcdm, C_lcdm, _ = compute_cl_sw_powerlaw(
+        k_min=args.k_min, k_max=args.k_max,
+        As=As, ns=0.965, ell_max=args.ell_max,
+    )
+    D_lcdm = C_ell_to_d_ell(ells_lcdm, C_lcdm)
+
+    ells_pl, D_pl, D_err = get_planck_data()
+    mask = ells_pl <= args.ell_max
+
+    ax2.errorbar(ells_pl[mask], D_pl[mask], yerr=D_err[mask],
+                 fmt="ko", ms=4, capsize=2, label="Planck 2018")
+    ax2.semilogx(ells_usr, D_usr, "r-", lw=1.5, label="USR Best")
+    ax2.semilogx(ells_lcdm, D_lcdm, "gray", ls="--", lw=1,
+                 label="$\\Lambda$CDM")
+    ax2.set_xlabel("Multipole $\\ell$")
+    ax2.set_ylabel("$D_\\ell$ [$\\mu$K$^2$]")
+    ax2.set_title("CMB Low-$\\ell$ Power Spectrum")
+    ax2.legend(fontsize=8)
+    ax2.set_xlim(1.5, args.ell_max)
+    ax2.grid(True, alpha=0.3)
+
+    chi2 = compute_chi2(result, ell_max=args.ell_max)
+    suppression = best.get("suppression_pct", 0)
+    plt.suptitle(
+        f"Best Higgs USR: $\\phi_0$={phi0:.2f}, $y_0$={y0:.3f}, "
+        f"$N_{{*}}$={N_star:.0f}\n"
+        f"$\\chi^2$={chi2:.1f}, dip at $k$={kd:.2e} Mpc$^{{-1}}$, "
+        f"suppression={suppression:+.1f}%",
+        fontsize=11, fontweight="bold",
+    )
+
+    plot_dir = os.path.join(ROOT_DIR, "outputs/plots/optimizer")
+    os.makedirs(plot_dir, exist_ok=True)
+    path = os.path.join(plot_dir, f"higgs_best_{date_str}.png")
+    plt.tight_layout()
+    plt.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  Dashboard plot saved -> {path}", flush=True)
