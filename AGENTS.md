@@ -115,3 +115,21 @@ Objective: `loss = chi² + ns_penalty + k_penalty` where:
 - `k_penalty = 50 if k_dip ∉ [1e-4, 5e-4]` (dip at ℓ≲5)
 
 Uses `scipy.optimize.differential_evolution` (global, population-based). Logs all evaluations to JSONL. Generates convergence + comparison plots.
+
+## Higgs USR Grid-Scan Optimizer
+
+```
+scripts/higgs_usr_optimizer.py  — Grid-scan optimizer for Higgs USR (phi0, y0) search
+
+Usage (quick test, ~5 min):
+  python scripts/higgs_usr_optimizer.py --n-phi0 5 --n-y0 5 --num-k 40 --workers 4
+
+Usage (full scan on lab machine, ~2-4 hours):
+  python scripts/higgs_usr_optimizer.py --n-phi0 20 --n-y0 20 --num-k 80 --workers 8 --plot-best
+```
+
+Deterministic grid scan over (phi0, y0). Automatically computes N_star from the background trajectory to align the USR dip with the target k_dip_range (default 1e-4 to 5e-4 Mpc^-1). Evaluates chi^2 against Planck low-ell TT data via Sachs-Wolfe approximation. Generates:
+- JSONL log of all evaluations (outputs/simulations/logs/)
+- Results summary JSON (outputs/simulations/scans/)
+- Chi^2 and suppression heatmaps (outputs/plots/optimizer/)
+- Best-config dashboard with P_S(k) and C_ell comparison (with --plot-best)
