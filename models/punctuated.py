@@ -10,15 +10,13 @@ class PunctuatedInflationModel(InflationModel):
         self.lam = lam
         self.sqrt_lam = np.sqrt(lam)
 
-        # When phi0 is given independently, use general coefficient α = (m²+λφ₀²)/φ₀
-        # so that V'(φ₀) = 0 but V''(φ₀) ≠ 0 (broken inflection point).
-        # When phi0=None, recover the perfect inflection point at m/√λ.
+        # Exact perfect inflection point: V'(φ) = φ(m - √λ φ)²
+        # α = 2√λ m gives V'(φ) = φ(m - √λ φ)² which is never negative,
+        # vanishing only at φ = m/√λ with no local minimum.
+        self._alpha = 2 * self.sqrt_lam * m
+        self.phi0_inflection = m / self.sqrt_lam
         if phi0 is not None:
             self.phi0_inflection = float(phi0)
-            self._alpha = (m**2 + lam * phi0**2) / phi0  # general V'=0 coefficient
-        else:
-            self.phi0_inflection = m / self.sqrt_lam
-            self._alpha = 2 * self.sqrt_lam * m  # perfect inflection (2√λ m)
 
         # v₀ = V(φ₀) for normalization
         x0 = self.phi0_inflection
