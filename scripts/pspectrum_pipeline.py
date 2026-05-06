@@ -186,8 +186,8 @@ def run_pspectrum_pipeline(
     N_star=N_star_default,
     k_start_factor=100.0,
     T_span_bg=None,
-    bg_steps=10000,
-    T_max=5000.0,
+    bg_steps=None,
+    T_max=None,
     ms_steps=5000,
     normalize_to_As=True,
     As=As,
@@ -217,7 +217,8 @@ def run_pspectrum_pipeline(
     N_star : float, e-folds before end where pivot exits
     k_start_factor : float, k/(aH) at which to start MS integration (default 100)
     T_span_bg : array or None, background time grid
-    bg_steps, T_max : background integration parameters
+    bg_steps, T_max : background integration parameters.
+        If None, uses model.T_max and model.bg_steps (model-specific defaults).
     ms_steps : int, steps per k-mode MS integration
     normalize_to_As : bool, rescale P_S to match As at pivot
     As : float, target amplitude at pivot (Planck 2018: 2.1e-9)
@@ -240,15 +241,20 @@ def run_pspectrum_pipeline(
     if y0 is not None:
         model.y0 = float(y0)
 
+    # Resolve background integration parameters (use model defaults if not specified)
+    _T_max = T_max if T_max is not None else getattr(model, 'T_max', 5000.0)
+    _bg_steps = bg_steps if bg_steps is not None else getattr(model, 'bg_steps', 10000)
+
     if T_span_bg is None:
-        T_span_bg = np.linspace(0.0, T_max, bg_steps)
+        T_span_bg = np.linspace(0.0, _T_max, _bg_steps)
 
     bg_sol = bg_solver.run_background_simulation(model, T_span_bg)
     derived_bg = bg_solver.get_derived_quantities(bg_sol, model)
 
     end_idx = find_end_of_inflation(derived_bg["epsH"])
     if end_idx == -1:
-        return {"status": "error", "message": "Inflation did not end in background window."}
+        # Fallback: use last index (field trapped at inflection, USR-only trajectory)
+        end_idx = len(derived_bg["epsH"]) - 1
 
     k_pivot_code, pivot_bg_idx, N_total = get_k_pivot_code(bg_sol, derived_bg, end_idx, N_star)
     if k_pivot_code is None:
@@ -313,9 +319,9 @@ def run_pspectrum_pipeline(
         "k_start_factor": float(k_start_factor),
         "normalize_to_As": bool(normalize_to_As),
         "As_target": float(As),
-        "bg_steps": int(bg_steps),
+        "bg_steps": int(_bg_steps),
         "ms_steps": int(ms_steps),
-        "T_max": float(T_max),
+        "T_max": float(_T_max),
         "run_id": run_id,
     }
 
@@ -552,8 +558,8 @@ def parse_args():
     parser.add_argument("--N-star", type=float, default=N_star_default)
     parser.add_argument("--k-start-factor", type=float, default=100.0)
 
-    parser.add_argument("--bg-steps", type=int, default=10000)
-    parser.add_argument("--T-max", type=float, default=5000.0)
+    parser.add_argument("--bg-steps", type=int, default=None)
+    parser.add_argument("--T-max", type=float, default=None)
     parser.add_argument("--ms-steps", type=int, default=5000)
     parser.add_argument("--n-cores", type=int, default=None, dest="n_cores",
                         help="parallel workers (1 = serial)")

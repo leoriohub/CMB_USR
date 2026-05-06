@@ -9,6 +9,9 @@ class InflationModel:
         self.phi0 = None
         self.y0 = None
         self.Ai = 1e-5
+        # Default background integration time range (overridden by subclasses)
+        self.T_max = 5000.0
+        self.bg_steps = 10000
 
     def f(self, x):
         """Dimensionless potential f(x)"""
