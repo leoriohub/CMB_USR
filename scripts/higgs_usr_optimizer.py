@@ -414,3 +414,81 @@ def plot_best_spectrum(best, args, date_str):
     plt.savefig(path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"  Dashboard plot saved -> {path}", flush=True)
+
+
+# ── CLI ─────────────────────────────────────────────────────────────────────────
+
+
+def parse_args(argv=None):
+    p = argparse.ArgumentParser(
+        description="Higgs USR Grid-Scan Optimizer: find (phi0, y0) for "
+                    "the P_S(k) dip at k ~ 1-5e-4 Mpc^-1"
+    )
+    # Model
+    p.add_argument("--xi", type=float, default=15000.0)
+    p.add_argument("--lam", type=float, default=0.13)
+    # Grid
+    p.add_argument("--phi0-range", nargs=2, type=float,
+                   default=[5.20, 5.80], metavar=("MIN", "MAX"))
+    p.add_argument("--y0-range", nargs=2, type=float,
+                   default=[-0.20, -0.05], metavar=("MIN", "MAX"))
+    p.add_argument("--n-phi0", type=int, default=13,
+                   help="phi0 grid points")
+    p.add_argument("--n-y0", type=int, default=16,
+                   help="y0 grid points")
+    # Targets
+    p.add_argument("--k-dip-range", nargs=2, type=float,
+                   default=[1e-4, 5e-4], metavar=("MIN", "MAX"))
+    p.add_argument("--ell-max", type=int, default=29)
+    # Pipeline
+    p.add_argument("--k-min", type=float, default=1e-5)
+    p.add_argument("--k-max", type=float, default=1.0)
+    p.add_argument("--num-k", type=int, default=80)
+    p.add_argument("--workers", type=int, default=4,
+                   help="k-mode parallel workers inside pipeline")
+    # Output
+    p.add_argument("--log", type=str, default=None,
+                   help="JSONL log path (auto-generated if not given)")
+    p.add_argument("--plot-best", action="store_true",
+                   help="re-run and plot the best configuration")
+    return p.parse_args(argv)
+
+
+def main():
+    args = parse_args()
+
+    if args.log is None:
+        ds = datetime.now().strftime("%Y%m%d_%H%M%S")
+        args.log = os.path.join(
+            ROOT_DIR, f"outputs/simulations/logs/higgs_scan_{ds}.jsonl")
+
+    print(f"{'='*60}", flush=True)
+    print(f"  Higgs USR Grid-Scan Optimizer", flush=True)
+    print(f"  phi0=[{args.phi0_range[0]:.2f}, {args.phi0_range[1]:.2f}] "
+          f"({args.n_phi0} pts)", flush=True)
+    print(f"  y0=[{args.y0_range[0]:.3f}, {args.y0_range[1]:.3f}] "
+          f"({args.n_y0} pts)", flush=True)
+    print(f"  k_dip_target=[{args.k_dip_range[0]:.1e},"
+          f"{args.k_dip_range[1]:.1e}] Mpc^-1", flush=True)
+    print(f"  xi={args.xi}, lam={args.lam}, workers={args.workers}",
+          flush=True)
+    print(f"  Log: {args.log}", flush=True)
+    print(f"{'='*60}", flush=True)
+
+    results = run_grid_scan(args)
+
+    ok, date_str = print_best_results(results, args)
+    if ok is None:
+        print("\nNo good configurations found.", flush=True)
+        return
+
+    plot_scan_results(ok, args, date_str)
+
+    if args.plot_best and ok:
+        plot_best_spectrum(ok[0], args, date_str)
+
+    print(f"\nDone.", flush=True)
+
+
+if __name__ == "__main__":
+    main()
