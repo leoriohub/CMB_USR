@@ -18,11 +18,12 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from scripts.pspectrum_pipeline import run_pspectrum_pipeline, build_weighted_kgrid
+from scripts.pspectrum_pipeline import run_pspectrum_pipeline, find_end_of_inflation
 from scripts.sachs_wolfe import compute_cl_sw, compute_cl_sw_powerlaw
 from scripts.planck_data import get_planck_data, C_ell_to_d_ell
 from scripts.constants import As, k_pivot_phys
 from models import HiggsModel
+import inf_dyn_background as bg_solver
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -80,9 +81,6 @@ def run_grid_scan(args):
       3. Run full pspectrum pipeline with computed N_star
       4. Compute chi^2, dip suppression, log to JSONL
     """
-    import inf_dyn_background as bg_solver
-    from scripts.pspectrum_pipeline import find_end_of_inflation
-
     phi0_vals = np.linspace(args.phi0_range[0], args.phi0_range[1],
                             args.n_phi0)
     y0_vals = np.linspace(args.y0_range[0], args.y0_range[1], args.n_y0)
@@ -114,6 +112,8 @@ def run_grid_scan(args):
 
             # Quick background check
             model_check = HiggsModel(lam=args.lam, xi=args.xi)
+            model_check.phi0 = phi0
+            model_check.y0 = y0
             T_bg = np.linspace(0, model_check.T_max, model_check.bg_steps)
             try:
                 sol = bg_solver.run_background_simulation(model_check, T_bg)
@@ -121,6 +121,10 @@ def run_grid_scan(args):
             except Exception:
                 entry.update({"status": "bg_fail", "error": "background ODE failed"})
                 _write_log(log_file, entry)
+                elapsed = time.time() - t0
+                eta = elapsed / done * (total - done) if done > 0 else 0
+                print(f"\r  [{done:4d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
+                      f"SKIP ({entry['status']}) ETA {eta/60:.0f}m", end="", flush=True)
                 results.append(entry)
                 continue
 
@@ -132,8 +136,12 @@ def run_grid_scan(args):
             # Find where epsH is minimum during inflation (the USR dip)
             eps_inf = d["epsH"][(d["N"] >= 0) & (d["N"] < N_total)]
             if len(eps_inf) < 10:
-                entry.update({"status": "no_usl", "N_total": N_total})
+                entry.update({"status": "no_usr", "N_total": N_total})
                 _write_log(log_file, entry)
+                elapsed = time.time() - t0
+                eta = elapsed / done * (total - done) if done > 0 else 0
+                print(f"\r  [{done:4d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
+                      f"SKIP ({entry['status']}) ETA {eta/60:.0f}m", end="", flush=True)
                 results.append(entry)
                 continue
             dip_N = float(d["N"][np.argmin(eps_inf[10:]) + 10])
@@ -146,6 +154,10 @@ def run_grid_scan(args):
                     "N_total": N_total, "dip_N": dip_N, "N_star": N_star,
                 })
                 _write_log(log_file, entry)
+                elapsed = time.time() - t0
+                eta = elapsed / done * (total - done) if done > 0 else 0
+                print(f"\r  [{done:4d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
+                      f"SKIP ({entry['status']}) ETA {eta/60:.0f}m", end="", flush=True)
                 results.append(entry)
                 continue
 
@@ -166,6 +178,10 @@ def run_grid_scan(args):
                 entry.update({"status": "pipe_fail", "N_star": N_star,
                               "N_total": N_total, "error": str(exc)})
                 _write_log(log_file, entry)
+                elapsed = time.time() - t0
+                eta = elapsed / done * (total - done) if done > 0 else 0
+                print(f"\r  [{done:4d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
+                      f"SKIP ({entry['status']}) ETA {eta/60:.0f}m", end="", flush=True)
                 results.append(entry)
                 continue
 
@@ -174,6 +190,10 @@ def run_grid_scan(args):
                               "N_total": N_total,
                               "msg": result.get("message", "")})
                 _write_log(log_file, entry)
+                elapsed = time.time() - t0
+                eta = elapsed / done * (total - done) if done > 0 else 0
+                print(f"\r  [{done:4d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
+                      f"SKIP ({entry['status']}) ETA {eta/60:.0f}m", end="", flush=True)
                 results.append(entry)
                 continue
 
@@ -189,6 +209,10 @@ def run_grid_scan(args):
                 entry.update({"status": "analysis_fail", "N_star": N_star,
                               "N_total": N_total, "error": str(exc)})
                 _write_log(log_file, entry)
+                elapsed = time.time() - t0
+                eta = elapsed / done * (total - done) if done > 0 else 0
+                print(f"\r  [{done:4d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
+                      f"SKIP ({entry['status']}) ETA {eta/60:.0f}m", end="", flush=True)
                 results.append(entry)
                 continue
 
