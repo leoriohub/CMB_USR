@@ -26,6 +26,10 @@ class PunctuatedInflationModel(InflationModel):
         self.phi0 = 12.0
         self.y0 = 0.0
 
+        # Punctuated inflation spans ~96 e-folds, needs long integration
+        self.T_max = 500000.0
+        self.bg_steps = 500000
+
     def f(self, x):
         return (self.m**2 / 2 * x**2
                 - self._alpha / 3 * x**3

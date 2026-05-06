@@ -19,6 +19,10 @@ class HiggsModel(InflationModel):
         self.phi0 = 5.70
         self.y0 = -0.10
 
+        # Inflation ends at T ~ 472 for xi=15000
+        self.T_max = 500.0
+        self.bg_steps = 1000
+
     def f(self, x):
         return (1 - np.exp(-self.alpha * x))**2
 
