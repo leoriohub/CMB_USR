@@ -1,135 +1,164 @@
-# AGENTS.md
+# context-mode — MANDATORY routing rules
 
-Cosmological inflation codebase studying the CMB low-ℓ anomaly via Higgs Ultra-Slow Roll (USR) dynamics.
+context-mode MCP tools available. Rules protect context window from flooding. One unrouted command dumps 56 KB into context.
 
-## Project structure
+## Think in Code — MANDATORY
 
-```
-models/              — InflationModel base, HiggsModel (high-field approx), FullHiggsModel (exact conformal inversion)
-inf_dyn_background.py — Background ODE solver: run_background_simulation(), get_derived_quantities()
-inf_dyn_MS_full.py    — Mukhanov-Sasaki perturbation solver: run_ms_simulation(), get_ms_derived_quantities()
-numerical_observables_calculation.py — High-level orchestrator: run_inflation_protocol() → (ns, r, P_S)
-scripts/
-  pspectrum_pipeline.py — Batch P_S(k) across k-modes: run_pspectrum_pipeline(), load_pspectrum()
-  sachs_wolfe.py        — Sachs-Wolfe C_ell approximation for ℓ≤30
-  planck_data.py        — Planck 2018 low-ℓ TT data loader (Commander)
-  usr_chi2_optimizer.py — (phi0, y0, N_star) parameter search: differential_evolution + chi² + ns + k_dip penalty
-notebooks/           — Jupyter analysis notebooks (see .opencode/agents/notebook.md for editing rules)
-outputs/
-  plots/               — Generated figures
-    powerloss/         — USR golden figures (publication quality)
-    diagnostics/       — Background evolution and mode checks
-    optimizer/         — Optimizer convergence and comparison plots
-  simulations/         — Cached run data (JSON)
-    pspectra/          — P_S(k) cache, named PS_{Model}_m{...}_phi{...}_y0{...}_Nstar{...}_{uuid}.json
-    configs/           — Simulation configuration snapshots
-    c_ell/             — CMB angular power spectra (Sachs-Wolfe)
-    background/        — Background trajectory data
-    logs/              — Optimizer log files (JSONL)
-    scans/             — Parameter sweep summaries
-data/                — Empty placeholder dirs for Planck/ACT likelihood data
-data/                — Empty placeholder dirs for Planck/ACT likelihood data
-```
+Analyze/count/filter/compare/search/parse/transform data: **write code** via `context-mode_ctx_execute(language, code)`, `console.log()` only the answer. Do NOT read raw data into context. PROGRAM the analysis, not COMPUTE it. Pure JavaScript — Node.js built-ins only (`fs`, `path`, `child_process`). `try/catch`, handle `null`/`undefined`. One script replaces ten tool calls.
 
-## No build system, tests, or CI
+## BLOCKED — do NOT attempt
 
-This is a research physics codebase. There are minimal tests, but no linting, typechecking, Makefiles, pyproject.toml, or requirements.txt. Dependencies: `numpy`, `scipy`, `matplotlib`, `camb` (optional, for full Boltzmann code). To verify changes, run relevant notebook cells or Python scripts directly.
+### curl / wget — BLOCKED
+Shell `curl`/`wget` intercepted and blocked. Do NOT retry.
+Use: `context-mode_ctx_fetch_and_index(url, source)` or `context-mode_ctx_execute(language: "javascript", code: "const r = await fetch(...)")`
 
-## Path setup (critical for notebooks)
+### Inline HTTP — BLOCKED
+`fetch('http`, `requests.get(`, `requests.post(`, `http.get(`, `http.request(` — intercepted. Do NOT retry.
+Use: `context-mode_ctx_execute(language, code)` — only stdout enters context
 
-Notebooks must add the repo root to `sys.path` before importing:
-```python
-import sys, os
-sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..')))
-```
-The `scripts/` modules do this internally via `ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))`.
+### Direct web fetching — BLOCKED
+Use: `context-mode_ctx_fetch_and_index(url, source)` then `context-mode_ctx_search(queries)`
 
-## Pipeline execution flow
+## REDIRECTED — use sandbox
 
-```
-HiggsModel(lam, xi) → model.phi0, model.y0
-  → run_background_simulation(model, T_span)    # ~0.008s, returns (x,y,z,n) over time
-  → get_derived_quantities(sol, model)           # extracts epsH, etaH, ns, r, P_S
-  → run_ms_simulation(model, bg_sol, k_modes)    # ~0.007s per k-mode
-  → run_pspectrum_pipeline(...)                   # orchestrates full P_S(k), saves JSON
-```
+### Shell (>20 lines output)
+Shell ONLY for: `git`, `mkdir`, `rm`, `mv`, `cd`, `ls`, `npm install`, `pip install`.
+Otherwise: `context-mode_ctx_batch_execute(commands, queries)` or `context-mode_ctx_execute(language: "shell", code: "...")`
 
-Full P_S(k) with 80 k-modes: ~3s. With dense weighted grid (~181 modes): ~1 min. Two configs (USR+SR) in notebooks: 2+ min first run, instant on subsequent runs via cache.
+### File reading (for analysis)
+Reading to **edit** → reading correct. Reading to **analyze/explore/summarize** → `context-mode_ctx_execute_file(path, language, code)`.
 
-## Caching pattern
+### grep / search (large results)
+Use `context-mode_ctx_execute(language: "shell", code: "grep ...")` in sandbox.
 
-`run_or_load()` in notebooks checks `outputs/simulations/pspectra/` for matching (phi0, y0, xi, N_pivot). If found, loads cached JSON. Force recompute with `force_recompute=True`.
+## Tool selection
 
-## Model classes
+0. **MEMORY**: `context-mode_ctx_search(sort: "timeline")` — after resume, check prior context before asking user.
+1. **GATHER**: `context-mode_ctx_batch_execute(commands, queries)` — runs all commands, auto-indexes, returns search. ONE call replaces 30+. Each command: `{label: "header", command: "..."}`.
+2. **FOLLOW-UP**: `context-mode_ctx_search(queries: ["q1", "q2", ...])` — all questions as array, ONE call (default relevance mode).
+3. **PROCESSING**: `context-mode_ctx_execute(language, code)` | `context-mode_ctx_execute_file(path, language, code)` — sandbox, only stdout enters context.
+4. **WEB**: `context-mode_ctx_fetch_and_index(url, source)` then `context-mode_ctx_search(queries)` — raw HTML never enters context.
+5. **INDEX**: `context-mode_ctx_index(content, source)` — store in FTS5 for later search.
 
-- `HiggsModel(xi, lam)` — High-field approximation. `f(x) = (1 - exp(-αx))²`, `α = √(2/3)`. Default ICs: `phi0=5.8, y0=-0.01`.
-- `FullHiggsModel(xi, lam)` — Exact conformal inversion via numerical integration on a grid. Slower but more accurate.
-- `SmoothUSRTransitionModel` — Analytical smooth USR transition model for comparison.
-- All inherit from `InflationModel` (models/base.py). Key method: `get_initial_conditions()` returns `[phi0, y0, zi, Ni]`.
+## Parallel I/O batches
 
-## Physical constants and conventions
+For multi-URL fetches or multi-API calls, **always** include `concurrency: N` (1-8):
 
-- Time unit: `S = 5e-5` (one unit of conformal time)
-- Planck normalization: `A_s = 2.1e-9` at pivot `k_* = 0.05 Mpc⁻¹`
-- Last scattering distance: `r_ls = 14000 Mpc`
-- CMB temperature: `T_cmb = 2.7255 K`
-- End of inflation: `ε_H ≥ 1` (Hubble slow-roll parameter)
-- USR phase: triggered by negative initial velocity `y0 < -0.05` (vs `y0 ≈ -0.001` for SR)
+- `context-mode_ctx_batch_execute(commands: [3+ network commands], concurrency: 5)` — gh, curl, dig, docker inspect, multi-region cloud queries
+- `context-mode_ctx_fetch_and_index(requests: [{url, source}, ...], concurrency: 5)` — multi-URL batch fetch
 
-## Notebook editing rules
+**Use concurrency 4-8** for I/O-bound work (network calls, API queries). **Keep concurrency 1** for CPU-bound (npm test, build, lint) or commands sharing state (ports, lock files, same-repo writes).
 
-See `.opencode/agents/notebook.md` for full rules. Key points:
-- Parse JSON, modify in Python, serialize with `json.dumps(nb, indent=1) + "\n"`
-- Preserve `outputs`, `execution_count`, `metadata` on all cells
-- Source array lines must end with `\n` except possibly the last
-- Validate roundtrip after every edit
+GitHub API rate-limit: cap at 4 for `gh` calls.
 
-## Output file naming
+## Output
 
-- pspectra cache: `Higgs_Inflation_phi{phi0:.2f}_y0{y0:.3f}_run_{uuid8}.json`
-- dashboard results: `powerloss_phi{phi0:.2f}_y0{y0:.3f}_xi{xi:.0f}_Npivot{N_pivot}.json`
-- JSON structure: `{metadata, k_phys, P_S}` for pspectra; `{config, primordial, cmb_sw, stats}` for simulations
+Terse like caveman. Technical substance exact. Only fluff die.
+Drop: articles, filler (just/really/basically), pleasantries, hedging. Fragments OK. Short synonyms. Code unchanged.
+Pattern: [thing] [action] [reason]. [next step]. Auto-expand for: security warnings, irreversible actions, user confusion.
+Write artifacts to FILES — never inline. Return: file path + 1-line description.
+Descriptive source labels for `search(source: "label")`.
 
-## Common pitfalls
+## Session Continuity
 
-- `xi=15000` makes the potential very flat → integrator needs more steps → slow. Don't reduce `mxstep` or tolerances.
-- `use_weighted=True` in NUM_PARAMS builds ~181 k-modes (not the `num_k=80` default). This is intentional for USR zone resolution.
-- The `loss_vs_sr` variable is computed in diagnostics cells but may not be in scope in save cells — compute inline.
-- Matplotlib `alpha` must be in [0,1]. When doubling alpha for emphasis, clamp: `min(max(alpha*2, 0.5), 1.0)`.
-- Notebook `source` arrays: each line is a separate string. Join with `""`, not `"\n"`. Split with `.splitlines(keepends=True)`.
+Skills, roles, and decisions persist for the entire session. Do not abandon them as the conversation grows.
 
-## USR Chi^2 Optimizer
+## Memory
 
-```
-scripts/usr_chi2_optimizer.py  — CLI optimizer for (phi0, y0, N_star) search
+Session history is persistent and searchable. On resume, search BEFORE asking the user:
 
-Usage (quick test):
-  python scripts/usr_chi2_optimizer.py --maxiter 2 --popsize 15 --workers 4 --phi0-range 5.20 5.90 --y0-range -0.20 -0.03 --nstar-range 45 62
+| Need | Command |
+|------|---------|
+| What did we decide? | `context-mode_ctx_search(queries: ["decision"], source: "decision", sort: "timeline")` |
+| What constraints exist? | `context-mode_ctx_search(queries: ["constraint"], source: "constraint")` |
 
-Usage (full search on lab machine, ~2-3 hours):
-  python scripts/usr_chi2_optimizer.py --maxiter 200 --popsize 15 --workers 8 --re-run-best --save-best
-```
+DO NOT ask "what were we working on?" — SEARCH FIRST.
+If search returns 0 results, proceed as a fresh session.
 
-Objective: `loss = chi² + ns_penalty + k_penalty` where:
-- `ns_penalty = ((ns_MS - 0.975) / 0.01)²` (soft ACT constraint)
-- `k_penalty = 50 if k_dip ∉ [1e-4, 5e-4]` (dip at ℓ≲5)
+## ctx commands
 
-Uses `scipy.optimize.differential_evolution` (global, population-based). Logs all evaluations to JSONL. Generates convergence + comparison plots.
+| Command | Action |
+|---------|--------|
+| `ctx stats` | Call `stats` MCP tool, display full output verbatim |
+| `ctx doctor` | Call `doctor` MCP tool, run returned shell command, display as checklist |
+| `ctx upgrade` | Call `upgrade` MCP tool, run returned shell command, display as checklist |
+| `ctx purge` | Call `purge` MCP tool with confirm: true. Warns before wiping knowledge base. |
 
-## Higgs USR Grid-Scan Optimizer
+After /clear or /compact: knowledge base and session stats preserved. Use `ctx purge` to start fresh.
 
-```
-scripts/higgs_usr_optimizer.py  — Grid-scan optimizer for Higgs USR (phi0, y0) search
+## Core Memories — Permanent Project Rules
 
-Usage (quick test, ~5 min):
-  python scripts/higgs_usr_optimizer.py --n-phi0 5 --n-y0 5 --num-k 40 --workers 4
+These rules persist across all sessions and AI tools. Do not override unless user explicitly says otherwise.
 
-Usage (full scan on lab machine, ~2-4 hours):
-  python scripts/higgs_usr_optimizer.py --n-phi0 20 --n-y0 20 --num-k 80 --workers 8 --plot-best
-```
+### 1. Good Runs
+Only mark a run/config as "good" when the user explicitly says so (e.g. "this run is good"). Never self-declare a run successful. Never elevate a configuration based on metrics alone — user approval required.
 
-Deterministic grid scan over (phi0, y0). Automatically computes N_star from the background trajectory to align the USR dip with the target k_dip_range (default 1e-4 to 5e-4 Mpc^-1). Evaluates chi^2 against Planck low-ell TT data via Sachs-Wolfe approximation. Generates:
-- JSONL log of all evaluations (outputs/simulations/logs/)
-- Results summary JSON (outputs/simulations/scans/)
-- Chi^2 and suppression heatmaps (outputs/plots/optimizer/)
-- Best-config dashboard with P_S(k) and C_ell comparison (with --plot-best)
+### 2. Publication-Ready Plots
+All plots must be ready for two-column publication format:
+- Big fonts: axis labels ≥14pt, tick labels ≥12pt, legend ≥11pt, title ≥16pt
+- 300 DPI minimum
+- Proper aspect ratio: ~3.25-3.5in wide (single-column) or ~7in (full width)
+- Colorblind-friendly palette (e.g., Tol, Wong, viridis)
+- Minimal whitespace, tight bounding box
+- Export both PNG (viewing) and PDF (paper)
+
+### 3. Outputs Folder Structure
+Strict hierarchy — every output file goes in its correct subdirectory:
+
+| Subdirectory | Contents |
+|---|---|
+| `outputs/plots/diagnostics/` | Diagnostic/debug plots (epsilon, trajectory checks) |
+| `outputs/plots/optimizer/` | Optimizer iteration plots |
+| `outputs/plots/powerloss/` | Power-loss mechanism plots (PS, Cℓ, suppression) |
+| `outputs/plots/top30_candidates/` | Top candidate comparison plots |
+| `outputs/plots/punctuated_potential/` | Punctuated inflation potential plots |
+| `outputs/simulations/c_ell/` | Cℓ angular power spectra (JSON) |
+| `outputs/simulations/configs/` | Configuration snapshots (JSON) |
+| `outputs/simulations/logs/` | Scan logs (CSV, JSONL) |
+| `outputs/simulations/pspectra/` | P_S(k) primordial power spectra (JSON) |
+| `outputs/simulations/scans/` | Scan result summaries (JSON) |
+
+When creating/running scripts, always write outputs to these directories.
+
+### 4. Notebooks
+- Place in `notebooks/` with descriptive names (e.g. `Golden_Config_Comparison.ipynb`).
+- A `notebooks/outputs/` dir exists for notebook-scoped temp files.
+- Generated plots go to `outputs/plots/` subdirectories, not inside notebooks.
+
+### 5. .md Files Are Public
+This repository is public. Do not write into .md files:
+- API keys, tokens, credentials
+- User-specific internal paths (usernames, home directories)
+- Personal or sensitive data
+- Embargoed/unpublished results or data
+Rule of thumb: if you would not put it on arXiv, do not put it in a .md file.
+
+### 6. Additional Conventions
+- Scripts are temporary unless user explicitly says to keep them. Delete analysis scripts after use.
+- Heavy compute (scans, optimizations) runs on lab machine via `ssh uni`.
+- Long-running jobs use JSONL incremental logging (crash-safe).
+- Commit messages: semantic, atomic, imperative mood (e.g. "add: ...", "fix: ...", "refactor: ...").
+
+## Project Context — Higgs USR vs Punctuated Inflation
+
+### Goal
+Tune initial conditions (φ₀, y₀) and N_star for Higgs inflation (ξ=15000, λ=0.13) and compare with Punctuated Inflation (m=1.1323e-7, λ=3.3299e-15, N_star=77.2) to explain the CMB low-ℓ anomaly via P_S(k) suppression.
+
+### Physics Summary
+- **Higgs USR**: Starts in kinetic dominance (ε_H=2.15 at N=0), extreme Hubble friction kills it in <0.1 e-fold. Localized dip via ε_H suppression, not a hard cutoff.
+- **Punctuated**: Creates a peak via η_H>0 amplification. Aligned at N_star=77.2 → peak at k=10⁻³.
+- **Mechanism difference**: Punctuated amplifies, Higgs suppresses. Two different approaches to fitting the low-ℓ deficit.
+
+### Current Best Configs
+- Higgs (N_star≥50): φ₀=6.60, y₀=−0.736, N_star=52.6, χ²=16.79
+- Deepest dip (N_star≈38): stronger suppression but lower N_star
+- Punctuated: φ₀=12.00, y₀=0.000, N_star=77.2, m=1.1323e-7, λ=3.3299e-15
+
+### Key Constraint
+Deep Higgs dips require violent kinetic kicks that shorten total inflation (N_total≈43.6). N_star≥50 configs need higher φ₀ (further on plateau) and milder kicks, which weakens the dip and raises χ².
+
+### Reference Files
+- `models/punctuated.py` — Punctuated inflaton bg_steps=100k
+- `scripts/pspectrum_pipeline.py` — Main CLI for P_S(k) pipelines
+- `notebooks/Golden_Config_Comparison.ipynb` — Higgs vs Punctuated comparison
+- `PUNCTUATED_INFLATION_MATCH.md` — N_star=77.2 derivation
