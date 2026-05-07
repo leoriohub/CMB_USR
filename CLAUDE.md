@@ -1,4 +1,4 @@
-# Core Memories → AGENTS.md
+# Core Memories
 
 All permanent project rules are in **AGENTS.md** (sections "Core Memories" and "Project Context").
 
