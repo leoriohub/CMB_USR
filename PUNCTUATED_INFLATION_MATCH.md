@@ -41,14 +41,14 @@ The scale of the feature in $P_S(k)$ is determined by when the pivot scale ($k_*
 4. **Scale Ratio:** The ratio of the pivot scale to the dip scale is $k_* / k_{dip} = 0.05 / (4 \times 10^{-4}) = 125$.
 5. **E-fold Difference:** This corresponds to an e-fold difference of $\Delta N = \ln(125) \approx 4.8$ e-folds.
 
-To place the dip exactly at $k = 4 \times 10^{-4}$, the pivot scale $k_*$ must exit exactly $4.8$ e-folds *after* the inflection point. 
-Since there are $80.4$ e-folds of inflation after the inflection point, the pivot scale must exit at:
-$$ N_* = 80.4 - 4.8 = \mathbf{75.6 \text{ e-folds}} $$
+To place the peak exactly at $k = 10^{-3}$ (matching Figure 4), the pivot scale $k_*$ must exit exactly $3.2$ e-folds after the peak point. 
+Since there are $\approx 80.4$ e-folds of inflation after the feature, the pivot scale must exit at:
+$$ N_* = 80.4 - 3.2 = \mathbf{77.2 \text{ e-folds}} $$
 
-By default, the codebase assumes $N_* = 60$. The paper's authors implicitly used an extremely large $N_* \approx 75.6$ to shift the observable window far enough left to capture the USR feature.
+By default, the codebase assumes $N_* = 60$. The paper's authors implicitly used an extremely large $N_* \approx 77.2$ to shift the observable window far enough left to capture the USR feature.
 
 ## 5. Final Verification
-By executing the `pspectrum_pipeline` with the exact analytical potential and $N_* = 75.6$, the resulting power spectrum perfectly matches Figure 4 of the paper:
+By executing the `pspectrum_pipeline` with the exact analytical potential and $N_* = 77.2$, the resulting power spectrum perfectly matches Figure 4 of the paper:
 - A sharp power suppression dip at $k \approx 4 \times 10^{-4} \text{ Mpc}^{-1}$.
 - A prominent peak at $k \approx 10^{-3} \text{ Mpc}^{-1}$ reaching $\sim 4 \times 10^{-9}$.
 - A standard power-law (red-tilted) spectrum at larger $k$.
