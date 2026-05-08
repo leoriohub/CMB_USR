@@ -28,10 +28,6 @@ from scipy.integrate import simpson
 from scipy.interpolate import interp1d
 from scipy.special import spherical_jn
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if ROOT_DIR not in sys.path:
-    sys.path.append(ROOT_DIR)
-
 from scripts.pspectrum_pipeline import load_pspectrum
 from scripts.constants import As, k_pivot_phys, r_ls, T_cmb
 

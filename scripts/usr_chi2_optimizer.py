@@ -20,8 +20,6 @@ from datetime import datetime
 import numpy as np
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if ROOT_DIR not in sys.path:
-    sys.path.insert(0, ROOT_DIR)
 
 from scripts.pspectrum_pipeline import run_pspectrum_pipeline, build_weighted_kgrid
 from scripts.sachs_wolfe import compute_cl_sw, compute_cl_sw_powerlaw

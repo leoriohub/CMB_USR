@@ -16,9 +16,6 @@ import os
 import sys
 import textwrap
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.append(ROOT_DIR)
-
 import numpy as np
 import matplotlib.pyplot as plt
 

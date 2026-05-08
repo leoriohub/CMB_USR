@@ -28,10 +28,6 @@ import warnings
 
 import numpy as np
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if ROOT_DIR not in sys.path:
-    sys.path.append(ROOT_DIR)
-
 from scripts.constants import As, k_pivot_phys, N_star_default
 
 import inf_dyn_background as bg_solver

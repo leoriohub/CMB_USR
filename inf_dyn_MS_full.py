@@ -14,7 +14,6 @@ from scipy.interpolate import interp1d
 if __name__ == "__main__":
     import os
     import sys
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     
     # It is required to execute the script 'inf_dyn_background.py' and save the data in a text file before this script can be executed
     # We input the initial conditions and horizon exit for various scales from the background data
