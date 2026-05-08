@@ -1,0 +1,11 @@
+name: cmb-anomaly
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy
+  - scipy
+  - matplotlib
+  - jupyter
+  - ipykernel
+  # - camb   # uncomment when implementing C_l angular power spectra
