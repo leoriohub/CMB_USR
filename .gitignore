@@ -26,3 +26,4 @@ docs/
 paper/
 skills-lock.json
 .worktrees/
+cmb_anomaly.egg-info/

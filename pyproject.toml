@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cmb-anomaly"
+version = "0.1.0"
+description = "CMB low-ell anomaly analysis: Higgs USR vs Punctuated Inflation"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-cov"]
+dev = ["pytest", "pytest-cov", "jupyter", "ipykernel"]
+
+[tool.setuptools.packages.find]
+include = ["models*", "scripts*"]
+
+[tool.setuptools]
+py-modules = ["inf_dyn_background", "inf_dyn_MS_full", "numerical_observables_calculation"]
