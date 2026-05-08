@@ -83,7 +83,15 @@ Conda env: `cmb-anomaly`. Activate before running any project code:
 conda activate cmb-anomaly
 ```
 
-Create/update: `bash scripts/env_setup.sh`
+Setup: `bash setup.sh`
+
+### Package structure
+
+Project is pip-installable (`pip install -e .`):
+- `models/` — inflation model classes (Higgs, Punctuated, Quadratic, SmoothUSR)
+- `scripts/` — analysis pipeline modules (pspectrum, Sachs-Wolfe, Planck data, optimizers)
+- Root-level solvers (`inf_dyn_background.py`, `inf_dyn_MS_full.py`, `numerical_observables_calculation.py`) — importable globally after install
+- **No `sys.path` hacks** — all 14 hacks removed; imports work from any directory
 
 ## ctx commands
 
