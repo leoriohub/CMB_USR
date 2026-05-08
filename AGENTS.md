@@ -75,6 +75,16 @@ Session history is persistent and searchable. On resume, search BEFORE asking th
 DO NOT ask "what were we working on?" — SEARCH FIRST.
 If search returns 0 results, proceed as a fresh session.
 
+## Environment
+
+Conda env: `cmb-anomaly`. Activate before running any project code:
+
+```bash
+conda activate cmb-anomaly
+```
+
+Create/update: `bash scripts/env_setup.sh`
+
 ## ctx commands
 
 | Command | Action |
