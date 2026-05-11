@@ -16,10 +16,12 @@ Usage:
 import argparse
 import json
 import os
+import shutil
 import sys
 import time
 
 import numpy as np
+from scipy.interpolate import interp1d
 
 import matplotlib
 matplotlib.use("Agg")
@@ -37,7 +39,20 @@ from scripts.sachs_wolfe import compute_cl_sw, compute_cl_sw_powerlaw
 from scripts.planck_data import get_planck_data_asymmetric
 
 
-def save_background(model, T_span_bg, output_dir):
+# Tol colorblind-friendly palette (Tol 2012)
+TOL = {
+    "blue": "#4477AA",
+    "red": "#CC3311",
+    "green": "#228833",
+    "yellow": "#EE8866",
+    "teal": "#44BB99",
+    "purple": "#AA3377",
+    "grey": "#666666",
+    "dark": "#222222",
+}
+
+
+def save_background(model, T_span_bg, output_dir, run_label):
     """Run background integration and save trajectory + derived quantities."""
     bg_sol = bg_solver.run_background_simulation(model, T_span_bg)
     derived = bg_solver.get_derived_quantities(bg_sol, model)
@@ -71,14 +86,14 @@ def save_background(model, T_span_bg, output_dir):
         },
     }
 
-    path = os.path.join(output_dir, "background.json")
+    path = os.path.join(output_dir, f"background_{run_label}.json")
     with open(path, "w") as f:
         json.dump(record, f, indent=2)
     print(f"  Saved: {path}")
     return bg_sol, derived
 
 
-def save_cell(result, output_dir):
+def save_cell(result, output_dir, run_label):
     """Compute C_ell and D_ell, compare with Planck and LCDM baseline."""
     ell_max = 29
     ells, C_ell = compute_cl_sw(result, ell_max=ell_max, r_ls=r_ls)
@@ -126,159 +141,201 @@ def save_cell(result, output_dir):
         },
     }
 
-    path = os.path.join(output_dir, "cell.json")
+    path = os.path.join(output_dir, f"cell_{run_label}.json")
     with open(path, "w") as f:
         json.dump(record, f, indent=2)
     print(f"  Saved: {path}")
     return ells, D_ell, D_ell_pl, planck_ells, D_planck, D_err_lower, D_err_upper, chi2_model_val, chi2_lcdm_val
 
 
-def plot_background(bg_sol, derived, output_dir):
-    """4-panel background dashboard."""
+def plot_background(bg_sol, derived, output_dir, run_label):
+    """4-panel background dashboard, full-width."""
     x, y, z, n = bg_sol
     N = derived["N"]
     epsH = derived["epsH"]
     etaH = derived["etaH"]
 
-    COL_PHI = "#1f77b4"
-    COL_EPS = "#d62728"
-    COL_ETA = "#2ca02c"
-
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    fig, axes = plt.subplots(2, 2, figsize=(7, 5.5))
 
     ax = axes[0, 0]
-    ax.plot(N, x, color=COL_PHI, lw=2)
-    ax.set_xlabel(r"$N$ (e-folds)", fontsize=20)
-    ax.set_ylabel(r"$\phi$", fontsize=20)
+    ax.plot(N, x, color=TOL["blue"], lw=1.5)
+    ax.set_xlabel(r"$N$ (e-folds)")
+    ax.set_ylabel(r"$\phi$")
     ax.grid(True, alpha=0.25, which="both")
 
     ax = axes[0, 1]
-    ax.semilogy(N, epsH, color=COL_EPS, lw=2)
-    ax.axhline(1.0, color="gray", ls="--", lw=1.5, alpha=0.5)
+    ax.semilogy(N, epsH, color=TOL["red"], lw=1.5)
+    ax.axhline(1.0, color=TOL["grey"], ls="--", lw=1, alpha=0.5)
     ax.text(0.98, 0.95, r"$\epsilon_H = 1$", transform=ax.transAxes,
-            fontsize=14, color="gray", ha="right", va="top")
-    ax.set_xlabel(r"$N$ (e-folds)", fontsize=20)
-    ax.set_ylabel(r"$\epsilon_H$", fontsize=20)
+            color=TOL["grey"], ha="right", va="top")
+    ax.set_xlabel(r"$N$ (e-folds)")
+    ax.set_ylabel(r"$\epsilon_H$")
     ax.grid(True, alpha=0.25, which="both")
 
     ax = axes[1, 0]
-    ax.plot(N, etaH, color=COL_ETA, lw=2)
-    ax.axhline(0.0, color="gray", ls="--", lw=1.5, alpha=0.5)
-    ax.set_xlabel(r"$N$ (e-folds)", fontsize=20)
-    ax.set_ylabel(r"$\eta_H$", fontsize=20)
+    ax.plot(N, etaH, color=TOL["green"], lw=1.5)
+    ax.axhline(0.0, color=TOL["grey"], ls="--", lw=1, alpha=0.5)
+    ax.set_xlabel(r"$N$ (e-folds)")
+    ax.set_ylabel(r"$\eta_H$")
     ax.grid(True, alpha=0.25, which="both")
 
     ax = axes[1, 1]
-    ax.plot(x, y, color="#8c564b", lw=2)
-    ax.set_xlabel(r"$\phi$", fontsize=20)
-    ax.set_ylabel(r"$d\phi/dT$", fontsize=20)
+    ax.plot(x, y, color=TOL["yellow"], lw=1.5)
+    ax.set_xlabel(r"$\phi$")
+    ax.set_ylabel(r"$d\phi/dT$")
     ax.grid(True, alpha=0.25, which="both")
 
     fig.tight_layout()
     for ext in ["png", "pdf"]:
-        path = os.path.join(output_dir, f"background.{ext}")
+        path = os.path.join(output_dir, f"background_{run_label}.{ext}")
         fig.savefig(path, dpi=300, bbox_inches="tight")
         print(f"  Saved: {path}")
     plt.close(fig)
 
 
-def plot_ps(result, output_dir):
-    """P_S(k) plot with power-law baseline and dip annotation."""
+def plot_ps(result, output_dir, run_label):
+    """P_S(k) plot with LCDM baseline. Curves + legend only."""
     k = result["k_phys"]
     ps = result["P_S"]
-    meta = result["metadata"]
+
+    mask = np.isfinite(ps)
+    if np.sum(mask) > 5:
+        logk_interp = interp1d(np.log(k[mask]), ps[mask], kind="cubic",
+                               bounds_error=False, fill_value="extrapolate")
+        k_dense = np.logspace(np.log10(k[mask].min()), np.log10(k[mask].max()), 1000)
+        ps_dense = np.clip(logk_interp(np.log(k_dense)), 0, None)
+    else:
+        k_dense, ps_dense = k, ps
 
     ns_lcdm = 0.965
-    ps_lcdm = As * (k / k_pivot_phys) ** (ns_lcdm - 1.0)
+    ps_lcdm = As * (k_dense / k_pivot_phys) ** (ns_lcdm - 1.0)
 
+    fig, ax = plt.subplots(figsize=(3.35, 2.6))
+
+    ax.loglog(k_dense, ps_dense, "-", color=TOL["red"], lw=1.5, label="Higgs USR")
+    ax.loglog(k_dense, ps_lcdm, "-", color=TOL["dark"], lw=1.2, alpha=0.6, label=r"$\Lambda$CDM")
+
+    ax.set_xlabel(r"$k\ [{\rm Mpc}^{-1}]$")
+    ax.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$")
+    ax.legend()
+    ax.grid(True, alpha=0.25, which="both")
+
+    fig.tight_layout()
+    for ext in ["png", "pdf"]:
+        path = os.path.join(output_dir, f"ps_{run_label}.{ext}")
+        fig.savefig(path, dpi=300, bbox_inches="tight")
+        print(f"  Saved: {path}")
+    plt.close(fig)
+
+
+def plot_dell(ells, D_ell_model, D_ell_pl, planck_ells, D_planck, D_err_lower, D_err_upper, output_dir, run_label):
+    """D_ell plot with Planck data and LCDM baseline.
+    Interpolates for smooth model curves."""
+    ell_dense = np.linspace(ells.min(), ells.max(), 200)
+    D_model_interp = interp1d(ells, D_ell_model, kind="cubic")(ell_dense)
+    D_pl_interp = interp1d(ells, D_ell_pl, kind="cubic")(ell_dense)
+
+    fig, ax = plt.subplots(figsize=(3.35, 2.6))
+
+    ax.errorbar(
+        planck_ells, D_planck, yerr=[D_err_lower, D_err_upper],
+        fmt="o", color=TOL["dark"], capsize=3, capthick=1,
+        markersize=4, elinewidth=1,
+        label=r"Planck 2018 low-$\ell$ TT (Commander)",
+    )
+
+    ax.semilogy(ell_dense, D_model_interp, "-", color=TOL["red"], lw=1.5, label="Higgs USR")
+    ax.semilogy(ell_dense, D_pl_interp, "--", color=TOL["dark"], lw=1.2, alpha=0.6, label=r"$\Lambda$CDM")
+
+    ax.set_xlabel(r"$\ell$")
+    ax.set_ylabel(r"$D_\ell^{\,TT}\ [\mu{\rm K}^2]$")
+    ax.legend()
+    ax.grid(True, alpha=0.25, which="both")
+
+    fig.tight_layout()
+    for ext in ["png", "pdf"]:
+        path = os.path.join(output_dir, f"dell_{run_label}.{ext}")
+        fig.savefig(path, dpi=300, bbox_inches="tight")
+        print(f"  Saved: {path}")
+    plt.close(fig)
+
+
+def collect_run_outputs(run_label, result, configs_dir, cell_dir, pspectra_dir,
+                        diag_plots_dir, powerloss_plots_dir, chi2_model_val,
+                        chi2_lcdm_val):
+    """Copy all outputs for this run into a single convenience directory."""
+    run_dir = os.path.join(ROOT_DIR, "outputs", "simulations", "runs", run_label)
+    subdirs = {
+        "configs": os.path.join(run_dir, "configs"),
+        "c_ell": os.path.join(run_dir, "c_ell"),
+        "pspectra": os.path.join(run_dir, "pspectra"),
+        "plots/diagnostics": os.path.join(run_dir, "plots", "diagnostics"),
+        "plots/powerloss": os.path.join(run_dir, "plots", "powerloss"),
+    }
+    # Wipe stale files before copying fresh ones
+    for d in subdirs.values():
+        if os.path.exists(d):
+            for f in os.listdir(d):
+                fp = os.path.join(d, f)
+                if os.path.isfile(fp):
+                    os.remove(fp)
+        os.makedirs(d, exist_ok=True)
+
+    files = [
+        (os.path.join(configs_dir, f"background_{run_label}.json"),
+         subdirs["configs"]),
+        (os.path.join(cell_dir, f"cell_{run_label}.json"),
+         subdirs["c_ell"]),
+    ]
+
+    pspectrum_path = result.get("output_file")
+    if pspectrum_path and os.path.exists(pspectrum_path):
+        files.append((pspectrum_path, subdirs["pspectra"]))
+
+    for ext in ["png", "pdf"]:
+        files.append(
+            (os.path.join(diag_plots_dir, f"background_{run_label}.{ext}"),
+             subdirs["plots/diagnostics"]))
+        files.append(
+            (os.path.join(powerloss_plots_dir, f"ps_{run_label}.{ext}"),
+             subdirs["plots/powerloss"]))
+        files.append(
+            (os.path.join(powerloss_plots_dir, f"dell_{run_label}.{ext}"),
+             subdirs["plots/powerloss"]))
+
+    copied = []
+    for src, dst_dir in files:
+        if os.path.exists(src):
+            shutil.copy2(src, dst_dir)
+            copied.append(os.path.join(dst_dir, os.path.basename(src)))
+
+    meta = result["metadata"]
+    k = result["k_phys"]
+    ps = result["P_S"]
     k_dip = k[np.argmin(ps)]
     p_dip = np.min(ps)
     suppression = (1 - p_dip / As) * 100
 
-    COL_USR = "#d62728"
-    COL_LCDM = "#2c3e50"
-    COL_DIP = "darkred"
+    readme_path = os.path.join(run_dir, "README.txt")
+    with open(readme_path, "w") as f:
+        f.write(f"Higgs USR Analysis — {run_label}\n")
+        f.write(f"{'=' * 50}\n\n")
+        f.write(f"phi0 / x0:  {meta.get('phi0', '?'):.2f}\n")
+        f.write(f"y0:         {meta.get('y0', '?'):.3f}\n")
+        f.write(f"N_star:     {meta.get('N_star', '?'):.2f}\n")
+        f.write(f"N_total:    {meta.get('N_total', '?'):.2f}\n")
+        f.write(f"N_pivot:    {meta.get('N_pivot', '?'):.1f}\n")
+        f.write(f"chi2 (USR): {chi2_model_val:.2f}\n")
+        f.write(f"chi2 (LCDM): {chi2_lcdm_val:.2f}\n")
+        f.write(f"k_dip:      {k_dip:.2e} Mpc^-1\n")
+        f.write(f"P_S(k_dip): {p_dip:.3e}\n")
+        f.write(f"Suppress:   {suppression:.1f}%\n")
+        f.write(f"\nFiles:\n")
+        for c in copied:
+            f.write(f"  {c}\n")
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-
-    ax.loglog(k, ps_lcdm, "-", color=COL_LCDM, lw=2, alpha=0.7,
-              label=r"Power-law ($n_s = 0.965$)")
-    ax.loglog(k, ps, "-", color=COL_USR, lw=2,
-              label=rf"Higgs USR ($\phi_0={meta['phi0']},\ y_0 = {meta['y0']}$)")
-
-    ax.axvline(k_dip, color=COL_DIP, ls=":", lw=1.5, alpha=0.5)
-    ax.annotate(
-        rf"$k_{{\rm dip}} = {k_dip:.2e}$",
-        xy=(k_dip, p_dip),
-        xytext=(0.55, 0.7), textcoords="axes fraction",
-        arrowprops=dict(arrowstyle="->", color=COL_DIP, lw=1.5),
-        fontsize=15, color=COL_DIP,
-    )
-
-    ax.axvline(k_pivot_phys, color="gray", ls="--", lw=1.5, alpha=0.4)
-    ax.annotate(
-        r"$k_* = 0.05$",
-        xy=(k_pivot_phys, As * 0.6),
-        fontsize=14, color="gray", ha="center",
-    )
-
-    ax.axhline(As, color="gray", ls="--", lw=1.5, alpha=0.3)
-    ax.text(0.98, 0.95, r"$A_s$", transform=ax.transAxes,
-            fontsize=14, color="gray", ha="right", va="top")
-
-    ax.text(0.98, 0.05, rf"$S = {suppression:.0f}\%$",
-            transform=ax.transAxes, fontsize=16, color=COL_DIP,
-            ha="right", va="bottom",
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
-
-    ax.set_xlabel(r"$k\ [{\rm Mpc}^{-1}]$", fontsize=20)
-    ax.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$", fontsize=20)
-    ax.legend(fontsize=17)
-    ax.grid(True, alpha=0.25, which="both")
-
-    fig.tight_layout()
-    for ext in ["png", "pdf"]:
-        path = os.path.join(output_dir, f"ps.{ext}")
-        fig.savefig(path, dpi=300, bbox_inches="tight")
-        print(f"  Saved: {path}")
-    plt.close(fig)
-
-
-def plot_dell(ells, D_ell_model, D_ell_pl, planck_ells, D_planck, D_err_lower, D_err_upper, chi2_model, chi2_lcdm, phi0, y0, output_dir):
-    """D_ell plot with Planck data and LCDM baseline."""
-    COL_USR = "#d62728"
-    COL_LCDM = "#2c3e50"
-
-    fig, ax = plt.subplots(figsize=(8.5, 6))
-
-    ax.errorbar(
-        planck_ells, D_planck, yerr=[D_err_lower, D_err_upper],
-        fmt="o", color="#2c3e50", capsize=4, capthick=1.5,
-        markersize=7, elinewidth=1.5,
-        label=r"Planck 2018 low-$\ell$ TT (Commander)",
-    )
-
-    ax.semilogy(ells, D_ell_model, "-", color=COL_USR, lw=2.5,
-                label=rf"Higgs USR ($\phi_0={phi0},\ y_0 = {y0}$)")
-    ax.semilogy(ells, D_ell_pl, "--", color=COL_LCDM, lw=2, alpha=0.7,
-                label=r"Power-law ($n_s = 0.965$, SW approx.)")
-
-    ax.set_xlabel(r"$\ell$", fontsize=20)
-    ax.set_ylabel(r"$D_\ell^{\,TT}\ [\mu{\rm K}^2]$", fontsize=20)
-    ax.legend(fontsize=14, loc="lower right")
-    ax.grid(True, alpha=0.25, which="both")
-
-    chi2_str = f"$\\chi^2_{{\\rm USR}} = {chi2_model:.1f}$\n$\\chi^2_{{\\rm LCDM}} = {chi2_lcdm:.1f}$"
-    ax.text(0.97, 0.97, chi2_str, transform=ax.transAxes,
-            fontsize=15, va="top", ha="right",
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
-
-    fig.tight_layout()
-    for ext in ["png", "pdf"]:
-        path = os.path.join(output_dir, f"dell.{ext}")
-        fig.savefig(path, dpi=300, bbox_inches="tight")
-        print(f"  Saved: {path}")
-    plt.close(fig)
+    print(f"\n  Run directory: {run_dir}/")
+    return run_dir
 
 
 def print_summary(result, bg_sol, derived, chi2_model_val, output_dir):
@@ -333,42 +390,49 @@ def parse_args():
     p.add_argument("--xi", type=float, default=15000.0, help="Higgs non-minimal coupling")
     p.add_argument("--lam", type=float, default=0.13, help="Self-coupling")
     p.add_argument("--ms-steps", type=int, default=5000, help="MS integration steps")
-    p.add_argument("--bg-steps", type=int, default=10000, help="Background integration steps")
-    p.add_argument("--T-max", type=float, default=5000.0, help="Max conformal time")
+    p.add_argument("--bg-steps", type=int, default=1000, help="Background integration steps")
+    p.add_argument("--T-max", type=float, default=500.0, help="Max conformal time")
     p.add_argument("--workers", type=int, default=os.cpu_count(),
                    help="Parallel workers for MS integration (default: all cores)")
-    p.add_argument("--output-dir", type=str, default=None,
-                   help="Output directory (default: auto-generated)")
+    p.add_argument("--no-interp", action="store_true",
+                   help="Disable plot interpolation (raw data points)")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
 
-    output_dir = args.output_dir
-    if output_dir is None:
-        safe = f"run_phi{args.phi0:.2f}_y0{args.y0:.3f}"
-        output_dir = os.path.join(ROOT_DIR, "outputs", "simulations", safe)
-    os.makedirs(output_dir, exist_ok=True)
-    plots_dir = os.path.join(output_dir, "plots")
-    os.makedirs(plots_dir, exist_ok=True)
+    run_label = f"phi{args.phi0:.2f}_y0{args.y0:.3f}_nstar{args.nstar:.1f}"
+
+    # AGENTS.md output hierarchy
+    configs_dir = os.path.join(ROOT_DIR, "outputs", "simulations", "configs")
+    pspectra_dir = os.path.join(ROOT_DIR, "outputs", "simulations", "pspectra")
+    cell_dir = os.path.join(ROOT_DIR, "outputs", "simulations", "c_ell")
+    diag_plots_dir = os.path.join(ROOT_DIR, "outputs", "plots", "diagnostics")
+    powerloss_plots_dir = os.path.join(ROOT_DIR, "outputs", "plots", "powerloss")
+    for d in [configs_dir, pspectra_dir, cell_dir, diag_plots_dir, powerloss_plots_dir]:
+        os.makedirs(d, exist_ok=True)
 
     plt.rcParams.update({
-        "font.size": 16,
-        "axes.labelsize": 20,
-        "axes.titlesize": 22,
-        "xtick.labelsize": 16,
-        "ytick.labelsize": 16,
-        "legend.fontsize": 17,
-        "figure.dpi": 150,
+        "font.size": 8,
+        "axes.labelsize": 8,
+        "axes.titlesize": 9,
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "legend.fontsize": 6,
+        "figure.dpi": 300,
         "font.family": "serif",
     })
 
     print("\n  1. Background integration...")
     t0 = time.time()
     model = HiggsModel(lam=args.lam, xi=args.xi)
-    T_span_bg = np.linspace(0.0, args.T_max, args.bg_steps)
-    bg_sol, derived = save_background(model, T_span_bg, output_dir)
+    model.phi0 = args.phi0
+    model.y0 = args.y0
+    model.T_max = args.T_max
+    model.bg_steps = args.bg_steps
+    T_span_bg = np.linspace(0.0, model.T_max, model.bg_steps)
+    bg_sol, derived = save_background(model, T_span_bg, configs_dir, run_label)
     print(f"     Done in {time.time() - t0:.1f}s")
 
     print("\n  2. P_S(k) pipeline (high-resolution weighted grid)...")
@@ -388,7 +452,7 @@ def main():
         normalize_to_As=True,
         As=As,
         save_outputs=True,
-        output_dir=output_dir,
+        output_dir=pspectra_dir,
         n_workers=args.workers,
     )
     if result["status"] != "success":
@@ -398,19 +462,26 @@ def main():
 
     print("\n  3. C_ell / D_ell computation...")
     t0 = time.time()
-    ells, D_ell_model, D_ell_pl, planck_ells, D_planck, D_err_lower, D_err_upper, chi2_model_val, chi2_lcdm_val = save_cell(result, output_dir)
+    ells, D_ell_model, D_ell_pl, planck_ells, D_planck, D_err_lower, D_err_upper, chi2_model_val, chi2_lcdm_val = save_cell(result, cell_dir, run_label)
     print(f"     Done in {time.time() - t0:.1f}s")
     print(f"     chi2 (model) = {chi2_model_val:.2f},  chi2 (LCDM) = {chi2_lcdm_val:.2f}")
 
     print("\n  4. Plotting...")
     t0 = time.time()
-    plot_background(bg_sol, derived, plots_dir)
-    plot_ps(result, plots_dir)
+    plot_background(bg_sol, derived, diag_plots_dir, run_label)
+    plot_ps(result, powerloss_plots_dir, run_label)
     plot_dell(ells, D_ell_model, D_ell_pl, planck_ells, D_planck, D_err_lower, D_err_upper,
-              chi2_model_val, chi2_lcdm_val, args.phi0, args.y0, plots_dir)
+              powerloss_plots_dir, run_label)
     print(f"     Done in {time.time() - t0:.1f}s")
 
-    print_summary(result, bg_sol, derived, chi2_model_val, output_dir)
+    print("\n  5. Collecting outputs...")
+    t0 = time.time()
+    collect_run_outputs(run_label, result, configs_dir, cell_dir, pspectra_dir,
+                        diag_plots_dir, powerloss_plots_dir, chi2_model_val,
+                        chi2_lcdm_val)
+    print(f"     Done in {time.time() - t0:.1f}s")
+
+    print_summary(result, bg_sol, derived, chi2_model_val, configs_dir)
 
 
 if __name__ == "__main__":
