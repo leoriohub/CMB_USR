@@ -21,19 +21,13 @@ from datetime import datetime
 
 import numpy as np
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-
 from scripts.pspectrum_pipeline import run_pspectrum_pipeline, find_end_of_inflation
 from scripts.sachs_wolfe import compute_cl_sw
 from scripts.planck_data import get_planck_data_asymmetric
-from scripts.constants import As, k_pivot_phys, T_cmb
+from scripts.constants import As, k_pivot_phys, T_cmb, ROOT_DIR
+from scripts.optimizer_utils import find_k_dip, _write_log
 from models import HiggsModel
 import inf_dyn_background as bg_solver
-
-
-def _write_log(log_file, entry):
-    log_file.write(json.dumps(entry) + "\n")
-    log_file.flush()
 
 
 def load_existing(log_path):
@@ -54,18 +48,6 @@ def load_existing(log_path):
                 except json.JSONDecodeError:
                     pass
     return completed
-
-
-def find_k_dip(k_phys, P_S):
-    mask = k_phys < 0.01
-    if not np.any(mask):
-        return -1.0
-    k_sub = k_phys[mask]
-    ps_sub = P_S[mask]
-    i_dip = int(np.argmin(ps_sub))
-    if i_dip == 0 or i_dip == len(ps_sub) - 1:
-        return -1.0
-    return float(k_sub[i_dip])
 
 
 def compute_chi2(pipeline_result, planck_data):

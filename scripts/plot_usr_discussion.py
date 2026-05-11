@@ -18,8 +18,6 @@ import sys
 
 import numpy as np
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -31,7 +29,7 @@ from scripts.pspectrum_pipeline import (
 )
 from scripts.sachs_wolfe import compute_cl_sw, compute_cl_sw_powerlaw
 from scripts.planck_data import get_planck_data
-from scripts.constants import As, k_pivot_phys, r_ls, T_cmb
+from scripts.constants import As, k_pivot_phys, r_ls, T_cmb, ROOT_DIR
 from models import HiggsModel
 
 OUTPUT_DIR = os.path.join(ROOT_DIR, "outputs/plots/powerloss")

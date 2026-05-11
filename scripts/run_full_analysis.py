@@ -21,15 +21,13 @@ import time
 
 import numpy as np
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import inf_dyn_background as bg_solver
 from models import HiggsModel
-from scripts.constants import As, k_pivot_phys, r_ls, T_cmb
+from scripts.constants import As, k_pivot_phys, r_ls, T_cmb, ROOT_DIR
 from scripts.pspectrum_pipeline import (
     run_pspectrum_pipeline,
     build_weighted_kgrid,
