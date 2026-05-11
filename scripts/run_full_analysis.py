@@ -235,13 +235,13 @@ def plot_dell(ells, D_ell_model, D_ell_pl, planck_ells, D_planck, D_err_lower, D
     D_model_interp = interp1d(ells, D_ell_model, kind="cubic")(ell_dense)
     D_pl_interp = interp1d(ells, D_ell_pl, kind="cubic")(ell_dense)
 
-    fig, ax = plt.subplots(figsize=(3.35, 2.6))
+    fig, ax = plt.subplots(figsize=(3.7, 2.6))
 
     ax.errorbar(
         planck_ells, D_planck, yerr=[D_err_lower, D_err_upper],
         fmt="o", color=TOL["dark"], capsize=3, capthick=1,
         markersize=4, elinewidth=1,
-        label=r"Planck 2018 low-$\ell$ TT (Commander)",
+        label=r"Planck 2018 low-$\ell$ TT",
     )
 
     ax.semilogy(ell_dense, D_model_interp, "-", color=TOL["red"], lw=1.5, label="Higgs USR")
@@ -464,7 +464,7 @@ def main():
     t0 = time.time()
     ells, D_ell_model, D_ell_pl, planck_ells, D_planck, D_err_lower, D_err_upper, chi2_model_val, chi2_lcdm_val = save_cell(result, cell_dir, run_label)
     print(f"     Done in {time.time() - t0:.1f}s")
-    print(f"     chi2 (model) = {chi2_model_val:.2f},  chi2 (LCDM) = {chi2_lcdm_val:.2f}")
+        print(f"     chi2 (model) = {chi2_model_val:.2f},  chi2 (LCDM) = {chi2_lcdm_val:.2f},  Δ = {chi2_model_val - chi2_lcdm_val:+.2f}")
 
     print("\n  4. Plotting...")
     t0 = time.time()
