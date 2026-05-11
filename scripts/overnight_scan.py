@@ -52,11 +52,11 @@ def load_existing(log_path):
 
 def compute_chi2(pipeline_result, planck_data):
     ells_pl, D_pl, D_err_lower, D_err_upper = planck_data
-    D_err = 0.5 * (D_err_lower + D_err_upper)
     mask = ells_pl <= 29
     ells_pl_m = ells_pl[mask]
     D_pl_m = D_pl[mask]
-    D_err_m = D_err[mask]
+    D_err_l_m = D_err_lower[mask]
+    D_err_u_m = D_err_upper[mask]
 
     k_phys = pipeline_result["k_phys"]
     P_S = pipeline_result["P_S"]
@@ -64,7 +64,9 @@ def compute_chi2(pipeline_result, planck_data):
     D_ell = ells * (ells + 1) / (2 * np.pi) * C_ell * T_cmb**2 * 1e12
 
     D_ip = np.interp(ells_pl_m, ells, D_ell)
-    return float(np.sum(((D_ip - D_pl_m) / D_err_m)**2))
+    residuals = D_ip - D_pl_m
+    err = np.where(residuals > 0, D_err_u_m, D_err_l_m)
+    return float(np.sum((residuals / err)**2))
 
 
 def compute_dip_suppression(k_phys, P_S):
