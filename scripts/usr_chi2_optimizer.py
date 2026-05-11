@@ -21,7 +21,7 @@ import numpy as np
 
 from scripts.pspectrum_pipeline import run_pspectrum_pipeline, build_weighted_kgrid
 from scripts.sachs_wolfe import compute_cl_sw, compute_cl_sw_powerlaw
-from scripts.planck_data import get_planck_data, C_ell_to_d_ell
+from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
 from scripts.constants import As, k_pivot_phys, r_ls, T_cmb, ROOT_DIR
 from scripts.optimizer_utils import find_k_dip, compute_chi2
 from models import HiggsModel
@@ -252,12 +252,14 @@ def re_run_best(best_params, args):
     )
     D_lcdm = C_ell_to_d_ell(ells_lcdm, C_lcdm)
 
-    ells_pl, D_pl, D_err = get_planck_data()
+    ells_pl, D_pl, D_err_l, D_err_u = get_planck_data_asymmetric()
     pl_mask = ells_pl <= args.ell_max
-    D_lcdm_ip = np.interp(ells_pl[pl_mask], ells_lcdm, D_lcdm)
-    chi2_lcdm = float(np.sum(
-        ((D_lcdm_ip - D_pl[pl_mask]) / D_err[pl_mask]) ** 2
-    ))
+    ells_pl_m = ells_pl[pl_mask]
+    D_pl_m = D_pl[pl_mask]
+    D_lcdm_ip = np.interp(ells_pl_m, ells_lcdm, D_lcdm)
+    residuals = D_lcdm_ip - D_pl_m
+    err = np.where(residuals > 0, D_err_u[pl_mask], D_err_l[pl_mask])
+    chi2_lcdm = float(np.sum((residuals / err) ** 2))
     dof = int(np.sum(pl_mask))
 
     dip_ps = np.interp(k_dip, result["k_phys"], result["P_S"]) if k_dip > 0 else As

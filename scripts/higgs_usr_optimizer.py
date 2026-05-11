@@ -18,7 +18,7 @@ from scripts.pspectrum_pipeline import (
     run_pspectrum_pipeline, find_end_of_inflation, build_weighted_kgrid,
 )
 from scripts.sachs_wolfe import compute_cl_sw, compute_cl_sw_powerlaw
-from scripts.planck_data import get_planck_data, C_ell_to_d_ell
+from scripts.planck_data import get_planck_data, get_planck_data_asymmetric, C_ell_to_d_ell
 from scripts.constants import As, k_pivot_phys, ROOT_DIR
 from scripts.optimizer_utils import find_k_dip, compute_chi2, _write_log
 from models import HiggsModel
