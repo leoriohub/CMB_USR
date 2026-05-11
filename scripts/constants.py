@@ -5,6 +5,12 @@ All constants reference Planck 2018 results (Aghanim et al. 2020).
 The xi/lam ratio is fixed by As normalization to the CMB amplitude.
 """
 
+import os
+
+# ── Project root — computed, never hardcoded ────────────────────────────────
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 # ── Physical constants ──────────────────────────────────────────────────────
 
 S = 5e-5                    # conformal time unit (dimensionless)
