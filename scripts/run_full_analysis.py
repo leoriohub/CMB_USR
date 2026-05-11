@@ -238,7 +238,7 @@ def plot_dell(ells, D_ell_model, D_ell_pl, planck_ells, D_planck, D_err_lower, D
     fig, ax = plt.subplots(figsize=(3.7, 2.6))
 
     ax.errorbar(
-        planck_ells, D_planck, yerr=[D_err_lower, D_err_upper],
+        planck_ells, D_planck, yerr=[D_err_upper, D_err_lower],
         fmt="o", color=TOL["dark"], capsize=3, capthick=1,
         markersize=4, elinewidth=1,
         label=r"Planck 2018 low-$\ell$ TT",
