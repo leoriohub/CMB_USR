@@ -5,7 +5,7 @@ class QuadraticModel(InflationModel):
         super().__init__("Quadratic Inflation")
         M = 5.9e-6
         self.v0 = 0.5 * M**2
-        self.phi0 = 17.5 # Approx 60 e-folds
+        self.x0 = 17.5 # Approx 60 e-folds
         self.y0 = -0.05 # Slow-roll initial velocity
 
 

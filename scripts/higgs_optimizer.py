@@ -73,7 +73,7 @@ def run_grid_scan(args):
 
             # Quick background check
             model_check = HiggsModel(lam=args.lam, xi=args.xi)
-            model_check.phi0 = phi0
+            model_check.x0 = phi0
             model_check.y0 = y0
             T_bg = np.linspace(0, model_check.T_max, model_check.bg_steps)
             try:
@@ -645,7 +645,7 @@ def run_nstar_scan(args):
     for phi0 in phi0_vals:
         for y0 in y0_vals:
             model_check = HiggsModel(lam=args.lam, xi=args.xi)
-            model_check.phi0 = phi0
+            model_check.x0 = phi0
             model_check.y0 = y0
             T_bg = np.linspace(0, model_check.T_max, model_check.bg_steps)
             try:

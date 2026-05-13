@@ -28,7 +28,7 @@ def run_inflation_protocol(model, phi0: float, y0: float, delta: float = 1e-4, N
     transient non-slow-roll dynamics when computing the spectral index (n_s) and tensor-to-scalar ratio (r).
     """
     # Anchor the specified initial conditions to the model instance.
-    model.phi0 = phi0
+    model.x0 = phi0
     model.y0 = y0
     
     # Evolve the background fields to capture the full dynamic trajectory.
@@ -151,7 +151,7 @@ def save_results_to_json(model, ns, r_val, ns_SR, r_SR, delta, k_pivot_code, N_t
             "name": model.name, 
             "xi": getattr(model, 'xi_val', None), 
             "lambda": getattr(model, 'lam', None),
-            "phi0": float(model.phi0), 
+            "x0": float(model.x0),
             "y0": float(model.y0), 
             "S": float(model.S)
         },
@@ -183,7 +183,7 @@ def save_results_to_json(model, ns, r_val, ns_SR, r_SR, delta, k_pivot_code, N_t
     }
     
     safe_name = model.name.replace(' ', '_').replace('(', '').replace(')', '')
-    filename = f"{safe_name}_phi{model.phi0:.2f}_y0{model.y0:.3f}_run_{run_id}.json"
+    filename = f"{safe_name}_x0{model.x0:.2f}_y0{model.y0:.3f}_run_{run_id}.json"
     filepath = os.path.join(output_dir, filename)
     with open(filepath, 'w') as f:
         json.dump(data, f, indent=4)
