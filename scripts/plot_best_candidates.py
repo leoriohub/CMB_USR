@@ -8,6 +8,7 @@ outputs/simulations/best_candidates/.
 Usage:
   python scripts/plot_best_candidates.py [N_configs]
 """
+import argparse
 import glob
 import json
 import os
@@ -27,7 +28,7 @@ from scripts.sachs_wolfe import compute_cl_sw
 from scripts.camb_wrapper import compute_cl_full_camb, compute_cl_camb_powerlaw
 from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell, d_ell_to_C_ell
 
-CONFIGS_FILE = os.path.join(ROOT_DIR, "outputs/simulations/logs/top30_candidates.jsonl")
+CONFIGS_FILE_DEFAULT = os.path.join(ROOT_DIR, "outputs/simulations/logs/top30_candidates.jsonl")
 PSPECTRA_DIR = os.path.join(ROOT_DIR, "outputs/simulations/pspectra")
 OUTPUT_DIR = os.path.join(ROOT_DIR, "outputs/simulations/best_candidates")
 C_ELL_DIR = os.path.join(OUTPUT_DIR, "c_ell")
@@ -272,12 +273,23 @@ def plot_comparison(results, planck_data, ells_l, D_lcdm_full):
     plt.close(fig)
 
 
+def parse_args():
+    p = argparse.ArgumentParser(description="Plot top N best Higgs configs")
+    p.add_argument("--config-file", type=str, default=CONFIGS_FILE_DEFAULT,
+                   help="Path to JSONL config file (default: top30_candidates.jsonl)")
+    p.add_argument("--n", type=int, default=5,
+                   help="Number of top configs to plot (default: 5)")
+    return p.parse_args()
+
+
 def main():
-    n = int(sys.argv[1]) if len(sys.argv) > 1 else 5
+    args = parse_args()
+    n = args.n
+    configs_file = args.config_file
     os.makedirs(PLOTS_DIR, exist_ok=True)
     os.makedirs(C_ELL_DIR, exist_ok=True)
 
-    configs = load_top_configs(CONFIGS_FILE, n=n)
+    configs = load_top_configs(configs_file, n=n)
     print(f"Loaded {len(configs)} top configs")
 
     planck_data = get_planck_data_asymmetric()
