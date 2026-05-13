@@ -142,7 +142,9 @@ def run_phase1(args, completed):
           f"x {args.n_phi0} = {phi0_vals}")
     print(f"  y0:   [{args.y0_range[0]:.2f}, {args.y0_range[1]:.2f}] "
           f"x {args.n_y0} = {y0_vals}")
-    print(f"  Total pairs: {total}, viable est: ~{int(total*0.3)}")
+    print(f"  Total pairs: {total}, 3 N_star scans per viable pair")
+    print(f"  ~{int(total*0.3)} viable pairs x 3 = ~{int(total*0.3*3)} evals")
+    print(f"  Est runtime: ~{int(total*0.3*3*35/60)} min")
     print(f"{'='*60}", flush=True)
 
     log_path = os.path.join(ROOT_DIR, "outputs/simulations/logs",
@@ -203,17 +205,25 @@ def run_phase1(args, completed):
                 results.append({"phi0": phi0, "y0": y0, "status": "bad_nstar"})
                 continue
 
-            if nstar_auto < 49 or nstar_auto > N_total - 1:
+            if nstar_auto <= 0 or nstar_auto > N_total - 1:
                 done += 1
                 eta = (time.time() - t0) / done * (total - done) if done else 0
                 print(f"\r  [{done:3d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
-                      f"SKIP (nstar<49) ETA {eta/60:.0f}m", end="", flush=True)
-                results.append({"phi0": phi0, "y0": y0, "status": "nstar_low"})
+                      f"SKIP (bad_nstar) ETA {eta/60:.0f}m", end="", flush=True)
+                results.append({"phi0": phi0, "y0": y0, "status": "bad_nstar"})
                 continue
 
-            N_star_candidates = [round(nstar_auto, 2)]
-            if nstar_auto < 50:
+            # Scan 3 N_star values to find the right dip alignment
+            N_star_candidates = []
+            for offset in [0, 2, 4]:
+                ns = round(nstar_auto + offset, 1)
+                if 50.0 <= ns <= N_total - 1 and ns not in N_star_candidates:
+                    N_star_candidates.append(ns)
+            # Also try exactly 50 if auto is below 50
+            if nstar_auto < 50 and 50.0 not in N_star_candidates:
                 N_star_candidates.append(50.0)
+            if not N_star_candidates:
+                N_star_candidates = [max(50.0, round(nstar_auto, 1))]
             for N_star in N_star_candidates:
                 key = (round(phi0, 4), round(y0, 4), round(N_star, 2))
                 if key in completed:
