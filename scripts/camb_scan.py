@@ -19,7 +19,7 @@ import numpy as np
 from scripts.pspectrum_pipeline import (
     run_pspectrum_pipeline, find_end_of_inflation,
 )
-from scripts.camb_wrapper import compute_chi2_camb, compute_cl_camb_powerlaw
+from scripts.camb_wrapper import compute_cl_camb_powerlaw
 from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
 from scripts.optimizer_utils import find_k_dip, _write_log
 from scripts.constants import As, k_pivot_phys, ROOT_DIR
@@ -33,12 +33,39 @@ CHI2_LCDM = 20.47
 D2_LCDM = 1028.7
 
 
-def dipole_power(ps_data):
-    """D_ell at ℓ=2 via CAMB full."""
+_lcdm_cache = {}
+
+
+def compute_camb_curves(ps_data, ell_max):
+    """Full CAMB: returns d2, ells, D_ell, C_TT, C_TE, C_EE."""
     from scripts.camb_wrapper import compute_cl_full_camb
-    ells, C_TT, _, _ = compute_cl_full_camb(ps_data, ell_max=29)
+    ells, C_TT, C_TE, C_EE = compute_cl_full_camb(ps_data, ell_max=ell_max)
     D = C_ell_to_d_ell(ells, C_TT)
-    return float(D[0]), ells, D
+    return float(D[0]), ells, D, C_TT, C_TE, C_EE
+
+
+def chi2_vs_planck(ells_model, D_model, ell_max_chi2=29):
+    """Asymmetric diagonal chi2 vs Planck low-ell TT."""
+    p_ells, D_p, D_lo, D_hi = get_planck_data_asymmetric()
+    chi2 = 0.0
+    for i, ell_val in enumerate(p_ells):
+        if ell_val > ell_max_chi2:
+            continue
+        idx = int(np.argmin(np.abs(ells_model - ell_val)))
+        res = D_model[idx] - D_p[i]
+        sigma = D_hi[i] if res > 0 else D_lo[i]
+        chi2 += (res / sigma) ** 2
+    return chi2
+
+
+def lcdm_baseline(ell_max):
+    """Cached LCDM D_ell at given ell_max."""
+    if ell_max not in _lcdm_cache:
+        from scripts.camb_wrapper import compute_cl_camb_powerlaw
+        ells, C, _, _ = compute_cl_camb_powerlaw(ell_max=ell_max)
+        _lcdm_cache[ell_max] = (ells, C)
+    ells, C = _lcdm_cache[ell_max]
+    return ells, C
 
 
 def passes_criteria(chi2, d2, n_star, k_dip):
@@ -69,7 +96,7 @@ def load_completed(log_path):
 
 
 def evaluate_config(phi0, y0, N_star, args):
-    """Run full pipeline + CAMB chi2. Returns dict with results."""
+    """Run full pipeline + CAMB. Returns dict with chi2 and curve data."""
     model = HiggsModel(lam=args.lam, xi=args.xi)
     try:
         result = run_pspectrum_pipeline(
@@ -96,17 +123,20 @@ def evaluate_config(phi0, y0, N_star, args):
     except Exception:
         k_dip = -1.0
 
-    try:
-        ps_data = {"k_phys": k_phys, "P_S": P_S}
-        d2_val, ells_c, D_c = dipole_power(ps_data)
-    except Exception as e:
-        return {"status": "camb_fail", "error": str(e), "k_dip": k_dip}
+    ell_max_camb = getattr(args, "ell_max", 2500)
 
     try:
-        chi2_m, chi2_l, dchi2 = compute_chi2_camb(ps_data, ell_max=29)
+        ps_data = {"k_phys": k_phys, "P_S": P_S}
+        d2_val, ells_c, D_c, C_TT, C_TE, C_EE = compute_camb_curves(
+            ps_data, ell_max_camb)
+        ell_max_chi2 = min(29, ell_max_camb)
+        chi2_m = chi2_vs_planck(ells_c, D_c, ell_max_chi2)
+        ells_l, C_l = lcdm_baseline(ell_max_camb)
+        D_l = C_ell_to_d_ell(ells_l, C_l)
+        chi2_l = chi2_vs_planck(ells_l, D_l, ell_max_chi2)
+        dchi2 = chi2_m - chi2_l
     except Exception as e:
-        return {"status": "chi2_fail", "error": str(e), "k_dip": k_dip,
-                "d2": d2_val}
+        return {"status": "camb_fail", "error": str(e), "k_dip": k_dip}
 
     supp = 0.0
     if k_dip > 0:
@@ -127,6 +157,11 @@ def evaluate_config(phi0, y0, N_star, args):
         "N_total": round(meta.get("N_total", 0), 1),
         "N_star": round(N_star, 4),
         "d2_lcdm": round(D2_LCDM, 1),
+        "ells": ells_c.tolist(),
+        "D_ell": [round(v, 4) for v in D_c.tolist()],
+        "C_ell_TT": [round(v, 12) for v in C_TT.tolist()],
+        "k_phys": [round(v, 8) for v in k_phys.tolist()],
+        "P_S": [round(v, 12) for v in P_S.tolist()],
     }
 
 
@@ -482,6 +517,8 @@ def setup_args():
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--xi", type=float, default=15000.0)
     p.add_argument("--lam", type=float, default=0.13)
+    p.add_argument("--ell-max", type=int, default=2500,
+                   help="CAMB ell_max (default: 2500). Use 30 for fast scan.")
 
     # Resume
     p.add_argument("--phase1-log", type=str, default=None,
