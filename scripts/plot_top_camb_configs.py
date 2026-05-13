@@ -104,7 +104,66 @@ def compute_camb(ps_data):
     return ells, D, chi2
 
 
+def read_log_configs(path, n=10, phi0_list=None, y0_list=None, nstar_list=None):
+    """Read configs from a JSONL log file containing D_ell/P_S arrays."""
+    recs = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                recs.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+
+    ok = [r for r in recs if r.get("status") == "ok" and "D_ell" in r]
+    if not ok:
+        print("WARNING: No entries with D_ell found in log.")
+        print("  Try re-running scan with --ell-max 2500 to store curve data.")
+        return None
+
+    # Filter by specific configs if requested
+    if phi0_list is not None and y0_list is not None:
+        selected = []
+        for phi0, y0, ns in zip(phi0_list, y0_list, nstar_list or []):
+            for r in ok:
+                if abs(r["phi0"] - phi0) < 0.01 and abs(r["y0"] - y0) < 0.001:
+                    if nstar_list is None or abs(r.get("N_star", 0) - ns) < 0.5:
+                        selected.append(r)
+                        break
+        if not selected:
+            print("WARNING: No matching configs found in log. Showing top {} by chi2.".format(n))
+            selected = sorted(ok, key=lambda r: r.get("chi2", 999))[:n]
+    else:
+        selected = sorted(ok, key=lambda r: r.get("chi2", 999))[:n]
+
+    configs = []
+    for r in selected:
+        label = "phi{:.2f}_y0{:.3f}".format(r["phi0"], r["y0"])
+        configs.append({
+            "label": label,
+            "phi0": r["phi0"],
+            "y0": r["y0"],
+            "N_star": r.get("N_star", 0),
+            "chi2": r.get("chi2", 0),
+            "D_ell": np.array(r["D_ell"]),
+            "k_phys": np.array(r.get("k_phys", [])),
+            "P_S": np.array(r.get("P_S", [])),
+        })
+    return configs
+
+
 def build_configs(args):
+    if args.from_log is not None:
+        phi0_list = [float(x) for x in args.phi0.split(",")] if args.phi0 else None
+        y0_list = [float(x) for x in args.y0.split(",")] if args.y0 else None
+        nstar_list = [float(x) for x in args.nstar.split(",")] if args.nstar else None
+        n = len(phi0_list) if phi0_list else args.n_configs
+        return read_log_configs(args.from_log, n=n,
+                                phi0_list=phi0_list, y0_list=y0_list,
+                                nstar_list=nstar_list)
+
     if args.phi0 is not None:
         phi0s = [float(x) for x in args.phi0.split(",")]
         y0s = [float(x) for x in args.y0.split(",")]
@@ -133,6 +192,10 @@ def parse_args():
                    help="Comma-separated labels (optional)")
     p.add_argument("--output-suffix", type=str, default="camb_top_configs",
                    help="Suffix for output filenames")
+    p.add_argument("--from-log", type=str, default=None,
+                   help="Read configs from a JSONL scan log with D_ell data")
+    p.add_argument("--n-configs", type=int, default=10,
+                   help="Number of top configs when using --from-log (default: 10)")
     return p.parse_args()
 
 
@@ -146,15 +209,28 @@ def main():
     D_lcdm = C_ell_to_d_ell(ells_l, C_l)
     p_ells, D_p, D_lo, D_hi = get_planck_data_asymmetric()
 
+    from_log = args.from_log is not None
     results = []
     for cfg in configs:
-        print("\n" + cfg["label"] + "...")
-        ps = load_or_run(cfg)
-        if ps is None:
+        if cfg is None:
             continue
-        ells, D, chi2 = compute_camb(ps)
-        results.append({**cfg, "ells": ells, "D": D, "chi2": round(chi2, 2),
-                        "k_phys": ps["k_phys"], "P_S": ps["P_S"]})
+        if from_log and "D_ell" in cfg:
+            # Data already in log — no pipeline needed
+            ells = np.arange(2, 2 + len(cfg["D_ell"]))
+            results.append({**cfg, "ells": ells, "D": cfg["D_ell"],
+                            "k_phys": cfg.get("k_phys", np.array([])),
+                            "P_S": cfg.get("P_S", np.array([]))})
+            print("  {}: chi2={}, D2={:.0f}".format(
+                cfg["label"], cfg.get("chi2", "?"), cfg["D_ell"][0]))
+        else:
+            print("\n" + cfg["label"] + "...")
+            ps = load_or_run(cfg)
+            if ps is None:
+                continue
+            ells, D, chi2 = compute_camb(ps)
+            results.append({**cfg, "ells": ells, "D": D,
+                            "chi2": round(chi2, 2),
+                            "k_phys": ps["k_phys"], "P_S": ps["P_S"]})
 
     if not results:
         print("No configs successfully processed. Exiting.")
