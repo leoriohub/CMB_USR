@@ -48,10 +48,9 @@ def _ensure_dir(subdir):
 
 def _save_fig(fig, path_base, subdir="diagnostics"):
     out_dir = _ensure_dir(subdir)
-    for ext in ["png", "pdf"]:
-        path = os.path.join(out_dir, f"{path_base}.{ext}")
-        fig.savefig(path, dpi=300, bbox_inches="tight")
-        print(f"  Saved: {path}")
+    path = os.path.join(out_dir, f"{path_base}.png")
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    print(f"  Saved: {path}")
     plt.close(fig)
 
 

@@ -99,10 +99,9 @@ def validate_LCDM():
     fig.tight_layout()
     out_dir = "outputs/plots/diagnostics"
     os.makedirs(out_dir, exist_ok=True)
-    for ext in ["png", "pdf"]:
-        path = os.path.join(out_dir, f"camb_lcdm_validation.{ext}")
-        fig.savefig(path, dpi=300, bbox_inches="tight")
-        print(f"  Saved: {path}")
+    path = os.path.join(out_dir, "camb_lcdm_validation.png")
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    print(f"  Saved: {path}")
     plt.close(fig)
 
     # ── Plot 2: Low-ell zoom ──
@@ -125,10 +124,9 @@ def validate_LCDM():
     ax.set_xlim(1.5, 31)
 
     fig.tight_layout()
-    for ext in ["png", "pdf"]:
-        path = os.path.join(out_dir, f"camb_lcdm_low_ell.{ext}")
-        fig.savefig(path, dpi=300, bbox_inches="tight")
-        print(f"  Saved: {path}")
+    path = os.path.join(out_dir, "camb_lcdm_low_ell.png")
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    print(f"  Saved: {path}")
     plt.close(fig)
 
     # ── Save results ──
