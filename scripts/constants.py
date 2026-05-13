@@ -29,8 +29,8 @@ xi_default = 15000.0
 # ── Initial condition defaults ──────────────────────────────────────────────
 
 phi0_default = 5.70         # field value at start of integration
-yi_usr_default = -0.10      # USR trigger (deep negative velocity)
-yi_sr_default = -0.001      # standard slow-roll velocity
+y0_usr_default = -0.10      # USR trigger (deep negative velocity, dx/dT at T=0)
+y0_sr_default = -0.001      # standard slow-roll velocity
 
 # ── Simulation defaults ─────────────────────────────────────────────────────
 

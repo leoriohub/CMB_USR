@@ -23,7 +23,7 @@ class PunctuatedInflationModel(InflationModel):
         self.v0 = (m**2/2 * x0**2 - self._alpha/3 * x0**3 + lam/4 * x0**4)
 
         # Paper ICs: φ_ini = 12, φ̇_ini via slow-roll approximation
-        self.phi0 = 12.0
+        self.x0 = 12.0
         self.y0 = 0.0
 
         # Punctuated inflation spans ~96 e-folds, needs long integration

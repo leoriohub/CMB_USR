@@ -163,7 +163,7 @@ def run_phase1(args, completed):
 
             # Quick background check + N_star auto-alignment
             model_check = HiggsModel(lam=args.lam, xi=args.xi)
-            model_check.phi0 = phi0
+            model_check.x0 = phi0
             model_check.y0 = y0
             T_bg = np.linspace(0, model_check.T_max, model_check.bg_steps)
 

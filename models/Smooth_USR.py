@@ -89,7 +89,7 @@ class SmoothUSRTransitionModel(InflationModel):
         # Set initial conditions for integration appropriately
         # Suppose we want to start 2 efolds before transition (N=-2).
         idx_i = np.argmin(np.abs(N_vals - (-15.0)))
-        self.phi0 = phi_vals[idx_i]
+        self.x0 = phi_vals[idx_i]
         
         H_initial_val = H_vals[idx_i]
         self.y0 = dphi_dN[idx_i] * (H_initial_val / self.S)
@@ -161,5 +161,5 @@ class SmoothUSRTransitionModel(InflationModel):
 
     def get_initial_conditions(self):
         # Multiply f by v0 since the potential function is now dimensionless
-        zi = np.sqrt(self.y0**2/6 + (self.v0 * self.f(self.phi0))/(3*self.S**2))
-        return self.phi0, self.y0, zi, -15.0
+        zi = np.sqrt(self.y0**2/6 + (self.v0 * self.f(self.x0))/(3*self.S**2))
+        return self.x0, self.y0, zi, -15.0

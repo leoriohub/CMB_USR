@@ -51,7 +51,7 @@ def save_background(model, T_span_bg, output_dir, run_label):
     record = {
         "metadata": {
             "model": model.name,
-            "phi0": float(model.phi0),
+            "x0": float(model.x0),
             "y0": float(model.y0),
             "xi": getattr(model, "xi_val", None),
             "lam": getattr(model, "lam", None),
@@ -374,7 +374,7 @@ def main():
     print("\n  1. Background integration...")
     t0 = time.time()
     model = HiggsModel(lam=args.lam, xi=args.xi)
-    model.phi0 = args.phi0
+    model.x0 = args.phi0
     model.y0 = args.y0
     model.T_max = args.T_max
     model.bg_steps = args.bg_steps

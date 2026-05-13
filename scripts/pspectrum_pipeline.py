@@ -233,7 +233,7 @@ def run_pspectrum_pipeline(
         "output_file" : path to saved JSON (if save_outputs=True)
     """
     if phi0 is not None:
-        model.phi0 = float(phi0)
+        model.x0 = float(phi0)
     if y0 is not None:
         model.y0 = float(y0)
 
@@ -296,7 +296,7 @@ def run_pspectrum_pipeline(
     run_id = str(uuid.uuid4())[:8]
     metadata = {
         "model": model.name,
-        "phi0": float(model.phi0),
+        "x0": float(model.x0),
         "y0": float(model.y0),
         "xi": getattr(model, "xi_val", None),
         "m": getattr(model, "m", None),
@@ -464,7 +464,7 @@ def run_pspectrum_pipeline(
         except Exception:
             lam_str = ""
         filename = (f"PS_{safe_model}{m_str}{xi_str}{lam_str}"
-                    f"_phi{model.phi0:.2f}_y0{model.y0:.3f}"
+                    f"_x0{model.x0:.2f}_y0{model.y0:.3f}"
                     f"_Nstar{metadata['N_star']:.0f}"
                     f"_{run_id}.json")
         output_path = os.path.join(output_dir, filename)

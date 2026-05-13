@@ -16,7 +16,7 @@ class HiggsModel(InflationModel):
         self.v0 = self.lam / (4 * self.xi_val**2)
         
         # Default Initial Conditions (USR Exploration Defaults)
-        self.phi0 = 5.70
+        self.x0 = 5.70
         self.y0 = -0.10
 
         # Inflation ends at T ~ 472 for xi=15000
@@ -50,7 +50,7 @@ class FullHiggsModel(InflationModel):
         self.v0 = self.lam / (4 * self.xi_val**2) 
         
         # Standard Initial Conditions
-        self.phi0 = 5.5
+        self.x0 = 5.5
         self.y0 = -1
 
         # Precompute the inverse transformation grid: psi(x) where psi = h/M_P, x = chi/M_P

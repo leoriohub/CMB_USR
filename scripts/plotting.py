@@ -144,7 +144,7 @@ def plot_background(bg_sol, derived, filename="background", subdir="diagnostics"
     ax = axes[0, 0]
     ax.plot(N, x, color=TOL["blue"], lw=1.5)
     ax.set_xlabel(r"$N$ (e-folds)", fontsize=10)
-    ax.set_ylabel(r"$\phi$", fontsize=10)
+    ax.set_ylabel(r"$\phi$ [$M_P$]", fontsize=10)
     ax.grid(True, alpha=0.25, which="both")
 
     ax = axes[0, 1]
@@ -165,8 +165,8 @@ def plot_background(bg_sol, derived, filename="background", subdir="diagnostics"
 
     ax = axes[1, 1]
     ax.plot(x, y, color=TOL["yellow"], lw=1.5)
-    ax.set_xlabel(r"$\phi$", fontsize=10)
-    ax.set_ylabel(r"$d\phi/dT$", fontsize=10)
+    ax.set_xlabel(r"$\phi$ [$M_P$]", fontsize=10)
+    ax.set_ylabel(r"$d\phi/dT$ [code units]", fontsize=10)
     ax.grid(True, alpha=0.25, which="both")
 
     fig.tight_layout()
