@@ -5,14 +5,14 @@ class InflationModel:
 
     Unit conventions (all quantities in natural Planck units, M_P = 1):
       ODE variables:
-        x = phi            — inflaton field value (M_P=1, so dimensionless)
+        x = phi            — inflaton field value (in Planck units)
         y = dx/dT          — field velocity in code time T
         z = H / S          — Hubble rate scaled by code unit factor S
         n = ln(a)          — log scale factor
         T = S * t          — code time (physical time t in Planck units)
 
       Initial conditions:
-        x0   = x(0)        — initial field value (in Planck units, M_P=1)
+        x0   = x(0)        — initial field value (in Planck units)
         y0   = y(0)        — initial field velocity dx/dT (code units)
 
       Potential:
@@ -20,7 +20,7 @@ class InflationModel:
         V = v0 * f(x) / S^2 — potential in code energy units
 
     So x0 = 6.60 means the field starts at phi = 6.60 in Planck units
-    (phi ~ 6.6 M_P), and y0 = -0.736 means dx/dT = -0.736 at T=0.
+    (i.e. phi_0 = 6.60 M_P), and y0 = -0.736 means dx/dT = -0.736 at T=0.
 
     S = 5e-5 keeps all ODE variables O(1) during inflation.
 
