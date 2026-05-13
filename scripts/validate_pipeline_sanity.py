@@ -185,7 +185,7 @@ def main():
         path = os.path.join(out_dir, f"pipeline_sanity.png")
         fig.savefig(path, dpi=300, bbox_inches="tight")
         print(f"  Saved: {path}")
-    plt.close(fig)
+        plt.close(fig)
     except ImportError:
         print("  Skipping plot (matplotlib not available)")
 
