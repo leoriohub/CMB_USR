@@ -154,7 +154,26 @@ Rule of thumb: if you would not put it on arXiv, do not put it in a .md file.
 ### 6. Higgs-Only Scope
 This project is exclusively about Higgs inflation (ξ=15000, λ=0.13) unless explicitly stated otherwise. Punctuated inflation (m=1.1323e-7, λ=3.3299e-15) is a reference model used **only** for validating solvers and cross-checking pipeline behavior — not as a primary target for analysis, optimization, or plotting. Do not run, tune, or analyze punctuated inflation unprompted.
 
-### 7. Additional Conventions
+### 7. Unit Conventions (Planck units, M_P = 1)
+
+The code works in natural Planck units (M_P = 1). The ODE variables are:
+
+| Attribute / Var | Meaning | Formal definition |
+|---|---|---|
+| `model.x0`, ODE `x` | field value (in Planck units) | `x = φ` (M_P=1, so `φ/M_P = φ`) |
+| `model.y0`, ODE `y` | field velocity in code time | `y = dx/dT = φ̇ / (S·M_P²)` |
+| ODE `z` | Hubble rate in code units | `z = H / S` |
+| ODE `n` | log scale factor | `n = ln(a)` |
+| `S` | code time scaling factor | `S = 5e-5` |
+| `T` | code time | `T = S·t` (t = physical time) |
+| `v0` | potential normalization | `e.g. λ/(4ξ²)` for Higgs |
+
+When setting `model.x0 = 6.60`: initial field φ₀ = 6.60 M_P.
+When setting `model.y0 = -0.736`: initial dx/dT = -0.736.
+
+**Backward compat:** `model.phi0` is an alias for `model.x0`.
+
+### 8. Additional Conventions
 - Scripts are temporary unless user explicitly says to keep them. Delete analysis scripts after use.
 - Heavy compute (scans, optimizations) runs on lab machine via `ssh uni`.
 - Long-running jobs use JSONL incremental logging (crash-safe).
@@ -182,7 +201,7 @@ Deep Higgs dips require violent kinetic kicks that shorten total inflation (N_to
 - `scripts/pspectrum_pipeline.py` — Main CLI for P_S(k) pipelines
 - `notebooks/Golden_Config_Comparison.ipynb` — Higgs vs Punctuated comparison
 
-### 8. CAMB C_ell Computation
+### 9. CAMB C_ell Computation
 CAMB is the official Python package (`import camb`), available via pip/conda. `scripts/camb_wrapper.py` is a thin convenience layer — not a custom wrapper.
 - `_make_camb_params()`: CAMBparams with Planck 2018 LCDM cosmology (H0=67.66, ombh2=0.02242, omch2=0.11933, tau=0.054, mnu=0.06)
 - `compute_cl_full_camb(data)`: Inject custom P_S(k) via `set_initial_power_table()`, returns C_ell^TT/TE/EE (converted from CAMB's ℓ(ℓ+1)/(2π) convention to conventional C_ℓ)
