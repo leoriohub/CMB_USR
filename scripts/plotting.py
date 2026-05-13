@@ -1,14 +1,11 @@
-"""Unified plotting utilities for CMB anomaly analysis.
-
-Extracted from run_full_analysis.py, plot_pspectrum.py, plot_potential.py,
-plot_usr_discussion.py, higgs_usr_optimizer.py, and usr_chi2_optimizer.py.
+"""Plotting utilities for CMB anomaly analysis.
 
 All functions follow publication-ready conventions:
 - Two-column format (~3.25-3.5in wide single, ~7in full)
 - 300 DPI minimum
 - Colorblind-friendly palette (Tol 2012)
 - Big fonts: axis >= 14pt, ticks >= 12pt, legend >= 11pt
-- Export both PNG and PDF
+- Export PNG only
 """
 import os
 
@@ -34,10 +31,7 @@ TOL = {
 
 OUTPUT_DIRS = {
     "diagnostics": os.path.join(ROOT_DIR, "outputs/plots/diagnostics"),
-    "optimizer": os.path.join(ROOT_DIR, "outputs/plots/optimizer"),
     "powerloss": os.path.join(ROOT_DIR, "outputs/plots/powerloss"),
-    "top30": os.path.join(ROOT_DIR, "outputs/plots/top30_candidates"),
-    "punctuated": os.path.join(ROOT_DIR, "outputs/plots/punctuated_potential"),
 }
 
 
@@ -227,104 +221,4 @@ def plot_camb_fullsky(camb_data, filename="camb_fullsky", subdir="powerloss"):
     _save_fig(fig, filename, subdir)
 
 
-def plot_scan_heatmap(phi0_vals, y0_vals, chi2_map, supp_map,
-                      filename="scan_heatmap", subdir="optimizer"):
-    """Chi2 and suppression heatmaps from grid scan."""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7, 3))
 
-    im1 = ax1.pcolormesh(phi0_vals, y0_vals, chi2_map, shading="auto",
-                         cmap="viridis_r")
-    ax1.set_xlabel(r"$\phi_0$", fontsize=10)
-    ax1.set_ylabel(r"$y_0$", fontsize=10)
-    ax1.set_title(r"$\chi^2$ vs Planck low-$\ell$", fontsize=11)
-    fig.colorbar(im1, ax=ax1, label=r"$\chi^2$")
-
-    im2 = ax2.pcolormesh(phi0_vals, y0_vals, supp_map, shading="auto",
-                         cmap="coolwarm", vmin=-50, vmax=50)
-    ax2.set_xlabel(r"$\phi_0$", fontsize=10)
-    ax2.set_ylabel(r"$y_0$", fontsize=10)
-    ax2.set_title("Dip Suppression [%]", fontsize=11)
-    fig.colorbar(im2, ax=ax2, label="suppression %")
-
-    fig.tight_layout()
-    _save_fig(fig, filename, subdir)
-
-
-def plot_convergence(records, filename="convergence", subdir="optimizer"):
-    """Convergence metrics from JSONL log."""
-    ok_recs = [r for r in records if r.get("status") == "ok"]
-    if not ok_recs:
-        return
-
-    evals = np.arange(len(ok_recs))
-    chi2 = np.array([r["chi2"] for r in ok_recs])
-    ns = np.array([r["ns_MS"] for r in ok_recs])
-    kd = np.array([r.get("k_dip", -1.0) for r in ok_recs])
-    loss = np.array([r["loss"] for r in ok_recs])
-    best = np.minimum.accumulate(loss)
-
-    fig, axes = plt.subplots(3, 1, figsize=(5, 6), sharex=True)
-
-    axes[0].plot(evals, loss, "b.", alpha=0.25, ms=2, label="all")
-    axes[0].plot(evals, best, "r-", lw=2, label="running best")
-    axes[0].set_ylabel("Loss", fontsize=10)
-    axes[0].set_title("Optimizer Convergence", fontsize=11)
-    axes[0].legend(fontsize=8)
-    axes[0].grid(True, alpha=0.3)
-
-    axes[1].axhline(0.975, color="k", ls="--", alpha=0.5, label="target")
-    axes[1].plot(evals, ns, "g.", alpha=0.25, ms=2)
-    axes[1].set_ylabel(r"$n_s$", fontsize=10)
-    axes[1].set_ylim(0.94, 1.02)
-    axes[1].legend(fontsize=8)
-    axes[1].grid(True, alpha=0.3)
-
-    ok_k = kd > 0
-    if np.any(ok_k):
-        axes[2].semilogy(evals[ok_k], kd[ok_k], "m.", alpha=0.25, ms=2)
-    axes[2].axhline(1e-4, color="k", ls="--", alpha=0.3)
-    axes[2].axhline(5e-4, color="k", ls="--", alpha=0.3)
-    axes[2].set_ylabel(r"$k_{\rm dip}$", fontsize=10)
-    axes[2].set_xlabel("Evaluation", fontsize=10)
-    axes[2].grid(True, alpha=0.3)
-
-    fig.tight_layout()
-    _save_fig(fig, filename, subdir)
-
-
-def plot_best_dashboard(ells_usr, D_usr, ells_lcdm, D_lcdm,
-                        ells_pl, D_pl, D_err, phi0, y0, N_star,
-                        k_dip, chi2, chi2_lcdm, filename="best_dashboard",
-                        subdir="optimizer"):
-    """D_ell comparison and suppression ratio for best config."""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7, 3))
-
-    ax1.errorbar(ells_pl, D_pl, yerr=D_err, fmt="ko", ms=4,
-                 capsize=2, label="Planck 2018")
-    ax1.semilogx(ells_usr, D_usr, "r-", lw=1.5, label="Best")
-    ax1.semilogx(ells_lcdm, D_lcdm, "gray", ls="--", lw=1, label=r"$\Lambda$CDM")
-    ax1.set_xlabel(r"$\ell$", fontsize=10)
-    ax1.set_ylabel(r"$D_\ell\ [\mu{\rm K}^2]$", fontsize=10)
-    ax1.set_title(r"Low-$\ell$ Power Spectrum", fontsize=11)
-    ax1.legend(fontsize=8)
-    ax1.set_xlim(1.5, 30)
-    ax1.grid(True, alpha=0.3)
-
-    ratio = D_usr / np.interp(ells_usr, ells_lcdm, D_lcdm)
-    ax2.semilogx(ells_usr, ratio, "r-", lw=1.5, label="USR / LCDM")
-    ax2.axhline(1.0, color="k", ls="--", lw=1, alpha=0.5)
-    ax2.fill_between(ells_usr, ratio, 1.0, alpha=0.2, color="red",
-                     where=(ratio < 1.0))
-    ax2.set_xlabel(r"$\ell$", fontsize=10)
-    ax2.set_ylabel(r"$D_\ell / D_\ell^{\rm LCDM}$", fontsize=10)
-    ax2.set_title("Suppression vs LCDM", fontsize=11)
-    ax2.legend(fontsize=8)
-    ax2.set_xlim(1.5, 30)
-    ax2.grid(True, alpha=0.3)
-
-    fig.suptitle(
-        f"$\\phi_0$={phi0:.2f}, $y_0$={y0:.3f}, $N_{{*}}$={N_star:.0f}\n"
-        f"$\\chi^2$={chi2:.1f}  $\\Delta\\chi^2$={chi2 - chi2_lcdm:+.1f}",
-        fontsize=10, fontweight="bold")
-    fig.tight_layout()
-    _save_fig(fig, filename, subdir)
