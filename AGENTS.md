@@ -151,37 +151,38 @@ This repository is public. Do not write into .md files:
 - Embargoed/unpublished results or data
 Rule of thumb: if you would not put it on arXiv, do not put it in a .md file.
 
-### 6. Additional Conventions
+### 6. Higgs-Only Scope
+This project is exclusively about Higgs inflation (ξ=15000, λ=0.13) unless explicitly stated otherwise. Punctuated inflation (m=1.1323e-7, λ=3.3299e-15) is a reference model used **only** for validating solvers and cross-checking pipeline behavior — not as a primary target for analysis, optimization, or plotting. Do not run, tune, or analyze punctuated inflation unprompted.
+
+### 7. Additional Conventions
 - Scripts are temporary unless user explicitly says to keep them. Delete analysis scripts after use.
 - Heavy compute (scans, optimizations) runs on lab machine via `ssh uni`.
 - Long-running jobs use JSONL incremental logging (crash-safe).
 - Commit messages: semantic, atomic, imperative mood (e.g. "add: ...", "fix: ...", "refactor: ...").
 
-## Project Context — Higgs USR vs Punctuated Inflation
+## Project Context — Higgs USR Inflation
 
 ### Goal
-Tune initial conditions (φ₀, y₀) and N_star for Higgs inflation (ξ=15000, λ=0.13) and compare with Punctuated Inflation (m=1.1323e-7, λ=3.3299e-15, N_star=77.2) to explain the CMB low-ℓ anomaly via P_S(k) suppression.
+Tune initial conditions (φ₀, y₀) and N_star for Higgs inflation (ξ=15000, λ=0.13) to explain the CMB low-ℓ anomaly via P_S(k) suppression.
 
 ### Physics Summary
 - **Higgs USR**: Starts in kinetic dominance (ε_H=2.15 at N=0), extreme Hubble friction kills it in <0.1 e-fold. Localized dip via ε_H suppression, not a hard cutoff.
-- **Punctuated**: Creates a peak via η_H>0 amplification. Aligned at N_star=77.2 → peak at k=10⁻³.
-- **Mechanism difference**: Punctuated amplifies, Higgs suppresses. Two different approaches to fitting the low-ℓ deficit.
+- **Punctuated Inflation** (reference model only): Creates a peak via η_H>0 amplification. Aligned at N_star=77.2 → peak at k=10⁻³. Used exclusively for solver validation and cross-checking pipeline behavior.
 
 ### Current Best Configs
 - Higgs (N_star≥50): φ₀=6.60, y₀=−0.736, N_star=52.6, χ²=16.79
 - Deepest dip (N_star≈38): stronger suppression but lower N_star
-- Punctuated: φ₀=12.00, y₀=0.000, N_star=77.2, m=1.1323e-7, λ=3.3299e-15
+- Punctuated (reference only): φ₀=12.00, y₀=0.000, N_star=77.2, m=1.1323e-7, λ=3.3299e-15
 
 ### Key Constraint
 Deep Higgs dips require violent kinetic kicks that shorten total inflation (N_total≈43.6). N_star≥50 configs need higher φ₀ (further on plateau) and milder kicks, which weakens the dip and raises χ².
 
 ### Reference Files
-- `models/punctuated.py` — Punctuated inflaton bg_steps=100k
+- `models/punctuated.py` — Punctuated inflaton (validation only) bg_steps=100k
 - `scripts/pspectrum_pipeline.py` — Main CLI for P_S(k) pipelines
 - `notebooks/Golden_Config_Comparison.ipynb` — Higgs vs Punctuated comparison
-- `PUNCTUATED_INFLATION_MATCH.md` — N_star=77.2 derivation
 
-### 7. CAMB C_ell Computation
+### 8. CAMB C_ell Computation
 CAMB is the official Python package (`import camb`), available via pip/conda. `scripts/camb_wrapper.py` is a thin convenience layer — not a custom wrapper.
 - `_make_camb_params()`: CAMBparams with Planck 2018 LCDM cosmology (H0=67.66, ombh2=0.02242, omch2=0.11933, tau=0.054, mnu=0.06)
 - `compute_cl_full_camb(data)`: Inject custom P_S(k) via `set_initial_power_table()`, returns C_ell^TT/TE/EE (converted from CAMB's ℓ(ℓ+1)/(2π) convention to conventional C_ℓ)
