@@ -22,11 +22,12 @@ import sys
 import time
 
 import numpy as np
-from scipy.interpolate import interp1d
 
-import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from scripts.plotting import (
+    plot_background, plot_ps, plot_dell,
+    plot_camb_comparison, plot_camb_fullsky,
+)
 
 import inf_dyn_background as bg_solver
 from models import HiggsModel
@@ -39,19 +40,6 @@ from scripts.pspectrum_pipeline import (
 from scripts.sachs_wolfe import compute_cl_sw, compute_cl_sw_powerlaw
 from scripts.camb_wrapper import compute_cl_full_camb, compute_cl_camb_powerlaw, compute_chi2_camb
 from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
-
-
-# Tol colorblind-friendly palette (Tol 2012)
-TOL = {
-    "blue": "#4477AA",
-    "red": "#CC3311",
-    "green": "#228833",
-    "yellow": "#EE8866",
-    "teal": "#44BB99",
-    "purple": "#AA3377",
-    "grey": "#666666",
-    "dark": "#222222",
-}
 
 
 def save_background(model, T_span_bg, output_dir, run_label):
@@ -213,177 +201,7 @@ def compute_camb(result, output_dir, run_label, ell_max=2500):
     }
 
 
-def plot_background(bg_sol, derived, output_dir, run_label):
-    """4-panel background dashboard, full-width."""
-    x, y, z, n = bg_sol
-    N = derived["N"]
-    epsH = derived["epsH"]
-    etaH = derived["etaH"]
 
-    fig, axes = plt.subplots(2, 2, figsize=(7, 5.5))
-
-    ax = axes[0, 0]
-    ax.plot(N, x, color=TOL["blue"], lw=1.5)
-    ax.set_xlabel(r"$N$ (e-folds)")
-    ax.set_ylabel(r"$\phi$")
-    ax.grid(True, alpha=0.25, which="both")
-
-    ax = axes[0, 1]
-    ax.semilogy(N, epsH, color=TOL["red"], lw=1.5)
-    ax.axhline(1.0, color=TOL["grey"], ls="--", lw=1, alpha=0.5)
-    ax.text(0.98, 0.95, r"$\epsilon_H = 1$", transform=ax.transAxes,
-            color=TOL["grey"], ha="right", va="top")
-    ax.set_xlabel(r"$N$ (e-folds)")
-    ax.set_ylabel(r"$\epsilon_H$")
-    ax.grid(True, alpha=0.25, which="both")
-
-    ax = axes[1, 0]
-    ax.plot(N, etaH, color=TOL["green"], lw=1.5)
-    ax.axhline(0.0, color=TOL["grey"], ls="--", lw=1, alpha=0.5)
-    ax.set_xlabel(r"$N$ (e-folds)")
-    ax.set_ylabel(r"$\eta_H$")
-    ax.grid(True, alpha=0.25, which="both")
-
-    ax = axes[1, 1]
-    ax.plot(x, y, color=TOL["yellow"], lw=1.5)
-    ax.set_xlabel(r"$\phi$")
-    ax.set_ylabel(r"$d\phi/dT$")
-    ax.grid(True, alpha=0.25, which="both")
-
-    fig.tight_layout()
-    for ext in ["png", "pdf"]:
-        path = os.path.join(output_dir, f"background_{run_label}.{ext}")
-        fig.savefig(path, dpi=300, bbox_inches="tight")
-        print(f"  Saved: {path}")
-    plt.close(fig)
-
-
-def plot_ps(result, output_dir, run_label):
-    """P_S(k) plot with LCDM baseline. Curves + legend only."""
-    k = result["k_phys"]
-    ps = result["P_S"]
-
-    mask = np.isfinite(ps)
-    if np.sum(mask) > 5:
-        logk_interp = interp1d(np.log(k[mask]), ps[mask], kind="cubic",
-                               bounds_error=False, fill_value="extrapolate")
-        k_dense = np.logspace(np.log10(k[mask].min()), np.log10(k[mask].max()), 1000)
-        ps_dense = np.clip(logk_interp(np.log(k_dense)), 0, None)
-    else:
-        k_dense, ps_dense = k, ps
-
-    ns_lcdm = 0.965
-    ps_lcdm = As * (k_dense / k_pivot_phys) ** (ns_lcdm - 1.0)
-
-    fig, ax = plt.subplots(figsize=(3.35, 2.6))
-
-    ax.loglog(k_dense, ps_dense, "-", color=TOL["red"], lw=1.5, label="Higgs USR")
-    ax.loglog(k_dense, ps_lcdm, "-", color=TOL["dark"], lw=1.2, alpha=0.6, label=r"$\Lambda$CDM")
-
-    ax.set_xlabel(r"$k\ [{\rm Mpc}^{-1}]$")
-    ax.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$")
-    ax.legend()
-    ax.grid(True, alpha=0.25, which="both")
-
-    fig.tight_layout()
-    for ext in ["png", "pdf"]:
-        path = os.path.join(output_dir, f"ps_{run_label}.{ext}")
-        fig.savefig(path, dpi=300, bbox_inches="tight")
-        print(f"  Saved: {path}")
-    plt.close(fig)
-
-
-def plot_dell(ells, D_ell_model, D_ell_pl, planck_ells, D_planck, D_err_lower, D_err_upper, output_dir, run_label):
-    """D_ell plot with Planck data and LCDM baseline.
-    Interpolates for smooth model curves."""
-    ell_dense = np.linspace(ells.min(), ells.max(), 200)
-    D_model_interp = interp1d(ells, D_ell_model, kind="cubic")(ell_dense)
-    D_pl_interp = interp1d(ells, D_ell_pl, kind="cubic")(ell_dense)
-
-    fig, ax = plt.subplots(figsize=(3.7, 2.6))
-
-    ax.errorbar(
-        planck_ells, D_planck, yerr=[D_err_upper, D_err_lower],
-        fmt="o", color=TOL["dark"], capsize=3, capthick=1,
-        markersize=4, elinewidth=1,
-        label=r"Planck 2018 low-$\ell$ TT",
-    )
-
-    ax.semilogy(ell_dense, D_model_interp, "-", color=TOL["red"], lw=1.5, label="Higgs USR")
-    ax.semilogy(ell_dense, D_pl_interp, "--", color=TOL["dark"], lw=1.2, alpha=0.6, label=r"$\Lambda$CDM")
-
-    ax.set_xlabel(r"$\ell$")
-    ax.set_ylabel(r"$D_\ell^{\,TT}\ [\mu{\rm K}^2]$")
-    ax.legend()
-    ax.grid(True, alpha=0.25, which="both")
-
-    fig.tight_layout()
-    for ext in ["png", "pdf"]:
-        path = os.path.join(output_dir, f"dell_{run_label}.{ext}")
-        fig.savefig(path, dpi=300, bbox_inches="tight")
-        print(f"  Saved: {path}")
-    plt.close(fig)
-
-
-def plot_camb_comparison(camb_data, sw_ells, sw_D, sw_D_pl, output_dir, run_label):
-    """SW vs CAMB comparison plot at low ell."""
-    ells = camb_data["ells"]
-    D_camb = camb_data["D_camb"]
-    D_pl = camb_data["D_pl"]
-    p_ells = camb_data["planck_ells"]
-    D_p = camb_data["D_planck"]
-    D_err_lo = camb_data["D_err_lower"]
-    D_err_hi = camb_data["D_err_upper"]
-
-    low = ells <= 30
-    fig, ax = plt.subplots(figsize=(3.5, 2.8))
-
-    ax.errorbar(p_ells, D_p, yerr=[D_err_hi, D_err_lo],
-                fmt="o", color=TOL["dark"], capsize=3, capthick=1,
-                markersize=4, elinewidth=1, label="Planck 2018", zorder=5)
-    ax.semilogy(ells[low], D_camb[low], "-", color=TOL["blue"], lw=1.5,
-                label="CAMB (full)", zorder=4)
-    ax.semilogy(sw_ells, sw_D, "s-", color=TOL["red"], lw=1.2, ms=3,
-                label="SW-only", zorder=3)
-    ax.semilogy(ells[low], D_pl[low], "--", color=TOL["grey"], lw=1.2,
-                label=r"$\Lambda$CDM (CAMB)", zorder=2)
-
-    ax.set_xlabel(r"$\ell$")
-    ax.set_ylabel(r"$D_\ell^{TT}\ [\mu{\rm K}^2]$")
-    ax.legend(fontsize=8)
-    ax.grid(True, alpha=0.25, which="both")
-    ax.set_xlim(1.5, 31)
-
-    fig.tight_layout()
-    for ext in ["png", "pdf"]:
-        path = os.path.join(output_dir, f"camb_dell_{run_label}.{ext}")
-        fig.savefig(path, dpi=300, bbox_inches="tight")
-        print(f"  Saved: {path}")
-    plt.close(fig)
-
-
-def plot_camb_fullsky(camb_data, output_dir, run_label):
-    """Full-sky CAMB D_ell plot."""
-    ells = camb_data["ells"]
-    D_camb = camb_data["D_camb"]
-    D_pl = camb_data["D_pl"]
-
-    fig, ax = plt.subplots(figsize=(7, 4.5))
-    ax.semilogy(ells, D_camb, "-", color=TOL["red"], lw=1.2, label="Model (CAMB)")
-    ax.semilogy(ells, D_pl, "--", color=TOL["dark"], lw=1.2, alpha=0.6,
-                label=r"$\Lambda$CDM")
-    ax.set_xlabel(r"$\ell$", fontsize=14)
-    ax.set_ylabel(r"$D_\ell^{TT}\ [\mu{\rm K}^2]$", fontsize=14)
-    ax.legend(fontsize=11)
-    ax.grid(True, alpha=0.25, which="both")
-    ax.set_xlim(1.5, ells.max())
-
-    fig.tight_layout()
-    for ext in ["png", "pdf"]:
-        path = os.path.join(output_dir, f"camb_fullsky_{run_label}.{ext}")
-        fig.savefig(path, dpi=300, bbox_inches="tight")
-        print(f"  Saved: {path}")
-    plt.close(fig)
 
 
 def collect_run_outputs(run_label, result, configs_dir, cell_dir, pspectra_dir,
@@ -604,13 +422,15 @@ def main():
 
     print("\n  4. Plotting...")
     t0 = time.time()
-    plot_background(bg_sol, derived, diag_plots_dir, run_label)
-    plot_ps(result, powerloss_plots_dir, run_label)
-    plot_dell(ells, D_ell_model, D_ell_pl, planck_ells, D_planck, D_err_lower, D_err_upper,
-              powerloss_plots_dir, run_label)
+    plot_background(bg_sol, derived, filename=f"background_{run_label}")
+    plot_ps(result["k_phys"], result["P_S"], label="Higgs USR",
+            filename=f"ps_{run_label}")
+    plot_dell(ells, D_ell_model, planck_ells, D_planck, D_err_lower, D_err_upper,
+              D_ell_lcdm=D_ell_pl, ells_lcdm=ells, model_label="Higgs USR",
+              filename=f"dell_{run_label}")
     plot_camb_comparison(camb_data, ells, D_ell_model, D_ell_pl,
-                         powerloss_plots_dir, run_label)
-    plot_camb_fullsky(camb_data, powerloss_plots_dir, run_label)
+                         filename=f"camb_dell_{run_label}")
+    plot_camb_fullsky(camb_data, filename=f"camb_fullsky_{run_label}")
     print(f"     Done in {time.time() - t0:.1f}s")
 
     print("\n  5. Collecting outputs...")
