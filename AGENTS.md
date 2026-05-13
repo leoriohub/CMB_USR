@@ -180,3 +180,13 @@ Deep Higgs dips require violent kinetic kicks that shorten total inflation (N_to
 - `scripts/pspectrum_pipeline.py` — Main CLI for P_S(k) pipelines
 - `notebooks/Golden_Config_Comparison.ipynb` — Higgs vs Punctuated comparison
 - `PUNCTUATED_INFLATION_MATCH.md` — N_star=77.2 derivation
+
+### 7. CAMB C_ell Computation
+CAMB is the official Python package (`import camb`), available via pip/conda. `scripts/camb_wrapper.py` is a thin convenience layer — not a custom wrapper.
+- `_make_camb_params()`: CAMBparams with Planck 2018 LCDM cosmology (H0=67.66, ombh2=0.02242, omch2=0.11933, tau=0.054, mnu=0.06)
+- `compute_cl_full_camb(data)`: Inject custom P_S(k) via `set_initial_power_table()`, returns C_ell^TT/TE/EE (converted from CAMB's ℓ(ℓ+1)/(2π) convention to conventional C_ℓ)
+- `compute_cl_camb_powerlaw()`: LCDM baseline via `InitPower.set_params(As=2.1e-9, ns=0.965, r=0)`
+- `compute_chi2_camb(data)`: χ² vs Planck 2018 low-ℓ TT with asymmetric Commander errors
+- Internally handles k-range extrapolation for CAMB spline
+- Validation: `scripts/test_camb_validation.py` (7 tests, subprocess isolation for global state), `scripts/validate_camb_lcdm.py` (Planck LCDM comparison, peak~220)
+- Pipeline: Inflation solver → MS solver → P_S(k) → `set_initial_power_table()` → CAMB C_ell → Planck comparison
