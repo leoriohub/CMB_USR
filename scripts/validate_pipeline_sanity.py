@@ -182,11 +182,10 @@ def main():
         fig.tight_layout()
         out_dir = "outputs/plots/diagnostics"
         os.makedirs(out_dir, exist_ok=True)
-        for ext in ["png", "pdf"]:
-            path = os.path.join(out_dir, f"pipeline_sanity.{ext}")
-            fig.savefig(path, dpi=300, bbox_inches="tight")
-            print(f"  Saved: {path}")
-        plt.close(fig)
+        path = os.path.join(out_dir, f"pipeline_sanity.png")
+        fig.savefig(path, dpi=300, bbox_inches="tight")
+        print(f"  Saved: {path}")
+    plt.close(fig)
     except ImportError:
         print("  Skipping plot (matplotlib not available)")
 

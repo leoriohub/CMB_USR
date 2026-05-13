@@ -118,7 +118,7 @@ All plots must be ready for two-column publication format:
 - Proper aspect ratio: ~3.25-3.5in wide (single-column) or ~7in (full width)
 - Colorblind-friendly palette (e.g., Tol, Wong, viridis)
 - Minimal whitespace, tight bounding box
-- Export both PNG (viewing) and PDF (paper)
+- Export PNG only (no PDF)
 
 ### 3. Outputs Folder Structure
 Strict hierarchy — every output file goes in its correct subdirectory:

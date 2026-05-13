@@ -236,16 +236,15 @@ def collect_run_outputs(run_label, result, configs_dir, cell_dir, pspectra_dir,
     if pspectrum_path and os.path.exists(pspectrum_path):
         files.append((pspectrum_path, subdirs["pspectra"]))
 
-    for ext in ["png", "pdf"]:
-        files.append(
-            (os.path.join(diag_plots_dir, f"background_{run_label}.{ext}"),
-             subdirs["plots/diagnostics"]))
-        files.append(
-            (os.path.join(powerloss_plots_dir, f"ps_{run_label}.{ext}"),
-             subdirs["plots/powerloss"]))
-        files.append(
-            (os.path.join(powerloss_plots_dir, f"dell_{run_label}.{ext}"),
-             subdirs["plots/powerloss"]))
+    files.append(
+        (os.path.join(diag_plots_dir, f"background_{run_label}.png"),
+         subdirs["plots/diagnostics"]))
+    files.append(
+        (os.path.join(powerloss_plots_dir, f"ps_{run_label}.png"),
+         subdirs["plots/powerloss"]))
+    files.append(
+        (os.path.join(powerloss_plots_dir, f"dell_{run_label}.png"),
+         subdirs["plots/powerloss"]))
 
     copied = []
     for src, dst_dir in files:
