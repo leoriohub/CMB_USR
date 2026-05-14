@@ -128,9 +128,14 @@ def main():
     out_dir = "outputs/simulations/c_ell"
     os.makedirs(out_dir, exist_ok=True)
     record = {
+        "_type": "result",
+        "format_version": 2,
         "metadata": {"model": "Punctuated", "m": M, "lam": LAM, "N_star": N_STAR},
-        "ells": ells.tolist(), "C_TT": C_TT.tolist(),
-        "D_TT": D_model.tolist(),
+        "c_ell": {
+            "ells": ells.tolist(),
+            "C_ell_TT": C_TT.tolist(),
+            "D_ell": D_model.tolist(),
+        },
     }
     out_path = os.path.join(out_dir, "pipeline_sanity_punctuated.json")
     with open(out_path, "w") as f:

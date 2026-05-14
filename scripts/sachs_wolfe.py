@@ -136,15 +136,21 @@ def compute_cl_sw_from_file(path, ell_max=30, r_ls=r_ls):
     return compute_cl_sw(data, ell_max=ell_max, r_ls=r_ls)
 
 
-def save_cl_results(ells, C_ell_TT, k_grid, Ps_grid, metadata, output_path):
+def save_cl_results(ells, C_ell_TT, k_phys, P_S, metadata, output_path):
     """Save C_ell results to JSON for later analysis or plotting."""
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     record = {
+        "_type": "result",
+        "format_version": 2,
         "metadata": metadata,
-        "ells": ells.tolist(),
-        "C_ell_TT": C_ell_TT.tolist(),
-        "k_grid": k_grid.tolist(),
-        "Ps_grid": Ps_grid.tolist(),
+        "spectrum": {
+            "k_phys": k_phys.tolist(),
+            "P_S": P_S.tolist(),
+        },
+        "c_ell": {
+            "ells": ells.tolist(),
+            "C_ell_TT": C_ell_TT.tolist(),
+        },
     }
     with open(output_path, "w") as f:
         json.dump(record, f, indent=2)

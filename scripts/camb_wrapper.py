@@ -262,11 +262,15 @@ def save_camb_results(ells, C_ell_TT, C_ell_TE, C_ell_EE, metadata, output_path)
     """Save CAMB C_ell results to JSON."""
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     record = {
+        "_type": "result",
+        "format_version": 2,
         "metadata": metadata,
-        "ells": ells.tolist(),
-        "C_ell_TT": C_ell_TT.tolist(),
-        "C_ell_TE": C_ell_TE.tolist(),
-        "C_ell_EE": C_ell_EE.tolist(),
+        "c_ell": {
+            "ells": ells.tolist(),
+            "C_ell_TT": C_ell_TT.tolist(),
+            "C_ell_TE": C_ell_TE.tolist(),
+            "C_ell_EE": C_ell_EE.tolist(),
+        },
     }
     with open(output_path, "w") as f:
         json.dump(record, f, indent=2)
@@ -311,10 +315,15 @@ if __name__ == "__main__":
             comp_path = os.path.join(args.output_dir, f"comparison_{bn}.json")
             os.makedirs(args.output_dir, exist_ok=True)
             comp_record = {
-                "ells": comp["ells"].tolist(),
-                "D_ell_SW": comp["D_ell_SW"].tolist(),
-                "D_ell_full": comp["D_ell_full"].tolist(),
-                "D_ell_ISW": comp["D_ell_ISW"].tolist(),
+                "_type": "result",
+                "format_version": 2,
+                "metadata": {"computation": "SW_vs_CAMB_comparison"},
+                "comparison": {
+                    "ells": comp["ells"].tolist(),
+                    "D_ell_SW": comp["D_ell_SW"].tolist(),
+                    "D_ell_full": comp["D_ell_full"].tolist(),
+                    "D_ell_ISW": comp["D_ell_ISW"].tolist(),
+                },
             }
             with open(comp_path, "w") as f:
                 json.dump(comp_record, f, indent=2)

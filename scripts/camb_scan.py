@@ -36,6 +36,12 @@ D2_LCDM = 1028.7
 _lcdm_cache = {}
 
 
+def _generate_grids(args):
+    k_phys = np.logspace(np.log10(args.k_min), np.log10(args.k_max), args.num_k)
+    ells = np.arange(args.ell_max + 1)
+    return k_phys, ells
+
+
 def compute_camb_curves(ps_data, ell_max):
     """Full CAMB: returns d2, ells, D_ell, C_TT, C_TE, C_EE."""
     from scripts.camb_wrapper import compute_cl_full_camb
@@ -86,6 +92,8 @@ def load_completed(log_path):
                 continue
             try:
                 rec = json.loads(line)
+                if rec.get("_type") == "header":
+                    continue
                 k = (round(rec.get("phi0", 0), 4),
                      round(rec.get("y0", 0), 4),
                      round(rec.get("N_star", 0), 2))
@@ -157,11 +165,11 @@ def evaluate_config(phi0, y0, N_star, args):
         "N_total": round(meta.get("N_total", 0), 1),
         "N_star": round(N_star, 4),
         "d2_lcdm": round(D2_LCDM, 1),
-        "ells": ells_c.tolist(),
-        "D_ell": [round(v, 4) for v in D_c.tolist()],
-        "C_ell_TT": [round(v, 12) for v in C_TT.tolist()],
-        "k_phys": [round(v, 8) for v in k_phys.tolist()],
-        "P_S": [round(v, 12) for v in P_S.tolist()],
+        "D_ell": D_c.tolist(),
+        "C_ell_TT": C_TT.tolist(),
+        "C_ell_TE": C_TE.tolist(),
+        "C_ell_EE": C_EE.tolist(),
+        "P_S": P_S.tolist(),
     }
 
 
@@ -186,6 +194,21 @@ def run_phase1(args, completed):
                             f"camb_phase1_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     log_file = open(log_path, "a")
+
+    k_phys_grid, ells_grid = _generate_grids(args)
+    _write_log(log_file, {
+        "_type": "header",
+        "k_phys": k_phys_grid.tolist(),
+        "ells": ells_grid.tolist(),
+        "xi": args.xi,
+        "lam": args.lam,
+        "k_min": args.k_min,
+        "k_max": args.k_max,
+        "num_k": args.num_k,
+        "ell_max": args.ell_max,
+        "k_pivot_phys": k_pivot_phys,
+        "As": As,
+    })
 
     t0 = time.time()
     results = []
@@ -267,6 +290,7 @@ def run_phase1(args, completed):
 
                 done += 1
                 entry = {
+                    "_type": "data",
                     "eval": done, "total": total,
                     "phi0": round(phi0, 4), "y0": round(y0, 4),
                     "N_star": N_star,
@@ -278,6 +302,8 @@ def run_phase1(args, completed):
 
                 res = evaluate_config(phi0, y0, N_star, args)
                 entry.update(res)
+                entry.pop("k_phys", None)
+                entry.pop("ells", None)
 
                 _write_log(log_file, entry)
 
@@ -322,7 +348,7 @@ def find_promising_regions(log_path, args):
                 rec = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if rec.get("status") != "ok":
+            if rec.get("_type") == "header" or rec.get("status") != "ok":
                 continue
             chi2 = rec.get("chi2", 999)
             d2 = rec.get("d2", 9999)
@@ -375,6 +401,21 @@ def run_phase2(args, completed, regions):
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     log_file = open(log_path, "a")
 
+    k_phys_grid, ells_grid = _generate_grids(args)
+    _write_log(log_file, {
+        "_type": "header",
+        "k_phys": k_phys_grid.tolist(),
+        "ells": ells_grid.tolist(),
+        "xi": args.xi,
+        "lam": args.lam,
+        "k_min": args.k_min,
+        "k_max": args.k_max,
+        "num_k": args.num_k,
+        "ell_max": args.ell_max,
+        "k_pivot_phys": k_pivot_phys,
+        "As": As,
+    })
+
     total_est = len(regions) * args.n_phi0_fine * args.n_y0_fine * args.n_nstar_fine
     t0 = time.time()
     done = [0]
@@ -406,6 +447,7 @@ def run_phase2(args, completed, regions):
 
                     done[0] += 1
                     entry = {
+                        "_type": "data",
                         "eval": done[0], "total": total_est,
                         "phi0": round(phi0, 4), "y0": round(y0, 4),
                         "N_star": N_star,
@@ -415,6 +457,8 @@ def run_phase2(args, completed, regions):
 
                     res = evaluate_config(phi0, y0, N_star, args)
                     entry.update(res)
+                    entry.pop("k_phys", None)
+                    entry.pop("ells", None)
 
                     _write_log(log_file, entry)
 
@@ -454,7 +498,7 @@ def print_summary(log_path_broad, log_path_fine=None):
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if rec.get("status") != "ok":
+                if rec.get("_type") == "header" or rec.get("status") != "ok":
                     continue
                 chi2 = rec.get("chi2", 999)
                 d2 = rec.get("d2", 9999)

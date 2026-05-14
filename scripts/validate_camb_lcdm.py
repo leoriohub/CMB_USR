@@ -131,12 +131,16 @@ def validate_LCDM():
 
     # ── Save results ──
     record = {
+        "_type": "result",
+        "format_version": 2,
         "metadata": {"model": "LCDM_powerlaw", "As": As, "ns": 0.965},
-        "ells": ells.tolist(),
-        "C_TT": C_TT.tolist(),
-        "C_TE": C_TE.tolist(),
-        "C_EE": C_EE.tolist(),
-        "D_TT": D_TT.tolist(),
+        "c_ell": {
+            "ells": ells.tolist(),
+            "C_ell_TT": C_TT.tolist(),
+            "C_ell_TE": C_TE.tolist(),
+            "C_ell_EE": C_EE.tolist(),
+            "D_ell": D_TT.tolist(),
+        },
         "validation": {
             "peak_ell": peak_ell,
             "peak_D_TT": float(D_TT[peak_idx]),
