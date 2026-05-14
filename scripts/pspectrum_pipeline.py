@@ -328,6 +328,8 @@ def run_pspectrum_pipeline(
             return
         n_comp = int(np.sum(np.isfinite(P_S_raw)))
         partial = {
+            "_type": "checkpoint",
+            "format_version": 2,
             "metadata": metadata,
             "spectrum": {
                 "k_phys": k_phys_grid.tolist(),
@@ -483,6 +485,8 @@ def run_pspectrum_pipeline(
             return val
 
         record = {
+            "_type": "result",
+            "format_version": 2,
             "metadata": {k: convert(v) for k, v in metadata.items()},
             "spectrum": {
                 "k_phys": convert(k_phys_grid),

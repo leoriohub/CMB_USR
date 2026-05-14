@@ -49,6 +49,8 @@ def save_background(model, T_span_bg, output_dir, run_label):
 
     x, y, z, n = bg_sol
     record = {
+        "_type": "result",
+        "format_version": 2,
         "metadata": {
             "model": model.name,
             "x0": float(model.x0),
@@ -109,25 +111,29 @@ def save_cell(result, output_dir, run_label):
     chi2_lcdm_val = chi2_model(D_ell_pl)
 
     record = {
-        "metadata": {"ell_max": ell_max, "r_ls": r_ls, "T_cmb": T_cmb},
-        "model": {
-            "ells": ells.tolist(),
-            "C_ell": C_ell.tolist(),
-            "D_ell": D_ell.tolist(),
-            "chi2": chi2_model_val,
-        },
-        "lcdm": {
-            "ells": ells.tolist(),
-            "C_ell": C_ell_pl.tolist(),
-            "D_ell": D_ell_pl.tolist(),
-            "ns": 0.965,
-            "chi2": chi2_lcdm_val,
-        },
-        "planck_data": {
-            "ells": planck_ells.tolist(),
-            "D_ell": D_planck.tolist(),
-            "D_ell_err_lower": D_err_lower.tolist(),
-            "D_ell_err_upper": D_err_upper.tolist(),
+        "_type": "result",
+        "format_version": 2,
+        "metadata": {"ell_max": ell_max, "r_ls": r_ls, "T_cmb": T_cmb, "computation": "Sachs-Wolfe"},
+        "c_ell": {
+            "model": {
+                "ells": ells.tolist(),
+                "C_ell_TT": C_ell.tolist(),
+                "D_ell": D_ell.tolist(),
+                "chi2": chi2_model_val,
+            },
+            "lcdm": {
+                "ells": ells.tolist(),
+                "C_ell_TT": C_ell_pl.tolist(),
+                "D_ell": D_ell_pl.tolist(),
+                "ns": 0.965,
+                "chi2": chi2_lcdm_val,
+            },
+            "planck_data": {
+                "ells": planck_ells.tolist(),
+                "D_ell": D_planck.tolist(),
+                "D_ell_err_lower": D_err_lower.tolist(),
+                "D_ell_err_upper": D_err_upper.tolist(),
+            },
         },
     }
 
@@ -162,24 +168,28 @@ def compute_camb(result, output_dir, run_label, ell_max=2500):
         chi2_lcdm += (r_lcdm / sigma) ** 2
 
     record = {
-        "metadata": {"ell_max": ell_max},
-        "model": {
-            "ells": ells_camb.tolist(),
-            "C_ell": C_camb.tolist(),
-            "D_ell": D_camb.tolist(),
-            "chi2": chi2_model,
-        },
-        "lcdm": {
-            "ells": ells_pl.tolist(),
-            "C_ell": C_pl.tolist(),
-            "D_ell": D_pl.tolist(),
-            "chi2": chi2_lcdm,
-        },
-        "planck_data": {
-            "ells": planck_ells.tolist(),
-            "D_ell": D_planck.tolist(),
-            "D_ell_err_lower": D_err_lower.tolist(),
-            "D_ell_err_upper": D_err_upper.tolist(),
+        "_type": "result",
+        "format_version": 2,
+        "metadata": {"ell_max": ell_max, "computation": "CAMB_full"},
+        "c_ell": {
+            "model": {
+                "ells": ells_camb.tolist(),
+                "C_ell_TT": C_camb.tolist(),
+                "D_ell": D_camb.tolist(),
+                "chi2": chi2_model,
+            },
+            "lcdm": {
+                "ells": ells_pl.tolist(),
+                "C_ell_TT": C_pl.tolist(),
+                "D_ell": D_pl.tolist(),
+                "chi2": chi2_lcdm,
+            },
+            "planck_data": {
+                "ells": planck_ells.tolist(),
+                "D_ell": D_planck.tolist(),
+                "D_ell_err_lower": D_err_lower.tolist(),
+                "D_ell_err_upper": D_err_upper.tolist(),
+            },
         },
     }
 
