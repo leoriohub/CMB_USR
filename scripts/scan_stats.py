@@ -65,7 +65,15 @@ def filter_records(records, expr):
 
 
 def compute_stats(records):
-    return {}
+    if not records:
+        return {}
+    return {
+        "d2": np.array([r.get("d2", 9999) for r in records]),
+        "chi2": np.array([r.get("chi2", 999) for r in records]),
+        "N_star": np.array([r.get("N_star", 0) for r in records]),
+        "suppression": np.array([r.get("suppression_pct", 0) for r in records]),
+        "k_dip": np.array([r.get("k_dip", 0) for r in records]),
+    }
 
 
 def compute_correlations(records):
@@ -87,7 +95,16 @@ def print_summary(records, label):
 
 
 def print_distribution(records):
-    print("  (Task 2)")
+    stats = compute_stats(records)
+    if not stats:
+        return
+    print(f"\n  Distribution Statistics:")
+    print(f"  {'Metric':<14} {'Mean':>9} {'Median':>9} {'Std':>9} {'Min':>9} {'Max':>9}")
+    print(f"  {'-'*59}")
+    for name, arr in [("D2", "d2"), ("Chi2", "chi2"), ("N*", "N_star"),
+                      ("Suppression", "suppression"), ("k_dip", "k_dip")]:
+        a = stats[arr]
+        print(f"  {name:<14} {np.mean(a):>9.2f} {np.median(a):>9.2f} {np.std(a):>9.2f} {np.min(a):>9.2f} {np.max(a):>9.2f}")
 
 
 def print_top(records, sort_by, top_n):
