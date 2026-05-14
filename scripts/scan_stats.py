@@ -180,11 +180,50 @@ def print_correlations(records):
 
 
 def print_comparison(file_stats):
-    print("  (Task 6)")
+    if len(file_stats) < 2:
+        return
+    print(f"\n  File Comparison:")
+    print(f"  {'Metric':<18}", end="")
+    for fs in file_stats:
+        print(f" {fs['label'][:20]:>20}", end="")
+    print(f" {'Δ':>10}")
+    print(f"  {'-'*18} {'-'*20*len(file_stats)} {'-'*10}")
+
+    rows = [
+        ("Total ok", lambda fs: fs["n"]),
+        ("D2 min", lambda fs: min(fs.get("d2s", [9999])) if fs.get("d2s") else 0),
+        ("D2 mean", lambda fs: np.mean(fs.get("d2s", [9999])) if fs.get("d2s") else 0),
+        ("Chi2 min", lambda fs: min(fs.get("chi2s", [999])) if fs.get("chi2s") else 0),
+        ("Chi2 mean", lambda fs: np.mean(fs.get("chi2s", [999])) if fs.get("chi2s") else 0),
+        ("N* mean", lambda fs: np.mean(fs.get("nstars", [0])) if fs.get("nstars") else 0),
+    ]
+    for name, accessor in rows:
+        vals = [accessor(fs) for fs in file_stats]
+        delta = vals[-1] - vals[0]
+        print(f"  {name:<18}", end="")
+        for v in vals:
+            print(f" {v:>20.1f}", end="")
+        print(f" {delta:>+10.1f}")
 
 
 def export_results(records, fmt, prefix):
-    print("  (Task 7)")
+    if not records:
+        print("  No records to export")
+        return
+    export_keys = ["phi0", "y0", "N_star", "chi2", "d2", "k_dip", "suppression_pct", "N_total"]
+    if fmt == "json":
+        path = f"{prefix}.json"
+        with open(path, "w") as f:
+            clean = [{k: r.get(k) for k in export_keys} for r in records]
+            json.dump(clean, f, indent=2)
+        print(f"  Exported: {path} ({len(clean)} records)")
+    elif fmt == "csv":
+        path = f"{prefix}.csv"
+        with open(path, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=export_keys, extrasaction="ignore")
+            w.writeheader()
+            w.writerows(records)
+        print(f"  Exported: {path} ({len(records)} records)")
 
 
 def main():
