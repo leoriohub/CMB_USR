@@ -588,6 +588,11 @@ def setup_args():
 def main():
     args = setup_args()
 
+    if args.max_chi2 is None:
+        args.max_chi2 = CHI2_LCDM if args.mode == "chi2" else 35.0
+    if args.sort_by is None:
+        args.sort_by = args.mode
+
     print(f"{'='*60}", flush=True)
     print(f"  CAMB Higgs USR Scan", flush=True)
     print(f"  Mode: "
@@ -609,7 +614,7 @@ def main():
         log_path_broad = run_phase1(args, completed_phase1)
 
         if args.test:
-            print_summary(log_path_broad)
+            print_summary(log_path_broad, mode=args.mode, max_chi2=args.max_chi2)
             print("\n  Test complete. Check results above.", flush=True)
             return
 
@@ -619,14 +624,14 @@ def main():
 
         if not regions:
             print("\n  No promising regions found. Stopping.", flush=True)
-            print_summary(log_path_broad)
+            print_summary(log_path_broad, mode=args.mode, max_chi2=args.max_chi2)
             return
 
         if args.auto:
             print(f"\n  Found {len(regions)} promising region(s). "
                   f"Starting Phase 2...", flush=True)
             run_phase2(args, completed_phase2, regions)
-            print_summary(log_path_broad)
+            print_summary(log_path_broad, mode=args.mode, max_chi2=args.max_chi2)
 
     elif args.phase == "fine":
         if args.phase1_log is None:
@@ -642,7 +647,7 @@ def main():
 
         print(f"  Found {len(regions)} promising region(s)", flush=True)
         run_phase2(args, completed_phase2, regions)
-        print_summary(args.phase1_log)
+        print_summary(args.phase1_log, mode=args.mode, max_chi2=args.max_chi2)
 
     if args.phase in ("broad", "fine") or args.test:
         pass
