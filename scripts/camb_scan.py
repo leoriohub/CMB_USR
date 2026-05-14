@@ -74,10 +74,12 @@ def lcdm_baseline(ell_max):
     return ells, C
 
 
-def passes_criteria(chi2, d2, n_star, k_dip):
+def passes_criteria(chi2, d2, n_star, k_dip, mode="chi2", max_chi2=None):
     if k_dip <= 0:
         return False
-    return (chi2 <= CHI2_LCDM and d2 < D2_LCDM
+    if max_chi2 is None:
+        max_chi2 = CHI2_LCDM if mode == "chi2" else 35.0
+    return (chi2 <= max_chi2 and d2 < D2_LCDM
             and n_star >= 50 and K_DIP_MIN <= k_dip <= K_DIP_MAX)
 
 
