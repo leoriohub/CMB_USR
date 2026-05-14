@@ -16,7 +16,7 @@ from datetime import datetime
 
 import numpy as np
 
-from scripts.pspectrum_pipeline import (
+from pspectrum_pipeline import (
     run_pspectrum_pipeline, find_end_of_inflation,
 )
 from scripts.camb_wrapper import compute_cl_camb_powerlaw

@@ -7,7 +7,7 @@ import numpy as np
 
 from models import PunctuatedInflationModel
 from scripts.constants import As, T_cmb
-from scripts.pspectrum_pipeline import run_pspectrum_pipeline
+from pspectrum_pipeline import run_pspectrum_pipeline
 from scripts.camb_wrapper import compute_cl_full_camb, compute_cl_camb_powerlaw, compute_chi2_camb
 from scripts.planck_data import C_ell_to_d_ell
 
