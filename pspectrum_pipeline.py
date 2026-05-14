@@ -12,7 +12,8 @@ K-space conventions
 -------------------
 - k_phys : physical wavenumber (Mpc^-1), same convention as Planck
 - k_code : code-unit wavenumber used internally by the MS solver
-- pivot : Planck pivot scale k_* = 0.05 Mpc^-1 at which P_R(k_*) = A_s
+- pivot : Large-scale pivot k_* = 0.002 Mpc^-1 at which P_R(k_*) = A_s
+          (anchors near ell≈28 for low-ell anomaly; Planck default 0.05 is for high-ell)
 
 The weighted k-grid concentrates modes in the USR dip region
 (10^-4 to 10^-2 Mpc^-1) to resolve the spectral feature.
@@ -209,7 +210,7 @@ def run_pspectrum_pipeline(
     phi0, y0 : float, optional — overrides model defaults
     k_min, k_max : float, physical k-range (Mpc^-1)
     num_k : int, modes per decade if k_phys_grid not provided
-    k_pivot_phys : float, Planck pivot scale (default 0.05 Mpc^-1)
+    k_pivot_phys : float, large-scale pivot scale (default 0.002 Mpc^-1)
     N_star : float, e-folds before end where pivot exits
     k_start_factor : float, k/(aH) at which to start MS integration (default 100)
     T_span_bg : array or None, background time grid
