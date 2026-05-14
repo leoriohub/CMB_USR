@@ -28,7 +28,7 @@ from scipy.integrate import simpson
 from scipy.interpolate import interp1d
 from scipy.special import spherical_jn
 
-from scripts.pspectrum_pipeline import load_pspectrum
+from pspectrum_pipeline import load_pspectrum
 from scripts.constants import As, k_pivot_phys, r_ls, T_cmb
 
 # Planck 2018 best-fit LCDM (Aghanim et al. 2020, TT+lowE)

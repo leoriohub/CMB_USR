@@ -32,7 +32,7 @@ from scripts.plotting import (
 import inf_dyn_background as bg_solver
 from models import HiggsModel
 from scripts.constants import As, k_pivot_phys, r_ls, T_cmb, ROOT_DIR
-from scripts.pspectrum_pipeline import (
+from pspectrum_pipeline import (
     run_pspectrum_pipeline,
     build_weighted_kgrid,
     ensure_k_pivot,

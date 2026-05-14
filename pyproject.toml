@@ -23,4 +23,4 @@ dev = ["pytest", "pytest-cov", "jupyter", "ipykernel"]
 include = ["models*", "scripts*"]
 
 [tool.setuptools]
-py-modules = ["inf_dyn_background", "inf_dyn_MS_full"]
+py-modules = ["inf_dyn_background", "inf_dyn_MS_full", "pspectrum_pipeline"]

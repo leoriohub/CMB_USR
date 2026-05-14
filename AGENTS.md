@@ -223,3 +223,6 @@ ax.errorbar(planck_ells, D_planck,
 Matplotlib interprets `yerr` as (2, N) where row 0 is subtracted from y (lower bar) and row 1 is added to y (upper bar). Putting the larger error first allows the downward bar to cross zero — correct for the low-ℓ estimator.
 
 All existing plotting functions (`plotting.py`, `validate_camb_lcdm.py`, `plot_top_camb_configs.py`, `check_full_dell.py`) use this convention.
+
+### 11. Core Solver Architecture — DO NOT MODIFY
+The root-level solver files (`inf_dyn_background.py`, `inf_dyn_MS_full.py`, `pspectrum_pipeline.py`) are the physics core of the project. Do NOT move, rename, refactor, or modify these files unless explicitly asked by the user. They contain the ODE integration, Mukhanov-Sasaki solver, and pipeline orchestration that every downstream script depends on. Changes to these files can silently break every consumer without visible errors in the modified file itself.

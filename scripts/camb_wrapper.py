@@ -25,7 +25,7 @@ import os
 import numpy as np
 
 from scripts.constants import As, k_pivot_phys
-from scripts.pspectrum_pipeline import load_pspectrum
+from pspectrum_pipeline import load_pspectrum
 from scripts.planck_data import C_ell_to_d_ell
 
 

@@ -24,7 +24,7 @@ def _d_ell(ells, C_ell):
 
 def find_ps_file(name_pattern):
     """Find a P_S(k) file matching a pattern. Returns data or None."""
-    from scripts.pspectrum_pipeline import load_pspectrum
+    from pspectrum_pipeline import load_pspectrum
     dirs = ["outputs/simulations/pspectra"]
     for d in dirs:
         files = glob.glob(os.path.join(d, f"*{name_pattern}*"))
