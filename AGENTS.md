@@ -212,17 +212,32 @@ CAMB is the official Python package (`import camb`), available via pip/conda. `s
 - Pipeline: Inflation solver → MS solver → P_S(k) → `set_initial_power_table()` → CAMB C_ell → Planck comparison
 
 ### 10. Planck Error Bar Convention
-Planck low-ℓ data plots use the **cross-correlation estimator** $\hat{C}_\ell$, which can go **negative** at low ℓ ($2\ell+1$ is small). The `plt.errorbar` call must allow this.
+Planck low-ℓ data (`data/Planck/planck_2018_low_ell_tt.csv`) stores asymmetric
+errors as positive magnitudes: `D_err_lower` (amount to subtract) and
+`D_err_upper` (amount to add).
 
-**Correct convention:**
+**Correct matplotlib convention:**
 ```python
 ax.errorbar(planck_ells, D_planck,
-            yerr=[D_err_upper, D_err_lower],  # UPPER first, LOWER second
+            yerr=[D_err_lower, D_err_upper],  # LOWER first (subtracted), UPPER second (added)
             ...)
 ```
-Matplotlib interprets `yerr` as (2, N) where row 0 is subtracted from y (lower bar) and row 1 is added to y (upper bar). Putting the larger error first allows the downward bar to cross zero — correct for the low-ℓ estimator.
+Matplotlib interprets `yerr` as (2, N) where row 0 is subtracted from y and
+row 1 is added to y. Both values are positive magnitudes from the CSV.
 
-All existing plotting functions (`plotting.py`, `validate_camb_lcdm.py`, `plot_top_camb_configs.py`, `check_full_dell.py`) use this convention.
+**χ² computation:** When computing asymmetric χ², select the error based on
+the sign of the residual: use `D_err_upper` if model > data, `D_err_lower`
+if model < data. This is already correct in `camb_wrapper.py` and
+`check_full_dell.py`.
 
 ### 11. Core Solver Architecture — DO NOT MODIFY
 The root-level solver files (`inf_dyn_background.py`, `inf_dyn_MS_full.py`, `pspectrum_pipeline.py`) are the physics core of the project. Do NOT move, rename, refactor, or modify these files unless explicitly asked by the user. They contain the ODE integration, Mukhanov-Sasaki solver, and pipeline orchestration that every downstream script depends on. Changes to these files can silently break every consumer without visible errors in the modified file itself.
+
+### 12. High-ℓ D_ell Offset — Known Issue
+The Higgs USR model's P_S(k) at high-k has spectral index **ns ≈ 1.0** (nearly scale-invariant), while LCDM has **ns = 0.965** (red-tilted). This 0.035 difference accumulates over ~3 decades in k, causing a **~7% offset** in P_S at k=1.0, which translates to a similar offset in D_ell at ℓ > 500 (the "permanent offset" seen in full-sky CAMB plots).
+
+**Root cause:** The USR phase produces a flatter primordial spectrum at small scales than LCDM expects. This is a real physical effect of the model, not a bug.
+
+**Status:** Undiagnosed — needs investigation to determine if this offset is consistent with Planck high-ℓ constraints (which have sub-percent error bars at ℓ > 500).
+
+**When investigating:** Compare the model's high-k spectral index against LCDM's ns=0.965 using the `scripts/scan_stats.py` filter or a direct P_S(k) analysis script.
