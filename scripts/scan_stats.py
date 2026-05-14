@@ -108,7 +108,22 @@ def print_distribution(records):
 
 
 def print_top(records, sort_by, top_n):
-    print("  (Task 3)")
+    sort_key = {"d2": "d2", "chi2": "chi2", "Nstar": "N_star", "N_star": "N_star",
+                "suppression": "suppression_pct"}.get(sort_by, "d2")
+    sorted_recs = sorted(records, key=lambda r: r.get(sort_key, 9999))
+    if sort_key == "suppression_pct":
+        sorted_recs = list(reversed(sorted_recs))
+    shown = sorted_recs[:top_n]
+    if not shown:
+        return
+    print(f"\n  Top {len(shown)} by {sort_by}:")
+    print(f"  {'#':>3}  {'phi0':>6}  {'y0':>8}  {'N*':>6}  {'chi2':>7}  {'d2':>7}  {'k_dip':>10}  {'supp%':>7}")
+    print(f"  {'-'*66}")
+    for i, r in enumerate(shown, 1):
+        print(f"  {i:3d}  {r.get('phi0', 0):6.2f}  {r.get('y0', 0):+8.3f}  "
+              f"{r.get('N_star', 0):6.1f}  {r.get('chi2', 0):7.2f}  "
+              f"{r.get('d2', 0):7.1f}  {r.get('k_dip', 0):10.2e}  "
+              f"{r.get('suppression_pct', 0):7.1f}%")
 
 
 def print_correlations(records):
