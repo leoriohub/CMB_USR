@@ -254,6 +254,9 @@ def run_phase1(args, completed):
 
             dip_N = float(d["N"][np.argmin(eps_inf[10:]) + 10])
             N_after_dip = N_total - dip_N
+            # delta_N: e-folds between pivot exit and dip k-mode.
+            # With k_pivot=0.002 Mpc^-1, delta_N is ~3.2 e-folds smaller
+            # than it was with the Planck 0.05 pivot (ln(0.05/0.002) ≈ 3.22).
             delta_N = np.log(k_pivot_phys / args.k_dip_target)
             nstar_auto = N_after_dip - delta_N
 
