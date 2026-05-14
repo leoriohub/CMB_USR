@@ -483,7 +483,7 @@ def run_phase2(args, completed, regions):
           f"{elapsed:.0f}s ({elapsed/60:.1f}m)", flush=True)
 
 
-def print_summary(log_path_broad, log_path_fine=None):
+def print_summary(log_path_broad, log_path_fine=None, mode="chi2", max_chi2=None):
     print(f"\n{'='*60}", flush=True)
     print(f"  SCAN SUMMARY", flush=True)
     print(f"{'='*60}", flush=True)
@@ -508,7 +508,7 @@ def print_summary(log_path_broad, log_path_fine=None):
                 d2 = rec.get("d2", 9999)
                 n_star = rec.get("N_star", 0)
                 k_dip = rec.get("k_dip", -1)
-                if passes_criteria(chi2, d2, n_star, k_dip):
+                if passes_criteria(chi2, d2, n_star, k_dip, mode=mode, max_chi2=max_chi2):
                     ok.append(rec)
 
         if not ok:
