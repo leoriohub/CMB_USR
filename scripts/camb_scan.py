@@ -564,6 +564,16 @@ def setup_args():
     p.add_argument("--ell-max", type=int, default=2500,
                    help="CAMB ell_max (default: 2500). Use 30 for fast scan.")
 
+    # Mode control
+    p.add_argument("--mode", choices=["chi2", "d2"], default="chi2",
+                   help="Optimization mode (default: chi2)")
+    p.add_argument("--max-chi2", type=float, default=None,
+                   help="Maximum chi2 threshold (default: LCDM=20.47 for chi2 mode, 35 for d2 mode)")
+    p.add_argument("--d2-target", type=float, default=225.9,
+                   help="Target D2 value for ranking (default: 225.9 = Planck quadrupole)")
+    p.add_argument("--sort-by", choices=["chi2", "d2"], default=None,
+                   help="Sort metric for promising regions (default: same as --mode)")
+
     # Resume
     p.add_argument("--phase1-log", type=str, default=None,
                    help="Path to existing Phase 1 log for Phase 2")
