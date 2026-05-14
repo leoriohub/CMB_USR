@@ -4,14 +4,9 @@ Self-contained full analysis pipeline for a single Higgs USR configuration.
 Exercises all codebase capabilities:
   - Background integration + derived quantities
   - P_S(k) with high-resolution weighted k-grid
-  - CMB D_ell via Sachs-Wolfe + LCDM baseline + Planck data
-  - Full CAMB C_ell (SW + ISW + acoustic + lensing, ell_max=2500)
-  - Publication-ready plots (PS, D_ell, SW vs CAMB, full sky)
+  - Full CAMB C_ell (TT/TE/EE, ell_max=2500) + Planck low-ell comparison
+  - Publication-ready plots (PS, D_ell, CAMB comparison, full sky)
   - All outputs in a single run-specific subfolder
-
-Usage:
-  python scripts/run_full_analysis.py --phi0 6.6 --y0 -0.67 --nstar 55.76
-  python scripts/run_full_analysis.py --phi0 6.0 --y0 -0.538 --nstar 37.3 --camb-ell-max 500
 """
 
 import argparse
@@ -31,14 +26,13 @@ from scripts.plotting import (
 
 import inf_dyn_background as bg_solver
 from models import HiggsModel
-from scripts.constants import As, k_pivot_phys, r_ls, T_cmb, ROOT_DIR
+from scripts.constants import As, k_pivot_phys, ROOT_DIR
 from pspectrum_pipeline import (
     run_pspectrum_pipeline,
     build_weighted_kgrid,
     ensure_k_pivot,
 )
-from scripts.sachs_wolfe import compute_cl_sw, compute_cl_sw_powerlaw
-from scripts.camb_wrapper import compute_cl_full_camb, compute_cl_camb_powerlaw, compute_chi2_camb
+from scripts.camb_wrapper import compute_cl_full_camb, compute_cl_camb_powerlaw
 from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
 
 
@@ -83,65 +77,6 @@ def save_background(model, T_span_bg, output_dir, run_label):
         json.dump(record, f, indent=2)
     print(f"  Saved: {path}")
     return bg_sol, derived
-
-
-def save_cell(result, output_dir, run_label):
-    """Compute C_ell and D_ell, compare with Planck and LCDM baseline."""
-    ell_max = 29
-    ells, C_ell = compute_cl_sw(result, ell_max=ell_max, r_ls=r_ls)
-    D_ell = ells * (ells + 1) / (2 * np.pi) * C_ell * T_cmb ** 2 * 1e12
-
-    _, C_ell_pl, P_S_lcdm_dense = compute_cl_sw_powerlaw(
-        As=As, ns=0.965, k_pivot=k_pivot_phys, ell_max=ell_max, r_ls=r_ls
-    )
-    D_ell_pl = ells * (ells + 1) / (2 * np.pi) * C_ell_pl * T_cmb ** 2 * 1e12
-
-    planck_ells, D_planck, D_err_lower, D_err_upper = get_planck_data_asymmetric()
-
-    def chi2_model(D_model):
-        chi2 = 0.0
-        for i, ell_val in enumerate(planck_ells):
-            idx = np.argmin(np.abs(ells - ell_val))
-            residual = D_model[idx] - D_planck[i]
-            sigma = D_err_upper[i] if residual > 0 else D_err_lower[i]
-            chi2 += (residual / sigma) ** 2
-        return chi2
-
-    chi2_model_val = chi2_model(D_ell)
-    chi2_lcdm_val = chi2_model(D_ell_pl)
-
-    record = {
-        "_type": "result",
-        "format_version": 2,
-        "metadata": {"ell_max": ell_max, "r_ls": r_ls, "T_cmb": T_cmb, "computation": "Sachs-Wolfe"},
-        "c_ell": {
-            "model": {
-                "ells": ells.tolist(),
-                "C_ell_TT": C_ell.tolist(),
-                "D_ell": D_ell.tolist(),
-                "chi2": chi2_model_val,
-            },
-            "lcdm": {
-                "ells": ells.tolist(),
-                "C_ell_TT": C_ell_pl.tolist(),
-                "D_ell": D_ell_pl.tolist(),
-                "ns": 0.965,
-                "chi2": chi2_lcdm_val,
-            },
-            "planck_data": {
-                "ells": planck_ells.tolist(),
-                "D_ell": D_planck.tolist(),
-                "D_ell_err_lower": D_err_lower.tolist(),
-                "D_ell_err_upper": D_err_upper.tolist(),
-            },
-        },
-    }
-
-    path = os.path.join(output_dir, f"cell_{run_label}.json")
-    with open(path, "w") as f:
-        json.dump(record, f, indent=2)
-    print(f"  Saved: {path}")
-    return ells, D_ell, D_ell_pl, planck_ells, D_planck, D_err_lower, D_err_upper, chi2_model_val, chi2_lcdm_val
 
 
 def compute_camb(result, output_dir, run_label, ell_max=2500):
@@ -238,7 +173,7 @@ def collect_run_outputs(run_label, result, configs_dir, cell_dir, pspectra_dir,
     files = [
         (os.path.join(configs_dir, f"background_{run_label}.json"),
          subdirs["configs"]),
-        (os.path.join(cell_dir, f"cell_{run_label}.json"),
+        (os.path.join(cell_dir, f"camb_{run_label}.json"),
          subdirs["c_ell"]),
     ]
 
@@ -273,7 +208,7 @@ def collect_run_outputs(run_label, result, configs_dir, cell_dir, pspectra_dir,
     with open(readme_path, "w") as f:
         f.write(f"Higgs USR Analysis — {run_label}\n")
         f.write(f"{'=' * 50}\n\n")
-        f.write(f"phi0 / x0:  {meta.get('phi0', '?'):.2f}\n")
+        f.write(f"phi0 / x0:  {meta.get('x0', '?'):.2f}\n")
         f.write(f"y0:         {meta.get('y0', '?'):.3f}\n")
         f.write(f"N_star:     {meta.get('N_star', '?'):.2f}\n")
         f.write(f"N_total:    {meta.get('N_total', '?'):.2f}\n")
@@ -311,7 +246,7 @@ def print_summary(result, bg_sol, derived, chi2_model_val, chi2_camb_model, camb
     print("  ANALYSIS SUMMARY")
     print("=" * 44)
     print(f"  Model:          {meta.get('model', '?')}")
-    print(f"  phi0:           {meta.get('phi0', '?'):.2f}")
+    print(f"  phi0:           {meta.get('x0', '?'):.2f}")
     print(f"  y0:             {meta.get('y0', '?'):.3f}")
     xi_v = meta.get("xi", None)
     if xi_v is not None:
@@ -326,7 +261,6 @@ def print_summary(result, bg_sol, derived, chi2_model_val, chi2_camb_model, camb
     print(f"  k_dip:          {k_dip:.2e} Mpc^-1")
     print(f"  P_S(k_dip):     {p_dip:.4e}")
     print(f"  Suppression:    {suppression:.1f}%")
-    print(f"  chi2 SW (ℓ≤29):    {chi2_model_val:.2f}")
     print(f"  chi2 CAMB (ℓ≤29):  {chi2_camb_model:.2f}")
     print(f"  CAMB ℓ_max:     {camb_ell_max}")
     print(f"  k-modes:        {n_modes_ok}/{n_modes_total} completed")
@@ -417,13 +351,7 @@ def main():
         sys.exit(1)
     print(f"     Done in {time.time() - t0:.1f}s")
 
-    print("\n  3. C_ell / D_ell computation (Sachs-Wolfe)...")
-    t0 = time.time()
-    ells, D_ell_model, D_ell_pl, planck_ells, D_planck, D_err_lower, D_err_upper, chi2_model_val, chi2_lcdm_val = save_cell(result, cell_dir, run_label)
-    print(f"     Done in {time.time() - t0:.1f}s")
-    print(f"     chi2 (SW model) = {chi2_model_val:.2f},  chi2 (SW LCDM) = {chi2_lcdm_val:.2f},  Δ = {chi2_model_val - chi2_lcdm_val:+.2f}")
-
-    print(f"\n  3.5 Full CAMB C_ell computation (ell_max={args.camb_ell_max})...")
+    print(f"\n  3. Full CAMB C_ell computation (ell_max={args.camb_ell_max})...")
     t0 = time.time()
     camb_data = compute_camb(result, cell_dir, run_label, ell_max=args.camb_ell_max)
     print(f"     Done in {time.time() - t0:.1f}s")
@@ -434,23 +362,30 @@ def main():
     plot_background(bg_sol, derived, filename=f"background_{run_label}")
     plot_ps(result["k_phys"], result["P_S"], label="Higgs USR",
             filename=f"ps_{run_label}")
-    plot_dell(ells, D_ell_model, planck_ells, D_planck, D_err_lower, D_err_upper,
-              D_ell_lcdm=D_ell_pl, ells_lcdm=ells, model_label="Higgs USR",
+    plot_dell(camb_data["ells"], camb_data["D_camb"],
+              planck_ells=camb_data["planck_ells"],
+              D_planck=camb_data["D_planck"],
+              D_err_lower=camb_data["D_err_lower"],
+              D_err_upper=camb_data["D_err_upper"],
+              D_ell_lcdm=camb_data["D_pl"],
+              ells_lcdm=camb_data["ells"],
+              model_label="Higgs USR",
               filename=f"dell_{run_label}")
-    plot_camb_comparison(camb_data, ells, D_ell_model, D_ell_pl,
-                         filename=f"camb_dell_{run_label}")
+    plot_camb_comparison(camb_data, filename=f"camb_dell_{run_label}")
     plot_camb_fullsky(camb_data, filename=f"camb_fullsky_{run_label}")
     print(f"     Done in {time.time() - t0:.1f}s")
 
     print("\n  5. Collecting outputs...")
     t0 = time.time()
+    chi2_model_val = camb_data["chi2_model"]
+    chi2_lcdm_val = camb_data["chi2_lcdm"]
     collect_run_outputs(run_label, result, configs_dir, cell_dir, pspectra_dir,
                         diag_plots_dir, powerloss_plots_dir, chi2_model_val,
                         chi2_lcdm_val)
     print(f"     Done in {time.time() - t0:.1f}s")
 
     print_summary(result, bg_sol, derived, chi2_model_val,
-                  camb_data["chi2_model"], args.camb_ell_max, configs_dir)
+                  chi2_model_val, args.camb_ell_max, configs_dir)
 
 
 if __name__ == "__main__":

@@ -100,7 +100,7 @@ def plot_dell(ells, D_ell_model, planck_ells=None, D_planck=None,
 
     if planck_ells is not None and D_planck is not None:
         mask = planck_ells <= ell_max
-        yerr = [D_err_upper[mask], D_err_lower[mask]] if D_err_upper is not None else None
+        yerr = [D_err_lower[mask], D_err_upper[mask]] if D_err_upper is not None else None
         ax.errorbar(planck_ells[mask], D_planck[mask], yerr=yerr,
                     fmt="o", color=TOL["dark"], capsize=3, capthick=1,
                     markersize=4, elinewidth=1,
@@ -108,13 +108,13 @@ def plot_dell(ells, D_ell_model, planck_ells=None, D_planck=None,
 
     ell_dense = np.linspace(ells.min(), min(ells.max(), ell_max), 200)
     D_interp = interp1d(ells, D_ell_model, kind="cubic")(ell_dense)
-    ax.semilogy(ell_dense, D_interp, "-", color=TOL["red"], lw=1.5, label=model_label)
+    ax.plot(ell_dense, D_interp, "-", color=TOL["red"], lw=1.5, label=model_label)
 
     if ells_lcdm is not None and D_ell_lcdm is not None:
         mask = ells_lcdm <= ell_max
         D_lcdm_interp = interp1d(ells_lcdm[mask], D_ell_lcdm[mask], kind="cubic")(ell_dense)
-        ax.semilogy(ell_dense, D_lcdm_interp, "--", color=TOL["grey"], lw=1.2,
-                    alpha=0.6, label=r"$\Lambda$CDM")
+        ax.plot(ell_dense, D_lcdm_interp, "--", color=TOL["grey"], lw=1.2,
+                alpha=0.6, label=r"$\Lambda$CDM")
 
     ax.set_xlabel(r"$\ell$", fontsize=10)
     ax.set_ylabel(r"$D_\ell^{TT}\ [\mu{\rm K}^2]$", fontsize=10)
@@ -167,9 +167,9 @@ def plot_background(bg_sol, derived, filename="background", subdir="diagnostics"
     _save_fig(fig, filename, subdir)
 
 
-def plot_camb_comparison(camb_data, sw_ells, sw_D, sw_D_pl, filename="camb_dell",
+def plot_camb_comparison(camb_data, filename="camb_dell",
                          subdir="powerloss"):
-    """SW vs CAMB comparison at low ell."""
+    """CAMB D_ell vs LCDM + Planck at low ell."""
     ells = camb_data["ells"]
     D_camb = camb_data["D_camb"]
     D_pl = camb_data["D_pl"]
@@ -181,15 +181,13 @@ def plot_camb_comparison(camb_data, sw_ells, sw_D, sw_D_pl, filename="camb_dell"
     low = ells <= 30
     fig, ax = plt.subplots(figsize=(3.5, 2.8))
 
-    ax.errorbar(p_ells, D_p, yerr=[D_err_hi, D_err_lo],
+    ax.errorbar(p_ells, D_p, yerr=[D_err_lo, D_err_hi],
                 fmt="o", color=TOL["dark"], capsize=3, capthick=1,
                 markersize=4, elinewidth=1, label="Planck 2018", zorder=5)
-    ax.semilogy(ells[low], D_camb[low], "-", color=TOL["blue"], lw=1.5,
-                label="CAMB (full)", zorder=4)
-    ax.semilogy(sw_ells, sw_D, "s-", color=TOL["red"], lw=1.2, ms=3,
-                label="SW-only", zorder=3)
-    ax.semilogy(ells[low], D_pl[low], "--", color=TOL["grey"], lw=1.2,
-                label=r"$\Lambda$CDM (CAMB)", zorder=2)
+    ax.plot(ells[low], D_camb[low], "-", color=TOL["blue"], lw=1.5,
+            label="CAMB (full)", zorder=4)
+    ax.plot(ells[low], D_pl[low], "--", color=TOL["grey"], lw=1.2,
+            label=r"$\Lambda$CDM (CAMB)", zorder=2)
 
     ax.set_xlabel(r"$\ell$", fontsize=10)
     ax.set_ylabel(r"$D_\ell^{TT}\ [\mu{\rm K}^2]$", fontsize=10)
