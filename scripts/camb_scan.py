@@ -356,7 +356,7 @@ def find_promising_regions(log_path, args):
             d2 = rec.get("d2", 9999)
             n_star = rec.get("N_star", 0)
             k_dip = rec.get("k_dip", -1)
-            if passes_criteria(chi2, d2, n_star, k_dip):
+            if passes_criteria(chi2, d2, n_star, k_dip, mode=args.mode, max_chi2=getattr(args, "max_chi2", None)):
                 candidates.append(rec)
 
     if not candidates:
