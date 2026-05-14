@@ -593,6 +593,13 @@ def main():
     if args.sort_by is None:
         args.sort_by = args.mode
 
+    if args.mode == "d2" and not any("--phi0-range" in a for a in sys.argv):
+        args.phi0_range = [5.5, 7.5]
+        args.n_phi0 = 16
+    if args.mode == "d2" and not any("--y0-range" in a for a in sys.argv):
+        args.y0_range = [-0.85, -0.10]
+        args.n_y0 = 16
+
     print(f"{'='*60}", flush=True)
     print(f"  CAMB Higgs USR Scan", flush=True)
     print(f"  Mode: "
