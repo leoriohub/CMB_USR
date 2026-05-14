@@ -60,8 +60,24 @@ def load_records(path):
 def filter_records(records, expr):
     if not expr:
         return records
-    print(f"  Filter expression not yet implemented: {expr}", file=sys.stderr)
-    return records
+    normalized = expr
+    for alias, field in FIELD_NAMES.items():
+        if alias != field:
+            normalized = normalized.replace(alias, field)
+    filtered = []
+    errors = 0
+    for r in records:
+        try:
+            result = eval(normalized, {"__builtins__": {}}, dict(r))
+            if result:
+                filtered.append(r)
+        except Exception:
+            errors += 1
+    if errors:
+        print(f"  Warning: {errors} records skipped (eval error)", file=sys.stderr)
+    if not filtered:
+        print(f"  Warning: filter '{expr}' returned 0 results", file=sys.stderr)
+    return filtered
 
 
 def compute_stats(records):
