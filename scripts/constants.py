@@ -14,11 +14,14 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # ── Physical constants ──────────────────────────────────────────────────────
 
 S = 5e-5                    # conformal time unit (dimensionless)
-As = 2.1e-9                 # Planck scalar amplitude at pivot
+
 k_pivot_phys = 0.002        # Mpc^-1, large-scale pivot (ell≈28) for low-ell anomaly analysis
                             # Planck default is 0.05 (minimizes A_s–n_s correlation at high-ell);
                             # 0.002 anchors near quadrupole/octupole where suppression is observed.
                             # Shifts N_* by +ln(0.05/0.002) ≈ +3.22 e-folds vs 0.05 pivot.
+
+As_planck = 2.1e-9          # Planck 2018 A_s at k_* = 0.05 Mpc^-1 (TT,TE,EE+lowE)
+As = As_planck * (k_pivot_phys / 0.05) ** (0.965 - 1.0)  # extrapolated to k_pivot_phys
 r_ls = 14000.0              # Mpc, comoving distance to last scattering
 T_cmb = 2.7255              # K, CMB temperature
 
