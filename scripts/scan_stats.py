@@ -93,7 +93,17 @@ def compute_stats(records):
 
 
 def compute_correlations(records):
-    return {}
+    if len(records) < 3:
+        return {}
+    metrics = ["d2", "chi2", "N_star", "k_dip", "suppression_pct"]
+    data = {m: np.array([r.get(m, np.nan) for r in records]) for m in metrics}
+    mask = np.ones(len(records), dtype=bool)
+    for arr in data.values():
+        mask &= ~np.isnan(arr)
+    if np.sum(mask) < 3:
+        return {}
+    clean = {m: data[m][mask] for m in metrics}
+    return clean
 
 
 def print_summary(records, label):
@@ -143,7 +153,30 @@ def print_top(records, sort_by, top_n):
 
 
 def print_correlations(records):
-    print("  (Task 5)")
+    data = compute_correlations(records)
+    if not data:
+        print("  Not enough data for correlations (need >= 3 records)")
+        return
+    targets = ["d2", "chi2"]
+    params = ["phi0", "y0", "N_star", "k_dip", "suppression_pct"]
+    print(f"\n  Parameter Correlations (Pearson r):")
+    print(f"  {'Target':<10} ", end="")
+    for p in params:
+        print(f"{p:>16}", end="")
+    print()
+    print(f"  {'-'*10} {'-'*16*len(params)}")
+    for t in targets:
+        t_arr = np.array([r.get(t, np.nan) for r in records])
+        print(f"  {t:<10}", end="")
+        for p in params:
+            p_arr = np.array([r.get(p, np.nan) for r in records])
+            mask = ~(np.isnan(t_arr) | np.isnan(p_arr))
+            if np.sum(mask) < 3:
+                print(f"   {'N/A':>14}", end="")
+            else:
+                r_val, _ = sp_stats.pearsonr(t_arr[mask], p_arr[mask])
+                print(f"   {r_val:>+14.3f}", end="")
+        print()
 
 
 def print_comparison(file_stats):
