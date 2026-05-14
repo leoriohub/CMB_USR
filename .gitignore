@@ -14,6 +14,9 @@ __pycache__/
 .venv
 venv/
 
+# Environment-specific scripts
+setup_win_env.ps1
+
 # OS files
 .DS_Store
 Thumbs.db
