@@ -363,7 +363,9 @@ def find_promising_regions(log_path, args):
         print("  No promising configs found in Phase 1 results", flush=True)
         return regions
 
-    candidates.sort(key=lambda r: r.get("chi2", 999))
+    sort_by = getattr(args, "sort_by", None) or args.mode
+    key_func = (lambda r: r.get("chi2", 999)) if sort_by == "chi2" else (lambda r: r.get("d2", 9999))
+    candidates.sort(key=key_func)
 
     # Cluster nearby configs
     merged = []
@@ -373,7 +375,7 @@ def find_promising_regions(log_path, args):
             dc = abs(cluster["phi0"] - c["phi0"])
             dy = abs(cluster["y0"] - c["y0"])
             if dc <= args.phi0_step * 1.5 and dy <= args.y0_step * 1.5:
-                if c["chi2"] < cluster["chi2"]:
+                if (sort_by == "d2" and c["d2"] < cluster["d2"]) or (sort_by != "d2" and c["chi2"] < cluster["chi2"]):
                     cluster.update(c)
                 added = True
                 break
@@ -506,7 +508,7 @@ def print_summary(log_path_broad, log_path_fine=None):
                 d2 = rec.get("d2", 9999)
                 n_star = rec.get("N_star", 0)
                 k_dip = rec.get("k_dip", -1)
-                if passes_criteria(chi2, d2, n_star, k_dip):
+            if passes_criteria(chi2, d2, n_star, k_dip, mode=args.mode, max_chi2=getattr(args, "max_chi2", None)):
                     ok.append(rec)
 
         if not ok:
