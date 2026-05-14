@@ -81,22 +81,3 @@ def get_derived_quantities(sol_data, model):
         'n': n # Return log scale factor
     }
 
-# execution block
-if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    from inf_dyn_plot import set_style, plot_background_n_vs_t, plot_eps_h
-    from models import QuadraticModel
-    set_style()
-
-    T_span = np.linspace(0, 1000, 100000)
-    
-    # Default to Quadratic Model for legacy support
-    model = QuadraticModel()
-    sol_data = run_background_simulation(model, T_span)
-    derived = get_derived_quantities(sol_data, model)
-    
-    plot_background_n_vs_t(T_span, derived['N'])
-    plot_eps_h(derived['N'], derived['epsH'])
-
-#########################################################################################################
-#########################################################################################################
