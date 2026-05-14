@@ -210,3 +210,16 @@ CAMB is the official Python package (`import camb`), available via pip/conda. `s
 - Internally handles k-range extrapolation for CAMB spline
 - Validation: `scripts/test_camb_validation.py` (7 tests, subprocess isolation for global state), `scripts/validate_camb_lcdm.py` (Planck LCDM comparison, peak~220)
 - Pipeline: Inflation solver → MS solver → P_S(k) → `set_initial_power_table()` → CAMB C_ell → Planck comparison
+
+### 10. Planck Error Bar Convention
+Planck low-ℓ data plots use the **cross-correlation estimator** $\hat{C}_\ell$, which can go **negative** at low ℓ ($2\ell+1$ is small). The `plt.errorbar` call must allow this.
+
+**Correct convention:**
+```python
+ax.errorbar(planck_ells, D_planck,
+            yerr=[D_err_upper, D_err_lower],  # UPPER first, LOWER second
+            ...)
+```
+Matplotlib interprets `yerr` as (2, N) where row 0 is subtracted from y (lower bar) and row 1 is added to y (upper bar). Putting the larger error first allows the downward bar to cross zero — correct for the low-ℓ estimator.
+
+All existing plotting functions (`plotting.py`, `validate_camb_lcdm.py`, `plot_top_camb_configs.py`, `check_full_dell.py`) use this convention.
