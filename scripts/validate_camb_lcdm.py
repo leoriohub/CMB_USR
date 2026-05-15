@@ -82,7 +82,7 @@ def validate_LCDM():
 
     ax.errorbar(
         planck_ells, D_planck,
-        yerr=[D_err_upper, D_err_lower],
+        yerr=[D_err_lower, D_err_upper],
         fmt="o", color=TOL["dark"], capsize=2, capthick=0.8,
         markersize=3, elinewidth=0.8, alpha=0.7,
         label="Planck 2018 TT",
@@ -109,7 +109,7 @@ def validate_LCDM():
 
     ax.errorbar(
         planck_ells, D_planck,
-        yerr=[D_err_upper, D_err_lower],
+        yerr=[D_err_lower, D_err_upper],
         fmt="o", color=TOL["dark"], capsize=3, capthick=1,
         markersize=4, elinewidth=1,
         label="Planck 2018 low-ell TT",
