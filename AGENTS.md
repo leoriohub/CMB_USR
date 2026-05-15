@@ -120,28 +120,53 @@ All plots must be ready for two-column publication format:
 - Minimal whitespace, tight bounding box
 - Export PNG only (no PDF)
 
-### 3. Outputs Folder Structure
-Strict hierarchy — every output file goes in its correct subdirectory:
+### 3. Outputs Folder Structure — STRICT FLAT HIERARCHY
+Every output file goes in its correct subdirectory. **No per-run subdirectories.** All files are flat within each canonical dir. `scripts/plotting.py` is the single source of truth — import `OUTPUT_DIRS` or `get_path()` instead of hardcoding paths.
 
 | Subdirectory | Contents |
 |---|---|
-| `outputs/plots/diagnostics/` | Diagnostic/debug plots (epsilon, trajectory checks) |
+| `outputs/plots/diagnostics/` | Diagnostic/debug plots (epsilon, trajectory checks, background dashboards) |
+| `outputs/plots/powerloss/` | Power-loss mechanism plots (PS, Dℓ, suppression per config) |
 | `outputs/plots/optimizer/` | Optimizer iteration plots |
-| `outputs/plots/powerloss/` | Power-loss mechanism plots (PS, Cℓ, suppression) |
-| `outputs/plots/top30_candidates/` | Top candidate comparison plots |
-| `outputs/plots/punctuated_potential/` | Punctuated inflation potential plots |
+| `outputs/plots/paper/` | Final publication-ready plots |
 | `outputs/simulations/c_ell/` | Cℓ angular power spectra (JSON) |
-| `outputs/simulations/configs/` | Configuration snapshots (JSON) |
-| `outputs/simulations/logs/` | Scan logs (CSV, JSONL) |
+| `outputs/simulations/configs/` | Background trajectory snapshots (JSON) |
+| `outputs/simulations/logs/` | Scan/optimizer logs (CSV, JSONL) |
 | `outputs/simulations/pspectra/` | P_S(k) primordial power spectra (JSON) |
 | `outputs/simulations/scans/` | Scan result summaries (JSON) |
+| `outputs/archive/` | Legacy/orphaned content (best_candidates, top30, punctuated_potential, old PDFs) |
 
-When creating/running scripts, always write outputs to these directories.
+**Rules:**
+- Use `scripts.plotting.OUTPUT_DIRS` or `scripts.plotting.get_path()` — never hardcode path strings
+- Use `scripts.plotting.make_filename()` for all output filenames — never manually construct paths
+- Only PNG output (no PDFs)
+- No per-config subdirectories — all files flat within each canonical dir
+
+**Naming Convention — ALL scripts and notebooks MUST use `scripts.plotting.make_filename()`:**
+
+| Type | Prefix | Pattern | Example |
+|------|--------|---------|---------|
+| P_S(k) JSON | `ps` | `ps_phi{phi0}_y0{y0}_nstar{nstar}.json` | `ps_phi6.60_y0-0.736_nstar52.6.json` |
+| C_ell JSON | `camb` | `camb_phi{phi0}_y0{y0}_nstar{nstar}.json` | `camb_phi6.60_y0-0.736_nstar52.6.json` |
+| Background config | `config` | `config_phi{phi0}_y0{y0}_nstar{nstar}.json` | `config_phi6.60_y0-0.736_nstar52.6.json` |
+| Background plot | `bg` | `bg_phi{phi0}_y0{y0}_nstar{nstar}.png` | `bg_phi6.60_y0-0.736_nstar52.6.png` |
+| P_S(k) plot | `ps` | `ps_phi{phi0}_y0{y0}_nstar{nstar}.png` | `ps_phi6.60_y0-0.736_nstar52.6.png` |
+| D_ell plot | `dell` | `dell_phi{phi0}_y0{y0}_nstar{nstar}.png` | `dell_phi6.60_y0-0.736_nstar52.6.png` |
+| CAMB comparison | `camb` | `camb_phi{phi0}_y0{y0}_nstar{nstar}.png` | `camb_phi6.60_y0-0.736_nstar52.6.png` |
+| Planck comparison | `planck` | `planck_phi{phi0}_y0{y0}_nstar{nstar}.png` | `planck_phi6.60_y0-0.736_nstar52.6.png` |
+
+- y0 format: `y0-0.736` (negative), `y0+0.100` (positive) — sign always explicit
+- Special files (no config): `camb_lcdm.*`, `pipeline_sanity.*`, `camb_lcdm_validation.*`
+- Comparison plots: `{type}_comparison_{label}.{ext}` — e.g. `ps_comparison_top5.png`
+- **NEVER** use random hashes, redundant model names, or inconsistent prefixes
+- **NEVER** hardcode `outputs/` or filenames: use `get_path()` + `make_filename()`
 
 ### 4. Notebooks
 - Place in `notebooks/` with descriptive names (e.g. `Golden_Config_Comparison.ipynb`).
 - A `notebooks/outputs/` dir exists for notebook-scoped temp files.
 - Generated plots go to `outputs/plots/` subdirectories, not inside notebooks.
+- Notebooks MUST import `from scripts.plotting import get_path, make_filename` — never hardcode `outputs/` paths.
+- Notebooks MUST use `make_filename()` for output filenames — never manually construct filenames.
 
 ### 5. .md Files Are Public
 This repository is public. Do not write into .md files:
