@@ -101,29 +101,14 @@ def print_chi2_table(D_model, ells_model, D_lcdm, ells_lcdm, label="Config"):
 
 
 def run_camb_from_config(phi0, y0, n_star):
-    import glob
     import json
-    import re
 
     from scripts.camb_wrapper import compute_cl_full_camb, compute_cl_camb_powerlaw
+    from scripts.plotting import find_ps
 
-    pspectra_dir = os.path.join(ROOT_DIR, "outputs/simulations/pspectra")
-    pat = f"*phi{phi0:.2f}_y0{y0:.3f}_*"
-    matches = sorted(glob.glob(os.path.join(pspectra_dir, f"PS_Higgs*{pat}")))
-    if not matches:
-        raise FileNotFoundError(f"No PS file for phi0={phi0}, y0={y0}")
-
-    scored = []
-    for m in matches:
-        try:
-            with open(m) as f:
-                md = json.load(f)["metadata"]
-            ns = md.get("N_star", 0)
-        except Exception:
-            ns = 0
-        scored.append((abs(ns - n_star), m))
-    scored.sort(key=lambda x: x[0])
-    ps_path = scored[0][1]
+    ps_path, ps_md = find_ps(phi0, y0, n_star)
+    if ps_path is None:
+        raise FileNotFoundError(f"No PS file for phi0={phi0}, y0={y0}, Nstar={n_star}")
 
     with open(ps_path) as f:
         raw = json.load(f)

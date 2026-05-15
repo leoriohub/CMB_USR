@@ -33,9 +33,7 @@ from scripts.camb_wrapper import compute_cl_full_camb, compute_cl_camb_powerlaw
 from scripts.sachs_wolfe import compute_cl_sw
 from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
 from scripts.chi2_analysis import chi2_commander, chi2_unbinned, print_chi2_table
-
-PSPECTRA_DIR = os.path.join(ROOT_DIR, "outputs/simulations/pspectra")
-OUTPUT_DIR = os.path.join(ROOT_DIR, "outputs/plots/diagnostics")
+from scripts.plotting import get_path, find_ps, make_filename
 
 TOL = {"blue": "#4477AA", "red": "#CC3311", "green": "#228833",
        "yellow": "#EE8866", "teal": "#44BB99", "purple": "#AA3377",
@@ -46,28 +44,7 @@ plt.rcParams.update({"font.size": 12, "axes.labelsize": 14, "axes.titlesize": 16
                      "figure.dpi": 300})
 
 
-def find_ps_file(phi0, y0, n_star):
-    pat = f"*phi{phi0:.2f}_y0{y0:.3f}_*"
-    matches = sorted(glob.glob(os.path.join(PSPECTRA_DIR, f"PS_Higgs*{pat}")))
-    scored = []
-    for m in matches:
-        try:
-            with open(m) as f:
-                md = json.load(f)["metadata"]
-            ns = md.get("N_star", 0)
-        except Exception:
-            ns = 0
-        scored.append((abs(ns - n_star), m))
-    if not scored:
-        return None
-    scored.sort(key=lambda x: x[0])
-    return scored[0][1]
-
-
-
-
-
-def detect_peaks(ells, D_ell, min_height_ratio=0.15, min_dist=30):
+plt.rcParams.update({"font.size": 12, "axes.labelsize": 14, "axes.titlesize": 16,
     peaks = []
     n = len(D_ell)
     max_D = np.max(D_ell)
@@ -211,7 +188,7 @@ def main():
     y0 = float(sys.argv[sys.argv.index("--y0") + 1]) if "--y0" in sys.argv else -0.736
     n_star = float(sys.argv[sys.argv.index("--N-star") + 1]) if "--N-star" in sys.argv else 52.5893
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    out = get_path("diagnostics", make_filename("planck", phi0, y0, n_star, ".png"))
 
     print("=" * 60)
     print("  Full D_ℓ Physical Consistency Check")
@@ -220,7 +197,7 @@ def main():
 
     # 1. Load P_S
     print("\n[1/5] Loading P_S(k)...")
-    ps_path = find_ps_file(phi0, y0, n_star)
+    ps_path, ps_md = find_ps(phi0, y0, n_star)
     if ps_path is None:
         print("  ERROR: No cached P_S(k) file found")
         sys.exit(1)
@@ -337,8 +314,6 @@ def main():
 
     # 8. Plot
     print(f"\n[7/7] Generating plot...")
-    slug = f"phi{phi0:.2f}_y0{y0:.3f}_Nstar{n_star:.0f}"
-    out = os.path.join(OUTPUT_DIR, f"planck_tt_{slug}.png")
     make_plot(ells, D_model, ells_l, D_lcdm, planck_data, planck_binned, out)
 
     print(f"\n{'='*60}")
