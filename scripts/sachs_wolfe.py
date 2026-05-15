@@ -30,6 +30,7 @@ from scipy.special import spherical_jn
 
 from pspectrum_pipeline import load_pspectrum
 from scripts.constants import As, k_pivot_phys, r_ls, T_cmb
+from scripts.plotting import OUTPUT_DIRS, make_filename
 
 # Planck 2018 best-fit LCDM (Aghanim et al. 2020, TT+lowE)
 PLANCK_LCDM = dict(
@@ -166,7 +167,7 @@ if __name__ == "__main__":
                         help="Path to P_S(k) JSON file or directory")
     parser.add_argument("--ell-max", type=int, default=30)
     parser.add_argument("--r-ls", type=float, default=r_ls)
-    parser.add_argument("--output-dir", default="outputs/simulations/c_ell")
+    parser.add_argument("--output-dir", default=OUTPUT_DIRS["c_ell"])
     args = parser.parse_args()
 
     if os.path.isdir(args.pspectrum_path):
@@ -177,8 +178,11 @@ if __name__ == "__main__":
     for fpath in files:
         data = load_pspectrum(fpath)
         ells, C_ell = compute_cl_sw(data, ell_max=args.ell_max, r_ls=args.r_ls)
-        bn = os.path.splitext(os.path.basename(fpath))[0]
-        out_path = os.path.join(args.output_dir, f"C_ell_{bn}.json")
+        md = data["metadata"]
+        phi0 = md.get("x0", 0)
+        y0 = md.get("y0", 0)
+        nstar = md.get("N_star", 0)
+        out_path = os.path.join(args.output_dir, make_filename("camb", phi0, y0, nstar, ".json"))
         save_cl_results(ells, C_ell, data["k_phys"], data["P_S"],
                         data["metadata"], out_path)
         print(f"Saved: {out_path}")
