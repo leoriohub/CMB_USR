@@ -262,7 +262,7 @@ def main():
 
     # Low-ell D_ell comparison
     fig, ax = plt.subplots(figsize=(5.5, 3.8))
-    ax.errorbar(p_ells, D_p, yerr=[D_hi, D_lo], fmt="o", color=TOL["dark"],
+    ax.errorbar(p_ells, D_p, yerr=[D_lo, D_hi], fmt="o", color=TOL["dark"],
                 capsize=3, markersize=4, elinewidth=1, label="Planck 2018",
                 zorder=5)
     low = ells_l <= 30
