@@ -32,23 +32,104 @@ TOL = {
 OUTPUT_DIRS = {
     "diagnostics": os.path.join(ROOT_DIR, "outputs/plots/diagnostics"),
     "powerloss": os.path.join(ROOT_DIR, "outputs/plots/powerloss"),
+    "optimizer": os.path.join(ROOT_DIR, "outputs/plots/optimizer"),
+    "paper": os.path.join(ROOT_DIR, "outputs/plots/paper"),
+    "pspectra": os.path.join(ROOT_DIR, "outputs/simulations/pspectra"),
+    "c_ell": os.path.join(ROOT_DIR, "outputs/simulations/c_ell"),
+    "configs": os.path.join(ROOT_DIR, "outputs/simulations/configs"),
+    "logs": os.path.join(ROOT_DIR, "outputs/simulations/logs"),
+    "scans": os.path.join(ROOT_DIR, "outputs/simulations/scans"),
 }
 
 
-def _ensure_dir(subdir):
-    os.makedirs(OUTPUT_DIRS.get(subdir, subdir), exist_ok=True)
-    return OUTPUT_DIRS.get(subdir, subdir)
+def get_path(category, filename):
+    """Return full path for an output file. Creates directory if needed."""
+    out_dir = OUTPUT_DIRS.get(category)
+    if out_dir is None:
+        raise ValueError(
+            f"Unknown output category: {category}. "
+            f"Available: {list(OUTPUT_DIRS.keys())}"
+        )
+    os.makedirs(out_dir, exist_ok=True)
+    return os.path.join(out_dir, filename)
 
 
-def _save_fig(fig, path_base, subdir="diagnostics"):
-    out_dir = _ensure_dir(subdir)
-    path = os.path.join(out_dir, f"{path_base}.png")
-    fig.savefig(path, dpi=300, bbox_inches="tight")
+def save_fig(fig, filename, category="diagnostics", dpi=300):
+    """Save a matplotlib figure to the correct output directory."""
+    if not filename.endswith(".png"):
+        filename += ".png"
+    path = get_path(category, filename)
+    fig.savefig(path, dpi=dpi, bbox_inches="tight")
     print(f"  Saved: {path}")
     plt.close(fig)
 
 
-def plot_ps(k_phys, P_S, label="Model", filename="ps", subdir="powerloss",
+def make_filename(name, phi0=None, y0=None, nstar=None, ext=".json"):
+    """Generate standardized output filename.
+
+    Pattern: {name}_phi{phi0:.2f}_y0{y0:+.3f}_nstar{nstar:.1f}{ext}
+    If phi0 is None, returns {name}{ext} (for special files like camb_lcdm).
+
+    Examples:
+        make_filename("ps", 6.60, -0.736, 52.6)         → "ps_phi6.60_y0-0.736_nstar52.6.json"
+        make_filename("camb", 6.60, -0.736, 52.6)        → "camb_phi6.60_y0-0.736_nstar52.6.json"
+        make_filename("camb_lcdm")                        → "camb_lcdm.json"
+        make_filename("planck", 6.60, -0.736, 52.6, ".png") → "planck_phi6.60_y0-0.736_nstar52.6.png"
+    """
+    if phi0 is not None:
+        return f"{name}_phi{phi0:.2f}_y0{y0:+.3f}_nstar{nstar:.1f}{ext}"
+    return f"{name}{ext}"
+
+
+def find_ps(phi0, y0, nstar, tolerance=3.0):
+    """Find cached P_S(k) JSON matching config params.
+
+    Returns (path, metadata) or (None, None) if not found.
+    Matches by phi0, y0, and N_star within tolerance.
+    Tries new convention first, then legacy patterns.
+    """
+    import glob
+    import json
+
+    ps_dir = get_path("pspectra", "")
+
+    # New convention
+    pattern = os.path.join(ps_dir, f"ps_phi{phi0:.2f}_y0{y0:+.3f}_nstar*.json")
+    matches = sorted(glob.glob(pattern))
+
+    # Legacy patterns for backward compat during transition
+    if not matches:
+        for pat in [
+            os.path.join(ps_dir, f"PS_Higgs*phi{phi0:.2f}_y0{y0:.3f}_*.json"),
+            os.path.join(ps_dir, f"Higgs_Inflation*phi{phi0:.2f}_y0{y0:.3f}_*.json"),
+        ]:
+            matches = sorted(glob.glob(pat))
+            if matches:
+                break
+
+    if not matches:
+        return None, None
+
+    # Score by N_star proximity
+    scored = []
+    for m in matches:
+        try:
+            with open(m) as f:
+                rec = json.load(f)
+            md = rec.get("metadata", {})
+            ns = md.get("N_star", 0)
+            if abs(ns - nstar) <= tolerance:
+                scored.append((abs(ns - nstar), m, md))
+        except Exception:
+            continue
+
+    if not scored:
+        return None, None
+    scored.sort(key=lambda x: x[0])
+    return scored[0][1], scored[0][2]
+
+
+def plot_ps(k_phys, P_S, label="Model", filename="ps", category="powerloss",
             show_lcdm=True, k_dip=None, k_pivot=True):
     """Plot primordial power spectrum with optional LCDM baseline."""
     mask = np.isfinite(P_S)
@@ -88,13 +169,13 @@ def plot_ps(k_phys, P_S, label="Model", filename="ps", subdir="powerloss",
     ax.grid(True, alpha=0.25, which="both")
 
     fig.tight_layout()
-    _save_fig(fig, filename, subdir)
+    save_fig(fig, filename, category)
 
 
 def plot_dell(ells, D_ell_model, planck_ells=None, D_planck=None,
               D_err_lower=None, D_err_upper=None, D_ell_lcdm=None,
               ells_lcdm=None, model_label="Model", filename="dell",
-              subdir="powerloss", ell_max=30):
+              category="powerloss", ell_max=30):
     """Plot D_ell with Planck data and optional LCDM baseline."""
     fig, ax = plt.subplots(figsize=(3.7, 2.6))
 
@@ -123,10 +204,10 @@ def plot_dell(ells, D_ell_model, planck_ells=None, D_planck=None,
     ax.set_xlim(1.5, ell_max + 0.5)
 
     fig.tight_layout()
-    _save_fig(fig, filename, subdir)
+    save_fig(fig, filename, category)
 
 
-def plot_background(bg_sol, derived, filename="background", subdir="diagnostics"):
+def plot_background(bg_sol, derived, filename="background", category="diagnostics"):
     """4-panel background trajectory dashboard."""
     x, y, z, n = bg_sol
     N = derived["N"]
@@ -164,11 +245,11 @@ def plot_background(bg_sol, derived, filename="background", subdir="diagnostics"
     ax.grid(True, alpha=0.25, which="both")
 
     fig.tight_layout()
-    _save_fig(fig, filename, subdir)
+    save_fig(fig, filename, category)
 
 
 def plot_camb_comparison(camb_data, filename="camb_dell",
-                         subdir="powerloss"):
+                         category="powerloss"):
     """CAMB D_ell vs LCDM + Planck at low ell."""
     ells = camb_data["ells"]
     D_camb = camb_data["D_camb"]
@@ -196,10 +277,10 @@ def plot_camb_comparison(camb_data, filename="camb_dell",
     ax.set_xlim(1.5, 31)
 
     fig.tight_layout()
-    _save_fig(fig, filename, subdir)
+    save_fig(fig, filename, category)
 
 
-def plot_camb_fullsky(camb_data, filename="camb_fullsky", subdir="powerloss"):
+def plot_camb_fullsky(camb_data, filename="camb_fullsky", category="powerloss"):
     """Full-sky CAMB D_ell plot."""
     ells = camb_data["ells"]
     D_camb = camb_data["D_camb"]
@@ -216,7 +297,4 @@ def plot_camb_fullsky(camb_data, filename="camb_fullsky", subdir="powerloss"):
     ax.set_xlim(1.5, ells.max())
 
     fig.tight_layout()
-    _save_fig(fig, filename, subdir)
-
-
-
+    save_fig(fig, filename, category)
