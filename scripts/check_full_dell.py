@@ -32,6 +32,7 @@ from scripts.constants import As, k_pivot_phys, T_cmb, ROOT_DIR
 from scripts.camb_wrapper import compute_cl_full_camb, compute_cl_camb_powerlaw
 from scripts.sachs_wolfe import compute_cl_sw
 from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
+from scripts.chi2_analysis import chi2_commander, chi2_unbinned, print_chi2_table
 
 PSPECTRA_DIR = os.path.join(ROOT_DIR, "outputs/simulations/pspectra")
 OUTPUT_DIR = os.path.join(ROOT_DIR, "outputs/plots/diagnostics")
@@ -42,7 +43,7 @@ TOL = {"blue": "#4477AA", "red": "#CC3311", "green": "#228833",
 
 plt.rcParams.update({"font.size": 12, "axes.labelsize": 14, "axes.titlesize": 16,
                      "xtick.labelsize": 12, "ytick.labelsize": 12, "legend.fontsize": 11,
-                     "figure.dpi": 150})
+                     "figure.dpi": 300})
 
 
 def find_ps_file(phi0, y0, n_star):
@@ -61,6 +62,9 @@ def find_ps_file(phi0, y0, n_star):
         return None
     scored.sort(key=lambda x: x[0])
     return scored[0][1]
+
+
+
 
 
 def detect_peaks(ells, D_ell, min_height_ratio=0.15, min_dist=30):
@@ -137,47 +141,64 @@ def run_checks(ells_model, D_model, ells_lcdm, D_lcdm, planck_data, D_sw, ells_s
     return checks, chi2, chi2_lcdm
 
 
-def make_plot(ells_model, D_model, ells_lcdm, D_lcdm, planck_data, D_sw, ells_sw, peaks, path):
-    p_ells, D_p, D_lo, D_hi = planck_data
-    D_int_lcdm = interp1d(ells_lcdm, D_lcdm, kind="cubic", bounds_error=False, fill_value="extrapolate")
+def make_plot(ells_model, D_model, ells_lcdm, D_lcdm, planck_low, planck_binned, path):
+    p_ells, D_p, D_lo, D_hi = planck_low
+    b_ells, b_D, b_lo, b_hi = planck_binned
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4.5),
-                                    gridspec_kw={"width_ratios": [1.3, 1]})
+    plt.rcParams.update({
+        "font.size": 9, "axes.labelsize": 11, "axes.titlesize": 12,
+        "xtick.labelsize": 9, "ytick.labelsize": 9, "legend.fontsize": 8,
+        "figure.dpi": 300,
+    })
 
-    # LEFT: Full range
-    ax1.semilogy(ells_model, D_model, "-", color=TOL["red"], lw=1.5,
-                 label="Higgs USR (CAMB)", zorder=4)
-    ax1.semilogy(ells_lcdm, D_lcdm, "--", color=TOL["dark"], lw=1.5, alpha=0.6,
-                 label=r"$\Lambda$CDM", zorder=3)
-    ax1.set_xlabel(r"$\ell$", fontsize=14)
-    ax1.set_ylabel(r"$D_\ell^{TT}$ [$\mu$K$^2$]", fontsize=14)
-    ax1.set_xlim(1.5, 2500)
-    ax1.legend(fontsize=11)
-    ax1.grid(True, alpha=0.25, which="both")
-    ax1.set_title("Full-sky CMB Angular Power Spectrum", fontsize=15)
+    fig = plt.figure(figsize=(7, 3.3))
+    gs = fig.add_gridspec(1, 2, width_ratios=[1, 4], wspace=0)
+    ax_left = fig.add_subplot(gs[0])
+    ax_right = fig.add_subplot(gs[1], sharey=ax_left)
 
-    for el, amp in peaks[:5]:
-        ax1.annotate(f"ℓ={int(el)}", xy=(el, amp), xytext=(0, 10),
-                     textcoords="offset points", ha="center", fontsize=9,
-                     color=TOL["red"], fontweight="bold",
-                     arrowprops=dict(arrowstyle="-", color=TOL["red"], lw=0.8))
+    # Remove inner spines for broken-axis effect
+    ax_left.spines['right'].set_visible(False)
+    ax_right.spines['left'].set_visible(False)
+    ax_right.tick_params(left=False)
 
-    # RIGHT: Zoom ℓ≤1000
-    zm = ells_model <= 1000
-    ax2.semilogy(ells_model[zm], D_model[zm], "-", color=TOL["red"], lw=1.5,
-                 label="Higgs USR", zorder=4)
-    ax2.semilogy(ells_lcdm[zm], D_lcdm[zm], "--", color=TOL["dark"], lw=1.5, alpha=0.6,
-                 label=r"$\Lambda$CDM", zorder=3)
-    ax2.errorbar(p_ells, D_p, yerr=[D_hi, D_lo], fmt="o", color=TOL["dark"],
-                 capsize=3, markersize=4, elinewidth=1, label="Planck 2018", zorder=5)
-    ax2.set_xlabel(r"$\ell$", fontsize=14)
-    ax2.set_ylabel(r"$D_\ell^{TT}$ [$\mu$K$^2$]", fontsize=14)
-    ax2.set_xlim(1.5, 1000)
-    ax2.legend(fontsize=11)
-    ax2.grid(True, alpha=0.25, which="both")
-    ax2.set_title("Zoom: First 3 Acoustic Peaks", fontsize=15)
+    # X-axis scales
+    ax_left.set_xscale('log')
+    ax_left.set_xlim(1.8, 32)
+    ax_left.set_xticks([2, 10, 30])
+    ax_left.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+    ax_right.set_xlim(32, 2600)
+    ax_right.tick_params(labelleft=False)
 
-    ax2.axvspan(1.5, 30, color=TOL["grey"], alpha=0.06, zorder=0)
+    # Shared Y-axis (linear)
+    ax_left.set_ylabel(r"$D_\ell^{TT}$ [$\mu$K$^2$]")
+    ax_left.set_ylim(-100, 6500)
+
+    # Model lines on both axes
+    for ax in [ax_left, ax_right]:
+        ax.plot(ells_model, D_model, "-", color=TOL["red"], lw=1.2, label="Higgs USR", zorder=4)
+        ax.plot(ells_lcdm, D_lcdm, "--", color=TOL["dark"], lw=1.2, alpha=0.6, label=r"$\Lambda$CDM", zorder=3)
+
+    # Planck low-ℓ (Commander) on left
+    ax_left.errorbar(p_ells, D_p, yerr=[D_lo, D_hi], fmt="o", color=TOL["dark"],
+                     capsize=1.5, markersize=2, elinewidth=0.4, label="Planck 2018", zorder=5)
+
+    # Planck binned TT on right
+    ax_right.errorbar(b_ells, b_D, yerr=[b_lo, b_hi], fmt="o", color=TOL["dark"],
+                      capsize=1, markersize=1.5, elinewidth=0.3, label="Planck 2018", zorder=5)
+
+    # Axis labels
+    ax_left.set_xlabel(r"$\ell$")
+    ax_right.set_xlabel(r"$\ell$")
+
+    # Grid
+    ax_left.grid(True, alpha=0.15, which="both")
+    ax_right.grid(True, alpha=0.15, which="both")
+
+    # Vertical dashed line marking the scale transition
+    ax_right.axvline(x=32, color=TOL["grey"], ls="--", lw=1.5, zorder=0)
+
+    # Legend on right panel
+    ax_right.legend(loc="upper right")
 
     fig.tight_layout()
     fig.savefig(path, dpi=300, bbox_inches="tight")
@@ -235,6 +256,8 @@ def main():
 
     # 5. Planck data
     planck_data = get_planck_data_asymmetric()
+    pb = np.loadtxt(os.path.join(ROOT_DIR, "data/Planck/COM_PowerSpect_CMB-TT-binned_R3.01.txt"), skiprows=1)
+    planck_binned = (pb[:, 0], pb[:, 1], pb[:, 2], pb[:, 3])
 
     # 6. Checks
     print("\n[4/5] Physical consistency checks...")
@@ -307,18 +330,22 @@ def main():
     print(f"    D_ℓ(ℓ=2000)/D_max={d_2000/d_max:.4f}")
     print(f"    D_ℓ(ℓ=2500)/D_max={d_2500/d_max:.4f}  ({'dampled' if d_2500/d_max < 0.05 else 'weak'})")
 
-    # 7. Plot
-    print(f"\n[5/5] Generating plot...")
+    # 7. χ² table
+    print(f"\n[6/6] χ² analysis...")
+    print_chi2_table(D_model, ells, D_lcdm, ells_l,
+                     label=f"φ₀={phi0}  y₀={y0}  N*={n_star}")
+
+    # 8. Plot
+    print(f"\n[7/7] Generating plot...")
     slug = f"phi{phi0:.2f}_y0{y0:.3f}_Nstar{n_star:.0f}"
-    out = os.path.join(OUTPUT_DIR, f"full_dell_{slug}.png")
-    make_plot(ells, D_model, ells_l, D_lcdm, planck_data, D_sw, ells_sw, peaks, out)
+    out = os.path.join(OUTPUT_DIR, f"planck_tt_{slug}.png")
+    make_plot(ells, D_model, ells_l, D_lcdm, planck_data, planck_binned, out)
 
     print(f"\n{'='*60}")
     if all_pass:
         print("  RESULT: ALL CHECKS PASSED")
     else:
         print("  RESULT: SOME CHECKS FAILED — review above")
-    print(f"  χ²(model)={chi2:.2f}, χ²(LCDM)={chi2_lcdm:.2f}, Δχ²={chi2-chi2_lcdm:+.2f}")
     print(f"{'='*60}")
 
 
