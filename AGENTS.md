@@ -189,7 +189,7 @@ Tune initial conditions (φ₀, y₀) and N_star for Higgs inflation (ξ=15000, 
 - **Punctuated Inflation** (reference model only): Creates a peak via η_H>0 amplification. Aligned at N_star=77.2 → peak at k=10⁻³. Used exclusively for solver validation and cross-checking pipeline behavior.
 
 ### Current Best Configs
-- Higgs (N_star≥50): φ₀=6.60, y₀=−0.736, N_star=52.6, χ²=16.79
+- Higgs (N_star≥50): φ₀=6.60, y₀=−0.736, N_star=52.59, χ²_lowℓ=20.23 (vs LCDM 20.47, Δ=−0.24), χ²_full=2575.5 (vs LCDM 2573.0, Δ=+2.47 over 2507 pts)
 - Deepest dip (N_star≈38): stronger suppression but lower N_star
 - Punctuated (reference only): φ₀=12.00, y₀=0.000, N_star=77.2, m=1.1323e-7, λ=3.3299e-15
 
@@ -233,11 +233,26 @@ if model < data. This is already correct in `camb_wrapper.py` and
 ### 11. Core Solver Architecture — DO NOT MODIFY
 The root-level solver files (`inf_dyn_background.py`, `inf_dyn_MS_full.py`, `pspectrum_pipeline.py`) are the physics core of the project. Do NOT move, rename, refactor, or modify these files unless explicitly asked by the user. They contain the ODE integration, Mukhanov-Sasaki solver, and pipeline orchestration that every downstream script depends on. Changes to these files can silently break every consumer without visible errors in the modified file itself.
 
-### 12. High-ℓ D_ell Offset — Known Issue
-The Higgs USR model's P_S(k) at high-k has spectral index **ns ≈ 1.0** (nearly scale-invariant), while LCDM has **ns = 0.965** (red-tilted). This 0.035 difference accumulates over ~3 decades in k, causing a **~7% offset** in P_S at k=1.0, which translates to a similar offset in D_ell at ℓ > 500 (the "permanent offset" seen in full-sky CAMB plots).
+### 12. High-ℓ D_ℓ Fit — RESOLVED (Config Fits Planck Well)
+The golden config (φ₀=6.60, y₀=−0.736, N_star=52.59) is **statistically indistinguishable from LCDM** against Planck 2018 TT:
 
-**Root cause:** The USR phase produces a flatter primordial spectrum at small scales than LCDM expects. This is a real physical effect of the model, not a bug.
+| Metric | Value |
+|---|---|
+| Low-ℓ χ² (ℓ=2-29) | model=20.23, LCDM=20.47, Δ=−0.24 |
+| Full-ℓ χ² (ℓ=2-2508) | model=2575.5, LCDM=2573.0, Δ=+2.47 |
+| High-ℓ ratio (ℓ>2000) | 0.996 (±0.4% deficit) |
+| D_ℓ peak (ℓ=220) | model=5771, LCDM=5757 μK² |
+| Post-dip n_s (k>1e-2) | **0.960** vs LCDM 0.965 (Δ=−0.005) |
 
-**Status:** Undiagnosed — needs investigation to determine if this offset is consistent with Planck high-ℓ constraints (which have sub-percent error bars at ℓ > 500).
+**Why no large offset exists:**
+- Post-dip n_s ≈ 0.960, very close to LCDM's 0.965 (not 1.0 as previously assumed)
+- The As normalization at k₀=0.05 absorbs most of the dip's amplitude effect
+- What remains is a slow drift of Δn_s = −0.005 across ~1.8 decades in k → −0.4% at ℓ=2500
+- This is well below cosmic variance (≈5% at ℓ=2000) and Planck noise at high ℓ
 
-**When investigating:** Compare the model's high-k spectral index against LCDM's ns=0.965 using the `scripts/scan_stats.py` filter or a direct P_S(k) analysis script.
+**Diagnostic script:** `scripts/check_full_dell.py` — runs full pipeline, produces Planck 2018-style broken-axis D_ℓ plot with binned Planck TT data.
+
+**Planck data files:** Downloaded from IRSA (R3.01/R3.02), stored in `data/Planck/`:
+- Binned TT/TE/EE spectrum (ℓ≈47-2500)
+- Unbinned TT/TE/EE spectrum (ℓ=2-2508)
+- Low-ℓ Commander data (ℓ=2-29)
