@@ -12,9 +12,7 @@ Usage:
 Default: shows the 6 diverse configs from the CAMB scan.
 """
 import argparse
-import glob
 import json
-import os
 
 import numpy as np
 
@@ -29,10 +27,9 @@ from scripts.camb_wrapper import (
 )
 from scripts.planck_data import C_ell_to_d_ell, get_planck_data_asymmetric
 from models import HiggsModel
+from scripts.plotting import get_path, find_ps
 
-OUT_DIR = os.path.join(ROOT_DIR, "outputs/plots/diagnostics")
-PSPECTRA_DIR = os.path.join(ROOT_DIR, "outputs/simulations/pspectra")
-os.makedirs(OUT_DIR, exist_ok=True)
+OUT_DIR = get_path("diagnostics", "")
 
 TOL = {"blue": "#4477AA", "red": "#CC3311", "green": "#228833",
        "yellow": "#EE8866", "teal": "#44BB99", "purple": "#AA3377",
@@ -55,26 +52,8 @@ DEFAULT_CONFIGS = [
 ]
 
 
-def find_ps_file(phi0, y0, n_star):
-    pat = "*phi{:.2f}_y0{:.3f}_*".format(phi0, y0)
-    matches = sorted(glob.glob(os.path.join(PSPECTRA_DIR, "PS_Higgs*" + pat)))
-    scored = []
-    for m in matches:
-        try:
-            with open(m) as f:
-                md = json.load(f)["metadata"]
-            ns = md.get("N_star", 0)
-        except Exception:
-            ns = 0
-        scored.append((abs(ns - n_star), m))
-    if not scored:
-        return None
-    scored.sort(key=lambda x: x[0])
-    return scored[0][1] if scored[0][0] <= 3 else None
-
-
 def load_or_run(cfg):
-    path = find_ps_file(cfg["phi0"], cfg["y0"], cfg["N_star"])
+    path, _ = find_ps(cfg["phi0"], cfg["y0"], cfg["N_star"])
     if path is not None:
         with open(path) as f:
             rec = json.load(f)
@@ -255,10 +234,10 @@ def main():
     ax.grid(True, alpha=0.25, which="both")
     ax.set_xlim(1e-5, 1)
     fig.tight_layout()
-    fig.savefig(os.path.join(OUT_DIR, suffix + "_ps.png"),
+    fig.savefig(get_path("diagnostics", f"ps_comparison_{suffix}.png"),
                 dpi=300, bbox_inches="tight")
     plt.close(fig)
-    print("  Saved: {}_ps.png".format(suffix))
+    print(f"  Saved: ps_comparison_{suffix}.png")
 
     # Low-ell D_ell comparison
     fig, ax = plt.subplots(figsize=(5.5, 3.8))
@@ -280,10 +259,10 @@ def main():
     ax.grid(True, alpha=0.25, which="both")
     ax.set_xlim(1.5, 31)
     fig.tight_layout()
-    fig.savefig(os.path.join(OUT_DIR, suffix + "_dell_low.png"),
+    fig.savefig(get_path("diagnostics", f"dell_comparison_{suffix}.png"),
                 dpi=300, bbox_inches="tight")
     plt.close(fig)
-    print("  Saved: {}_dell_low.png".format(suffix))
+    print(f"  Saved: dell_comparison_{suffix}.png")
 
 
 if __name__ == "__main__":
