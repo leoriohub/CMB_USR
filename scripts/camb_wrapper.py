@@ -27,6 +27,7 @@ import numpy as np
 from scripts.constants import As, k_pivot_phys
 from pspectrum_pipeline import load_pspectrum
 from scripts.planck_data import C_ell_to_d_ell
+from scripts.plotting import OUTPUT_DIRS
 
 
 # Planck 2018 TT+lowE best-fit cosmology for CAMB
@@ -287,7 +288,7 @@ if __name__ == "__main__":
     parser.add_argument("pspectrum_path",
                         help="Path to P_S(k) JSON file or directory")
     parser.add_argument("--ell-max", type=int, default=2500)
-    parser.add_argument("--output-dir", default="outputs/simulations/c_ell")
+    parser.add_argument("--output-dir", default=OUTPUT_DIRS["c_ell"])
     parser.add_argument("--comparison", action="store_true",
                         help="Also run SW-vs-CAMB comparison")
     args = parser.parse_args()
@@ -302,8 +303,11 @@ if __name__ == "__main__":
         print(f"Processing: {fpath}")
 
         ells, C_TT, C_TE, C_EE = compute_cl_full_camb(data, ell_max=args.ell_max)
-        bn = os.path.splitext(os.path.basename(fpath))[0]
-        out_path = os.path.join(args.output_dir, f"C_ell_camb_{bn}.json")
+        md = data["metadata"]
+        phi0 = md.get("x0", 0)
+        y0 = md.get("y0", 0)
+        nstar = md.get("N_star", 0)
+        out_path = os.path.join(args.output_dir, make_filename("camb", phi0, y0, nstar, ".json"))
         save_camb_results(ells, C_TT, C_TE, C_EE, data["metadata"], out_path)
         print(f"  Saved: {out_path}")
 
@@ -312,7 +316,7 @@ if __name__ == "__main__":
 
         if args.comparison:
             comp = run_comparison(data, ell_max=30)
-            comp_path = os.path.join(args.output_dir, f"comparison_{bn}.json")
+            comp_path = os.path.join(args.output_dir, make_filename("camb_comp", phi0, y0, nstar, ".json"))
             os.makedirs(args.output_dir, exist_ok=True)
             comp_record = {
                 "_type": "result",
