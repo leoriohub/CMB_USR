@@ -21,22 +21,13 @@ import os
 
 import numpy as np
 
-from scripts.constants import As, k_pivot_phys
+from scripts.constants import As, k_pivot_phys, ns_sr_default, CAMB_COSMOLOGY
 from pspectrum_pipeline import load_pspectrum
 from scripts.planck_data import C_ell_to_d_ell
 from scripts.plotting import OUTPUT_DIRS
 
 
-# Planck 2018 TT+lowE best-fit cosmology for CAMB
 _LCDM_CACHE = {}
-
-CAMB_COSMOLOGY = dict(
-    H0=67.66,
-    ombh2=0.02242,
-    omch2=0.11933,
-    tau=0.054,
-    mnu=0.06,
-)
 
 
 def _extend_pspectrum(k_phys, P_S, k_min=1e-6, k_max=10.0, n_extend=200):
@@ -163,7 +154,7 @@ def compute_cl_full_camb(pspectrum_data, ell_max=2500, k_min=1e-6, k_max=10.0):
     return ells, C_ell_TT, C_ell_TE, C_ell_EE
 
 
-def compute_cl_camb_powerlaw(ell_max=2500, As=As, ns=0.965, k_pivot=k_pivot_phys):
+def compute_cl_camb_powerlaw(ell_max=2500, As=As, ns=ns_sr_default, k_pivot=k_pivot_phys):
     """
     Compute full C_ell^TT for a power-law primordial spectrum via CAMB.
 
