@@ -30,7 +30,6 @@ from scipy.interpolate import interp1d
 
 from scripts.constants import As, k_pivot_phys, T_cmb, ROOT_DIR
 from scripts.camb_wrapper import compute_cl_full_camb, compute_cl_camb_powerlaw
-from scripts.sachs_wolfe import compute_cl_sw
 from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
 from scripts.chi2_analysis import chi2_commander, chi2_unbinned, print_chi2_table
 from scripts.plotting import get_path, find_ps, make_filename
@@ -58,7 +57,7 @@ def detect_peaks(ells, D_ell, min_height_ratio=0.15, min_dist=30):
     return peaks
 
 
-def run_checks(ells_model, D_model, ells_lcdm, D_lcdm, planck_data, D_sw, ells_sw):
+def run_checks(ells_model, D_model, ells_lcdm, D_lcdm, planck_data):
     p_ells, D_p, D_lo, D_hi = planck_data
     checks = []
 
@@ -226,11 +225,6 @@ def main():
     D_lcdm = C_ell_to_d_ell(ells_l, C_l)
     print(f"  D_ℓ ∈ [{D_lcdm.min():.1f}, {D_lcdm.max():.1f}] μK²")
 
-    # 4. SW-only
-    print("\n  SW-only (for ISW)...")
-    ells_sw, C_sw = compute_cl_sw(ps_data, ell_max=30)
-    D_sw = C_ell_to_d_ell(ells_sw, C_sw)
-
     # 5. Planck data
     planck_data = get_planck_data_asymmetric()
     pb = np.loadtxt(os.path.join(ROOT_DIR, "data/Planck/COM_PowerSpect_CMB-TT-binned_R3.01.txt"), skiprows=1)
@@ -238,7 +232,7 @@ def main():
 
     # 6. Checks
     print("\n[4/5] Physical consistency checks...")
-    checks, chi2, chi2_lcdm = run_checks(ells, D_model, ells_l, D_lcdm, planck_data, D_sw, ells_sw)
+    checks, chi2, chi2_lcdm = run_checks(ells, D_model, ells_l, D_lcdm, planck_data)
 
     print()
     hdr = f"{'Check':<42s} {'Status':<10s} Detail"
@@ -264,14 +258,6 @@ def main():
         idx = int(np.argmin(np.abs(ells - el)))
         lcdm_val = D_int_lcdm(ells[idx])
         print(f"  {'D_ℓ(ℓ='+str(el)+')':<30s} {D_model[idx]:>8.1f} μK² {'':8s} {lcdm_val:>8.1f} μK² (LCDM)")
-
-    # ISW fraction
-    D_full_low = D_model[ells <= 30]
-    isw_pct = (D_full_low - D_sw) / D_sw * 100
-    print(f"\n  ISW fraction:")
-    for el in [2, 5, 10, 20, 29]:
-        idx = int(np.argmin(np.abs(ells_sw - el)))
-        print(f"    ℓ={el:2d}: {isw_pct[idx]:6.1f}%")
 
     # Suppression vs LCDM
     print(f"\n  Suppression vs LCDM:")
