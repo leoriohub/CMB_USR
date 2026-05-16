@@ -22,8 +22,22 @@ k_pivot_phys = 0.002        # Mpc^-1, large-scale pivot (ell≈28) for low-ell a
 
 As_planck = 2.1e-9          # Planck 2018 A_s at k_* = 0.05 Mpc^-1 (TT,TE,EE+lowE)
 As = As_planck * (k_pivot_phys / 0.05) ** (0.965 - 1.0)  # extrapolated to k_pivot_phys
+ns_sr_default = 0.965        # Higgs inflation slow-roll prediction at N_* ≈ 55-60.
+                             # Coincides with Planck 2018 TT+lowE best fit (0.965 ± 0.004).
+                             # Used as ΛCDM baseline spectral index.
 r_ls = 14000.0              # Mpc, comoving distance to last scattering
 T_cmb = 2.7255              # K, CMB temperature
+
+# ── Planck 2018 ΛCDM cosmology (TT+lowE best fit) ───────────────────────────
+# Used by CAMB for both ΛCDM baseline and custom P_S(k) C_ell computations.
+# Values from Aghanim et al. 2020, Table 2 (TT+lowE column).
+CAMB_COSMOLOGY = dict(
+    H0=67.66,           # km/s/Mpc
+    ombh2=0.02242,      # baryon density
+    omch2=0.11933,      # cold dark matter density
+    tau=0.054,          # reionization optical depth
+    mnu=0.06,           # sum of neutrino masses (eV)
+)
 
 # ── Higgs model CMB-normalized defaults ─────────────────────────────────────
 # xi/lam ratio is fixed by As normalization to Planck 2018.
