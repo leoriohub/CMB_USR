@@ -23,6 +23,7 @@ from scripts.camb_wrapper import compute_cl_camb_powerlaw
 from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
 from scripts.optimizer_utils import find_k_dip, _write_log
 from scripts.constants import As, k_pivot_phys, ROOT_DIR
+from scripts.plotting import get_path
 from models import HiggsModel
 import inf_dyn_background as bg_solver
 
@@ -192,9 +193,7 @@ def run_phase1(args, completed):
     print(f"  Est runtime: ~{int(total*0.3*3*35/60)} min")
     print(f"{'='*60}", flush=True)
 
-    log_path = os.path.join(ROOT_DIR, "outputs/simulations/logs",
-                            f"camb_phase1_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    log_path = get_path("logs", f"camb_phase1_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
     log_file = open(log_path, "a")
 
     k_phys_grid, ells_grid = _generate_grids(args)
@@ -403,9 +402,7 @@ def run_phase2(args, completed, regions):
         print(f"    {i+1}. phi0={phi0:.2f} y0={y0:.3f} N*={ns:.0f}")
     print(f"{'='*60}", flush=True)
 
-    log_path = os.path.join(ROOT_DIR, "outputs/simulations/logs",
-                            f"camb_phase2_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    log_path = get_path("logs", f"camb_phase2_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
     log_file = open(log_path, "a")
 
     k_phys_grid, ells_grid = _generate_grids(args)

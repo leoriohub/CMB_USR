@@ -10,6 +10,7 @@ from scripts.constants import As, T_cmb
 from pspectrum_pipeline import run_pspectrum_pipeline
 from scripts.camb_wrapper import compute_cl_full_camb, compute_cl_camb_powerlaw, compute_chi2_camb
 from scripts.planck_data import C_ell_to_d_ell
+from scripts.plotting import get_path
 
 M = 1.1323e-7
 LAM = 3.3299e-15
@@ -125,19 +126,7 @@ def main():
         print(f"  {n_total - n_pass} CHECK(S) FAILED")
     print(f"{'=' * 60}")
 
-    out_dir = "outputs/simulations/c_ell"
-    os.makedirs(out_dir, exist_ok=True)
-    record = {
-        "_type": "result",
-        "format_version": 2,
-        "metadata": {"model": "Punctuated", "m": M, "lam": LAM, "N_star": N_STAR},
-        "c_ell": {
-            "ells": ells.tolist(),
-            "C_ell_TT": C_TT.tolist(),
-            "D_ell": D_model.tolist(),
-        },
-    }
-    out_path = os.path.join(out_dir, "pipeline_sanity_punctuated.json")
+    out_path = get_path("c_ell", "pipeline_sanity_punctuated.json")
     with open(out_path, "w") as f:
         json.dump(record, f, indent=2)
     print(f"  Saved: {out_path}")
@@ -185,9 +174,7 @@ def main():
         ax.set_title("Residuals vs LCDM", fontsize=11)
 
         fig.tight_layout()
-        out_dir = "outputs/plots/diagnostics"
-        os.makedirs(out_dir, exist_ok=True)
-        path = os.path.join(out_dir, f"pipeline_sanity.png")
+        path = get_path("diagnostics", "pipeline_sanity.png")
         fig.savefig(path, dpi=300, bbox_inches="tight")
         print(f"  Saved: {path}")
         plt.close(fig)
