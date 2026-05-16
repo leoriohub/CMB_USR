@@ -24,6 +24,7 @@ import matplotlib.pyplot as plt
 from scripts.camb_wrapper import compute_cl_camb_powerlaw
 from scripts.constants import As, k_pivot_phys, T_cmb
 from scripts.planck_data import get_planck_data_asymmetric
+from scripts.plotting import get_path
 
 
 TOL = {
@@ -97,9 +98,34 @@ def validate_LCDM():
     ax.set_xlim(1.5, ell_max)
 
     fig.tight_layout()
-    out_dir = "outputs/plots/diagnostics"
-    os.makedirs(out_dir, exist_ok=True)
+    out_dir = get_path("diagnostics", "")
     path = os.path.join(out_dir, "camb_lcdm_validation.png")
+    fig.tight_layout()
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    print(f"  Saved: {path}")
+    plt.close(fig)
+
+    # ── Plot 2: Low-ell zoom ──
+    fig, ax = plt.subplots(figsize=(3.5, 2.8))
+
+    ax.errorbar(
+        planck_ells, D_planck,
+        yerr=[D_err_lower, D_err_upper],
+        fmt="o", color=TOL["dark"], capsize=3, capthick=1,
+        markersize=4, elinewidth=1,
+        label="Planck 2018 low-ell TT",
+    )
+    ax.semilogy(ells[ells <= 30], D_TT[ells <= 30], "-",
+                color=TOL["blue"], lw=1.5, label="CAMB LCDM")
+
+    ax.set_xlabel(r"$\ell$", fontsize=14)
+    ax.set_ylabel(r"$D_\ell^{TT}\ [\mu{\rm K}^2]$", fontsize=14)
+    ax.legend(fontsize=11)
+    ax.grid(True, alpha=0.25, which="both")
+    ax.set_xlim(1.5, 31)
+
+    fig.tight_layout()
+    path = os.path.join(out_dir, "camb_lcdm_low_ell.png")
     fig.savefig(path, dpi=300, bbox_inches="tight")
     print(f"  Saved: {path}")
     plt.close(fig)
@@ -148,8 +174,7 @@ def validate_LCDM():
             "max_low_ell_residual_pct": max_res,
         },
     }
-    out_path = os.path.join("outputs/simulations/c_ell", "camb_lcdm_validation.json")
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    out_path = get_path("c_ell", "camb_lcdm_validation.json")
     with open(out_path, "w") as f:
         json.dump(record, f, indent=2)
     print(f"  Saved: {out_path}")
