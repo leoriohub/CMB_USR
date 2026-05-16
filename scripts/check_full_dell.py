@@ -44,7 +44,7 @@ plt.rcParams.update({"font.size": 12, "axes.labelsize": 14, "axes.titlesize": 16
                      "figure.dpi": 300})
 
 
-plt.rcParams.update({"font.size": 12, "axes.labelsize": 14, "axes.titlesize": 16,
+def detect_peaks(ells, D_ell, min_height_ratio=0.15, min_dist=30):
     peaks = []
     n = len(D_ell)
     max_D = np.max(D_ell)
