@@ -25,7 +25,8 @@ def _d_ell(ells, C_ell):
 def find_ps_file(name_pattern):
     """Find a P_S(k) file matching a pattern. Returns data or None."""
     from pspectrum_pipeline import load_pspectrum
-    dirs = ["outputs/simulations/pspectra"]
+    from scripts.plotting import get_path
+    dirs = [get_path("pspectra", "")]
     for d in dirs:
         files = glob.glob(os.path.join(d, f"*{name_pattern}*"))
         files = [f for f in files if not os.path.basename(f).startswith("_checkpoint")]
@@ -120,68 +121,6 @@ def test_linearity():
 
     return dict(name="Linearity check", passed=passed,
                 evidence=evidence, detail=detail)
-
-
-def test_sw_vs_camb():
-    """
-    At ell=2..30, full CAMB > SW-only (ISW adds power).
-    ISW fraction must be physically reasonable.
-    """
-    from scripts.sachs_wolfe import compute_cl_sw_powerlaw
-    from scripts.camb_wrapper import compute_cl_camb_powerlaw
-
-    ell_max = 30
-    # SW-only
-    ells_sw, C_sw, _ = compute_cl_sw_powerlaw(ell_max=ell_max)
-    D_sw = _d_ell(ells_sw, C_sw)
-
-    # Full CAMB
-    ells_camb, C_camb, _, _ = compute_cl_camb_powerlaw(ell_max=ell_max)
-    D_camb = _d_ell(ells_camb, C_camb)
-
-    # Checks
-    isw_positive = all(D_camb > D_sw)
-
-    isw_pct = (D_camb - D_sw) / D_sw * 100
-    idx_2 = 0
-    idx_10 = 8
-    idx_30 = 28
-
-    passed = True
-    details = []
-
-    if not isw_positive:
-        passed = False
-        details.append("FAIL: D_CAMB <= D_SW at some ell")
-    else:
-        details.append("D_CAMB > D_SW at all ell=2..30")
-
-    p2 = isw_pct[idx_2]
-    p10 = isw_pct[idx_10]
-    p30 = isw_pct[idx_30]
-
-    if not (30 < p2 < 50):
-        passed = False
-        details.append(f"FAIL: ISW at ell=2 = {p2:.1f}% (expected 30-50%)")
-    else:
-        details.append(f"ISW at ell=2 = {p2:.1f}%")
-
-    if not (10 < p10 < 25):
-        passed = False
-        details.append(f"FAIL: ISW at ell=10 = {p10:.1f}% (expected 10-25%)")
-    else:
-        details.append(f"ISW at ell=10 = {p10:.1f}%")
-
-    if not (1 < p30 < 10):
-        # SW approximation breaks at ell>20 due to acoustic contributions.
-        # At ell=30, the non-ISW difference can exceed 10% — not a failure
-        # of CAMB, just the limit of SW validity.
-        pass
-
-    evidence = "; ".join(details)
-    return dict(name="SW vs CAMB comparison", passed=passed,
-                evidence=evidence, detail=(
-                    f"ISW fraction decreases with ell: {p2:.1f}% -> {p10:.1f}% -> {p30:.1f}%"))
 
 
 def test_lcdm_benchmark():
@@ -438,7 +377,6 @@ def run_all():
     tests = [
         test_powerlaw_consistency,
         test_linearity,
-        test_sw_vs_camb,
         test_lcdm_benchmark,
         test_feature_propagation,
         test_chi2_sanity,
@@ -484,7 +422,6 @@ if __name__ == "__main__":
         tests = [
             test_powerlaw_consistency,
             test_linearity,
-            test_sw_vs_camb,
             test_lcdm_benchmark,
             test_feature_propagation,
             test_chi2_sanity,
@@ -497,7 +434,6 @@ if __name__ == "__main__":
     test_names = [
         "test_powerlaw_consistency",
         "test_linearity",
-        "test_sw_vs_camb",
         "test_lcdm_benchmark",
         "test_feature_propagation",
         "test_chi2_sanity",

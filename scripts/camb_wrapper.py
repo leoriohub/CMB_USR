@@ -4,14 +4,11 @@ CAMB wrapper: full C_ell computation from custom primordial P_S(k).
 Uses CAMB's set_initial_power_table() to inject the P_S(k) computed
 by the inflation pipeline, then computes the full CMB temperature
 angular power spectrum including:
-  - Early Sachs-Wolfe (primordial)
-  - Late Integrated Sachs-Wolfe (dark energy)
+  - Sachs-Wolfe effect (primordial)
+  - Integrated Sachs-Wolfe effect (dark energy)
   - Acoustic oscillations
   - Silk damping
   - CMB lensing
-
-The SW-only results from scripts.sachs_wolfe can be compared against
-these full results to isolate the ISW contribution at low ell.
 
 References
 ----------
@@ -192,36 +189,6 @@ def compute_cl_camb_powerlaw(ell_max=2500, As=As, ns=0.965, k_pivot=k_pivot_phys
     return ells, C_ell_TT, C_ell_TE, C_ell_EE
 
 
-def run_comparison(pspectrum_data, ell_max=30):
-    """
-    Compare SW-only vs full CAMB C_ell for the same P_S(k).
-
-    Returns the ISW contribution as Delta_C_ell = C_ell_full - C_ell_SW.
-    """
-    from scripts.sachs_wolfe import compute_cl_sw
-
-    ells_sw, C_ell_sw = compute_cl_sw(pspectrum_data, ell_max=ell_max)
-
-    ells_full, C_ell_full, _, _ = compute_cl_full_camb(
-        pspectrum_data, ell_max=ell_max
-    )
-
-    C_ell_isw = C_ell_full - C_ell_sw
-
-    D_ell_sw = C_ell_to_d_ell(ells_sw, C_ell_sw)
-    D_ell_full = C_ell_to_d_ell(ells_sw, C_ell_full)
-    D_ell_isw = C_ell_to_d_ell(ells_sw, C_ell_isw)
-
-    return {
-        "ells": ells_sw,
-        "C_ell_SW": C_ell_sw,
-        "C_ell_full": C_ell_full,
-        "C_ell_ISW": C_ell_isw,
-        "D_ell_SW": D_ell_sw,
-        "D_ell_full": D_ell_full,
-        "D_ell_ISW": D_ell_isw,
-    }
-
 
 def compute_chi2_camb(pspectrum_data, ell_max=29):
     """
@@ -289,8 +256,6 @@ if __name__ == "__main__":
                         help="Path to P_S(k) JSON file or directory")
     parser.add_argument("--ell-max", type=int, default=2500)
     parser.add_argument("--output-dir", default=OUTPUT_DIRS["c_ell"])
-    parser.add_argument("--comparison", action="store_true",
-                        help="Also run SW-vs-CAMB comparison")
     args = parser.parse_args()
 
     if os.path.isdir(args.pspectrum_path):
@@ -313,22 +278,3 @@ if __name__ == "__main__":
 
         chi2_m, chi2_l, dchi2 = compute_chi2_camb(data)
         print(f"  chi2 (model) = {chi2_m:.2f},  chi2 (LCDM) = {chi2_l:.2f},  Delta = {dchi2:+.2f}")
-
-        if args.comparison:
-            comp = run_comparison(data, ell_max=30)
-            comp_path = os.path.join(args.output_dir, make_filename("camb_comp", phi0, y0, nstar, ".json"))
-            os.makedirs(args.output_dir, exist_ok=True)
-            comp_record = {
-                "_type": "result",
-                "format_version": 2,
-                "metadata": {"computation": "SW_vs_CAMB_comparison"},
-                "comparison": {
-                    "ells": comp["ells"].tolist(),
-                    "D_ell_SW": comp["D_ell_SW"].tolist(),
-                    "D_ell_full": comp["D_ell_full"].tolist(),
-                    "D_ell_ISW": comp["D_ell_ISW"].tolist(),
-                },
-            }
-            with open(comp_path, "w") as f:
-                json.dump(comp_record, f, indent=2)
-            print(f"  Saved comparison: {comp_path}")
