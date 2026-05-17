@@ -198,7 +198,6 @@ def evaluate_config(phi0, y0, N_star, args, k_phys_grid=None):
         entry["chi2_binned_model"] = chi2_binned_model
         entry["chi2_binned_lcdm"] = chi2_binned_lcdm
     return entry
-    }
 
 
 def run_phase1(args, completed):
