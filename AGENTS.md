@@ -200,7 +200,7 @@ When setting `model.y0 = -0.736`: initial dx/dT = -0.736.
 
 ### 8. Additional Conventions
 - Scripts are temporary unless user explicitly says to keep them. Delete analysis scripts after use.
-- Heavy compute (scans, optimizations) runs on lab machine via `ssh uni`.
+- Heavy compute (scans, optimizations) runs on lab machine via `ssh uni`. Lab machine project path: `~/Documentos/CMB_USR/`. Sync only via GitHub push/pull — never rsync the full project.
 - Long-running jobs use JSONL incremental logging (crash-safe).
 - Commit messages: semantic, atomic, imperative mood (e.g. "add: ...", "fix: ...", "refactor: ...").
 
