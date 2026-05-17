@@ -32,6 +32,7 @@ T_cmb = 2.7255
 K_DIP_MIN = 1.4e-4
 K_DIP_MAX = 2.1e-3
 CHI2_LCDM = 20.47
+CHI2_LCDM_FULL = 2573.04
 D2_LCDM = 1028.7
 
 
@@ -610,7 +611,10 @@ def main():
     args = setup_args()
 
     if args.max_chi2 is None:
-        args.max_chi2 = CHI2_LCDM if args.mode == "chi2" else 35.0
+        if args.full_chi2:
+            args.max_chi2 = CHI2_LCDM_FULL + 200  # allow 200 above LCDM full
+        else:
+            args.max_chi2 = CHI2_LCDM if args.mode == "chi2" else 35.0
     if args.sort_by is None:
         args.sort_by = args.mode
 
