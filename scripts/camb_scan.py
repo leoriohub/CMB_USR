@@ -18,6 +18,7 @@ import numpy as np
 
 from pspectrum_pipeline import (
     run_pspectrum_pipeline, find_end_of_inflation,
+    build_weighted_kgrid,
 )
 from scripts.camb_wrapper import compute_cl_camb_powerlaw
 from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
@@ -106,8 +107,8 @@ def load_completed(log_path):
     return completed
 
 
-def evaluate_config(phi0, y0, N_star, args):
-    """Run full pipeline + CAMB. Returns dict with chi2 and curve data."""
+def evaluate_config(phi0, y0, N_star, args, k_phys_grid=None):
+    """Run pipeline + CAMB. Pass k_phys_grid to use custom k-grid (quick mode)."""
     model = HiggsModel(lam=args.lam, xi=args.xi)
     try:
         result = run_pspectrum_pipeline(
@@ -116,7 +117,8 @@ def evaluate_config(phi0, y0, N_star, args):
             k_pivot_phys=k_pivot_phys,
             N_star=N_star,
             normalize_to_As=True, As=As,
-            num_k=args.num_k,
+            num_k=args.num_k if k_phys_grid is None else 0,
+            k_phys_grid=k_phys_grid,
             n_workers=args.workers,
             save_outputs=False,
         )
@@ -196,10 +198,17 @@ def run_phase1(args, completed):
     log_path = get_path("logs", f"camb_phase1_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
     log_file = open(log_path, "a")
 
-    k_phys_grid, ells_grid = _generate_grids(args)
+    if getattr(args, 'quick', False):
+        k_phys = build_weighted_kgrid(
+            args.k_min, args.k_max, k_pivot_phys,
+            dense_zone=(1e-4, 1e-2), n_dense=20, n_outer=8,
+        )
+        ells_grid = np.arange(args.ell_max + 1)
+    else:
+        k_phys, ells_grid = _generate_grids(args)
     _write_log(log_file, {
         "_type": "header",
-        "k_phys": k_phys_grid.tolist(),
+        "k_phys": k_phys.tolist(),
         "ells": ells_grid.tolist(),
         "xi": args.xi,
         "lam": args.lam,
@@ -304,7 +313,7 @@ def run_phase1(args, completed):
                     "timestamp": datetime.now().isoformat(),
                 }
 
-                res = evaluate_config(phi0, y0, N_star, args)
+                res = evaluate_config(phi0, y0, N_star, args, k_phys_grid=k_phys)
                 entry.update(res)
                 entry.pop("k_phys", None)
                 entry.pop("ells", None)
@@ -405,10 +414,17 @@ def run_phase2(args, completed, regions):
     log_path = get_path("logs", f"camb_phase2_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
     log_file = open(log_path, "a")
 
-    k_phys_grid, ells_grid = _generate_grids(args)
+    if getattr(args, 'quick', False):
+        k_phys = build_weighted_kgrid(
+            args.k_min, args.k_max, k_pivot_phys,
+            dense_zone=(1e-4, 1e-2), n_dense=20, n_outer=8,
+        )
+        ells_grid = np.arange(args.ell_max + 1)
+    else:
+        k_phys, ells_grid = _generate_grids(args)
     _write_log(log_file, {
         "_type": "header",
-        "k_phys": k_phys_grid.tolist(),
+        "k_phys": k_phys.tolist(),
         "ells": ells_grid.tolist(),
         "xi": args.xi,
         "lam": args.lam,
@@ -459,7 +475,7 @@ def run_phase2(args, completed, regions):
                         "timestamp": datetime.now().isoformat(),
                     }
 
-                    res = evaluate_config(phi0, y0, N_star, args)
+                    res = evaluate_config(phi0, y0, N_star, args, k_phys_grid=k_phys)
                     entry.update(res)
                     entry.pop("k_phys", None)
                     entry.pop("ells", None)
@@ -569,6 +585,8 @@ def setup_args():
                    help="CAMB ell_max (default: 2500). Use 30 for fast scan.")
 
     # Mode control
+    p.add_argument("--quick", action="store_true",
+                   help="Fast screening: ~36 weighted k-modes, CAMB ell_max=30 (~2s/config)")
     p.add_argument("--mode", choices=["chi2", "d2"], default="chi2",
                    help="Optimization mode (default: chi2)")
     p.add_argument("--max-chi2", type=float, default=None,
@@ -613,6 +631,10 @@ def main():
         args.y0_range = [-0.8, -0.4]
         args.auto = False
         args.phase = "broad"
+        args.quick = True
+
+    if args.quick:
+        args.ell_max = 30
 
     completed_phase1 = set()
     completed_phase2 = set()
