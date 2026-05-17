@@ -144,6 +144,7 @@ def compute_camb(result, phi0, y0, nstar, ell_max=2500):
         "D_err_upper": D_err_upper,
         "chi2_model": chi2_model,
         "chi2_lcdm": chi2_lcdm,
+        "ells_lcdm": ells_pl,
     }
 
 

@@ -281,20 +281,60 @@ def plot_camb_comparison(camb_data, filename="camb_dell",
 
 
 def plot_camb_fullsky(camb_data, filename="camb_fullsky", category="powerloss"):
-    """Full-sky CAMB D_ell plot."""
+    """
+    Broken-axis full-sky D_ell plot with Planck 2018 data.
+
+    Left panel: log x-scale (ell=2-30) for low-ell Commander data.
+    Right panel: linear x-scale (ell=32-2500) for binned TT.
+    """
     ells = camb_data["ells"]
     D_camb = camb_data["D_camb"]
     D_pl = camb_data["D_pl"]
+    ells_lcdm = camb_data["ells_lcdm"]
+    p_ells = camb_data["planck_ells"]
+    D_p = camb_data["D_planck"]
+    D_lo = camb_data["D_err_lower"]
+    D_hi = camb_data["D_err_upper"]
 
-    fig, ax = plt.subplots(figsize=(7, 4.5))
-    ax.semilogy(ells, D_camb, "-", color=TOL["red"], lw=1.2, label="Model (CAMB)")
-    ax.semilogy(ells, D_pl, "--", color=TOL["dark"], lw=1.2, alpha=0.6,
-                label=r"$\Lambda$CDM")
-    ax.set_xlabel(r"$\ell$", fontsize=14)
-    ax.set_ylabel(r"$D_\ell^{TT}\ [\mu{\rm K}^2]$", fontsize=14)
-    ax.legend(fontsize=11)
-    ax.grid(True, alpha=0.25, which="both")
-    ax.set_xlim(1.5, ells.max())
+    fig = plt.figure(figsize=(7, 3.3))
+    gs = fig.add_gridspec(1, 2, width_ratios=[1, 4], wspace=0)
+    ax_left = fig.add_subplot(gs[0])
+    ax_right = fig.add_subplot(gs[1], sharey=ax_left)
+
+    ax_left.spines["right"].set_visible(False)
+    ax_right.spines["left"].set_visible(False)
+    ax_right.tick_params(left=False)
+
+    ax_left.set_xscale("log")
+    ax_left.set_xlim(1.8, 32)
+    ax_left.set_xticks([2, 10, 30])
+    ax_left.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+    ax_left.tick_params(axis="x", which="minor", bottom=False)
+
+    ax_right.set_xlim(32, ells.max())
+    ax_right.tick_params(labelleft=False)
+
+    ax_left.set_ylabel(r"$D_\ell^{TT}$ [$\mu$K$^2$]", fontsize=11)
+    ax_left.set_ylim(-100, 6500)
+
+    for ax in [ax_left, ax_right]:
+        ax.plot(ells, D_camb, "-", color=TOL["red"], lw=1.2,
+                label="Higgs USR", zorder=4)
+        ax.plot(ells_lcdm, D_pl, "--", color=TOL["dark"], lw=1.2,
+                alpha=0.6, label=r"$\Lambda$CDM", zorder=3)
+
+    ax_left.errorbar(p_ells, D_p, yerr=[D_lo, D_hi], fmt="o",
+                     color=TOL["dark"], capsize=1.5, markersize=2,
+                     elinewidth=0.4, label="Planck 2018", zorder=5)
+
+    ax_left.set_xlabel(r"$\ell$", fontsize=11)
+    ax_right.set_xlabel(r"$\ell$", fontsize=11)
+
+    ax_left.grid(True, alpha=0.15, which="both")
+    ax_right.grid(True, alpha=0.15, which="both")
+
+    ax_right.axvline(x=32, color=TOL["grey"], ls="--", lw=1.5, zorder=0)
+    ax_right.legend(loc="upper right", fontsize=9)
 
     fig.tight_layout()
     save_fig(fig, filename, category)
