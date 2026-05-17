@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 from scripts.plotting import (
     plot_background, plot_ps, plot_dell,
     plot_camb_comparison, plot_camb_fullsky,
+    make_filename,
 )
 
 import inf_dyn_background as bg_solver
