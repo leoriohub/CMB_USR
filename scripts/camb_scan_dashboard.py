@@ -29,12 +29,14 @@ from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
 from scripts.camb_wrapper import compute_cl_camb_powerlaw
 from scripts.constants import As, k_pivot_phys, ROOT_DIR
 
-CHI2_LCDM = 20.47
+CHI2_LCDM_LOW = 20.47
+CHI2_LCDM_FULL = 2573.0
 D2_LCDM = 1028.7
 GOLDEN = {"phi0": 6.60, "y0": -0.736, "N_star": 52.59, "chi2": 20.23, "d2": 985.0}
 OUTPUT_HTML = "camb_scan_dashboard.html"
 
-NPC = Normalize(vmin=17, vmax=35)
+NPC_LOW = Normalize(vmin=17, vmax=35)
+NPC_FULL = Normalize(vmin=2570, vmax=2600)
 CMAP = "viridis_r"
 
 
@@ -91,6 +93,68 @@ def records_to_ok(records):
     return [r for r in records if r.get("status") == "ok"]
 
 
+def build_ps_lookup(phase1_path, phase2_path):
+    lookup = {}
+    for path in [phase1_path, phase2_path]:
+        if not path or not os.path.exists(path):
+            continue
+        with open(path) as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                    if r.get("status") == "ok" and "P_S" in r:
+                        key = (round(r["phi0"], 4), round(r["y0"], 4), round(r["N_star"], 2))
+                        lookup[key] = np.array(r["P_S"])
+                except Exception:
+                    pass
+    return lookup
+
+
+def attach_ps_from_lookup(records, lookup):
+    for r in records:
+        key = (round(r["phi0"], 4), round(r["y0"], 4), round(r["N_star"], 2))
+        if key in lookup:
+            r["P_S"] = lookup[key].tolist()
+    return records
+
+
+def prepare_records(records, use_full_chi2):
+    for r in records:
+        if use_full_chi2:
+            r["_chi2"] = r.get("chi2_unbinned", 9999)
+            r["_chi2_lcdm"] = r.get("chi2_lcdm_unbinned", CHI2_LCDM_FULL)
+            r["_D_ell"] = r.get("D_ell_full", r.get("D_ell", []))
+            r["_chi2_bin"] = r.get("chi2_binned", None)
+            r["_mode"] = "full"
+            if "d2" not in r and len(r["_D_ell"]) > 0:
+                r["d2"] = round(r["_D_ell"][0], 1)
+        else:
+            r["_chi2"] = r.get("chi2", 9999)
+            r["_chi2_lcdm"] = CHI2_LCDM_LOW
+            r["_D_ell"] = r.get("D_ell", [])
+            r["_chi2_bin"] = None
+            r["_mode"] = "low"
+    return records
+
+
+def load_full_chi2(path):
+    records = []
+    if not path or not os.path.exists(path):
+        return records
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if rec.get("status") == "ok":
+                records.append(rec)
+    return records
+
+
 def img_to_b64(fig):
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
@@ -106,23 +170,29 @@ def build_summary_html(ok_p1, ok_p2, all_ok):
     html = []
 
     # Metrics
-    best_chi2 = min(all_ok, key=lambda r: r["chi2"])
+    best_chi2 = min(all_ok, key=lambda r: r["_chi2"])
     best_supp = max(all_ok, key=lambda r: r.get("suppression_pct", 0))
     best_d2 = min(all_ok, key=lambda r: r["d2"])
 
+    use_full = all_ok[0].get("_mode") == "full" if all_ok else False
+    chi2_lcdm = CHI2_LCDM_FULL if use_full else CHI2_LCDM_LOW
+    metric_label = "χ²_full" if use_full else "χ²_low"
+
     html.append('<div class="summary-grid">')
     html.append(f'<div class="summary-card"><span class="stat">{len(all_ok)}</span><span class="label">OK configs</span></div>')
-    html.append(f'<div class="summary-card"><span class="stat">{best_chi2["chi2"]:.2f}</span><span class="label">Best χ²</span></div>')
+    html.append(f'<div class="summary-card"><span class="stat">{best_chi2["_chi2"]:.1f}</span><span class="label">Best {metric_label}</span></div>')
     html.append(f'<div class="summary-card"><span class="stat">{best_supp.get("suppression_pct", 0):.1f}%</span><span class="label">Max suppression</span></div>')
     html.append(f'<div class="summary-card"><span class="stat">{best_d2["d2"]:.0f}</span><span class="label">Lowest D₂</span></div>')
     html.append('</div>')
 
     # Passing criteria
-    passing = [r for r in all_ok if r["chi2"] <= CHI2_LCDM and r["d2"] < D2_LCDM and r["N_star"] >= 50]
-    html.append(f'<p>Configs with χ² ≤ LCDM ({CHI2_LCDM}) + N<sub>*</sub> ≥ 50: <strong>{len(passing)}</strong></p>')
+    passing = [r for r in all_ok if r["_chi2"] <= chi2_lcdm + 5 and r["d2"] < D2_LCDM and r["N_star"] >= 50]
+    html.append(f'<p>Configs with {metric_label} ≤ LCDM+5 ({chi2_lcdm:.0f}) + N<sub>*</sub> ≥ 50: <strong>{len(passing)}</strong></p>')
+    html.append(f'<p>LCDM reference: {metric_label} = <strong>{chi2_lcdm:.1f}</strong></p>')
 
     # Best config detail
-    bc = min(passing, key=lambda r: r["chi2"]) if passing else best_chi2
+    bc = min(passing, key=lambda r: r["_chi2"]) if passing else best_chi2
+    dchi2 = bc["_chi2"] - bc.get("_chi2_lcdm", chi2_lcdm)
     html.append('<div class="best-config">')
     html.append('<h3>Best Config</h3>')
     html.append(f'<table class="metric-table">')
@@ -130,8 +200,10 @@ def build_summary_html(ok_p1, ok_p2, all_ok):
     html.append(f'<tr><td>y₀</td><td>{bc["y0"]:+.3f}</td></tr>')
     html.append(f'<tr><td>N<sub>*</sub></td><td>{bc["N_star"]:.1f}</td></tr>')
     html.append(f'<tr><td>N<sub>total</sub></td><td>{bc.get("N_total", 0):.1f}</td></tr>')
-    html.append(f'<tr><td>χ²</td><td>{bc["chi2"]:.2f}</td></tr>')
-    html.append(f'<tr><td>Δχ² vs LCDM</td><td>{bc.get("dchi2", 0):+.2f}</td></tr>')
+    html.append(f'<tr><td>{metric_label}</td><td>{bc["_chi2"]:.1f}</td></tr>')
+    html.append(f'<tr><td>Δ{metric_label} vs LCDM</td><td>{dchi2:+.1f}</td></tr>')
+    if use_full and bc.get("_chi2_bin") is not None:
+        html.append(f'<tr><td>χ²_binned</td><td>{bc["_chi2_bin"]:.1f}</td></tr>')
     html.append(f'<tr><td>D₂</td><td>{bc["d2"]:.1f} μK²</td></tr>')
     html.append(f'<tr><td>k<sub>dip</sub></td><td>{bc.get("k_dip", 0):.2e} Mpc⁻¹</td></tr>')
     html.append(f'<tr><td>Suppression</td><td>{bc.get("suppression_pct", 0):.1f}%</td></tr>')
@@ -139,13 +211,22 @@ def build_summary_html(ok_p1, ok_p2, all_ok):
     html.append('</div>')
 
     # Top 15 table
-    passing_sorted = sorted(passing, key=lambda r: r["chi2"])[:15]
-    html.append('<h3>Top 15 by χ²</h3>')
+    passing_sorted = sorted(passing, key=lambda r: r["_chi2"])[:15]
+    html.append(f'<h3>Top 15 by {metric_label}</h3>')
     html.append('<div class="table-wrap"><table class="data-table">')
-    html.append('<tr><th>#</th><th>Phase</th><th>φ₀</th><th>y₀</th><th>N<sub>*</sub></th><th>χ²</th><th>Δχ²</th><th>D₂</th><th>k<sub>dip</sub></th><th>Supp%</th><th>N<sub>tot</sub></th></tr>')
+    html.append('<tr><th>#</th><th>Phase</th><th>φ₀</th><th>y₀</th><th>N<sub>*</sub></th>'
+                f'<th>{metric_label}</th><th>Δ</th>'
+                f'{"<th>χ²_bin</th>" if use_full else ""}'
+                '<th>D₂</th><th>k<sub>dip</sub></th><th>Supp%</th><th>N<sub>tot</sub></th></tr>')
     for i, r in enumerate(passing_sorted):
         phase_label = "Fine" if r.get("_phase") == "phase2" else "Broad"
-        html.append(f'<tr><td>{i+1}</td><td>{phase_label}</td><td>{r["phi0"]:.2f}</td><td>{r["y0"]:+.3f}</td><td>{r["N_star"]:.1f}</td><td>{r["chi2"]:.2f}</td><td>{r.get("dchi2", 0):+.2f}</td><td>{r["d2"]:.0f}</td><td>{r.get("k_dip", 0):.2e}</td><td>{r.get("suppression_pct", 0):.1f}</td><td>{r.get("N_total", 0):.1f}</td></tr>')
+        dchi2 = r["_chi2"] - r.get("_chi2_lcdm", chi2_lcdm)
+        html.append(f'<tr><td>{i+1}</td><td>{phase_label}</td>'
+                    f'<td>{r["phi0"]:.2f}</td><td>{r["y0"]:+.3f}</td><td>{r["N_star"]:.1f}</td>'
+                    f'<td>{r["_chi2"]:.1f}</td><td>{dchi2:+.1f}</td>'
+                    f'{"<td>" + str(r.get("_chi2_bin", "")) + "</td>" if use_full else ""}'
+                    f'<td>{r["d2"]:.0f}</td><td>{r.get("k_dip", 0):.2e}</td>'
+                    f'<td>{r.get("suppression_pct", 0):.1f}</td><td>{r.get("N_total", 0):.1f}</td></tr>')
     html.append('</table></div>')
 
     return "\n".join(html)
@@ -157,12 +238,15 @@ def build_summary_html(ok_p1, ok_p2, all_ok):
 def plot_param_space(ok_records):
     phi0s = np.array([r["phi0"] for r in ok_records])
     y0s = np.array([r["y0"] for r in ok_records])
-    chi2s = np.array([r["chi2"] for r in ok_records])
+    chi2s = np.array([r["_chi2"] for r in ok_records])
     supps = np.array([r.get("suppression_pct", 0) for r in ok_records])
+
+    use_full = ok_records[0].get("_mode") == "full" if ok_records else False
+    npc = NPC_FULL if use_full else NPC_LOW
 
     fig, axes = plt.subplots(1, 2, figsize=(8, 3.5))
 
-    sc1 = axes[0].scatter(phi0s, y0s, c=chi2s, cmap=CMAP, norm=NPC, s=12, alpha=0.7, edgecolors="none")
+    sc1 = axes[0].scatter(phi0s, y0s, c=chi2s, cmap=CMAP, norm=npc, s=12, alpha=0.7, edgecolors="none")
     axes[0].set_xlabel(r"$\phi_0$ [$M_P$]", fontsize=11)
     axes[0].set_ylabel(r"$y_0$ [code units]", fontsize=11)
     axes[0].set_title(r"Colored by $\chi^2$", fontsize=12)
@@ -190,36 +274,68 @@ def plot_dell_overlay(ok_records, ells, planck_data, lcdm_d):
     p_ells, D_p, D_lo, D_hi = planck_data
     ells_l, _, D_l = lcdm_d
 
-    top = sorted([r for r in ok_records if r.get("status") == "ok" and r["chi2"] <= CHI2_LCDM + 5],
-                 key=lambda r: r["chi2"])[:5]
+    use_full = ok_records[0].get("_mode") == "full" if ok_records else False
+    top = sorted([r for r in ok_records if r.get("status") == "ok" and r["_chi2"] <= ok_records[0]["_chi2_lcdm"] + 5],
+                 key=lambda r: r["_chi2"])[:5]
     if not top:
-        top = sorted(ok_records, key=lambda r: r["chi2"])[:5]
+        top = sorted(ok_records, key=lambda r: r["_chi2"])[:5]
 
-    fig, ax = plt.subplots(figsize=(4.5, 3.2))
+    if use_full:
+        from scripts.chi2_analysis import load_planck_binned
 
-    # Planck data
+    fig, axes = plt.subplots(1, 2, figsize=(8.5, 3.2),
+                             gridspec_kw={"width_ratios": [1, 2.2]})
+
+    # ---- LEFT: low-ell (ℓ=2-30) with Commander data ----
+    ax = axes[0]
     mask_p = p_ells <= 30
     ax.errorbar(p_ells[mask_p], D_p[mask_p], yerr=[D_lo[mask_p], D_hi[mask_p]],
                 fmt="o", color=TOL["dark"], capsize=2, markersize=3, elinewidth=0.8,
-                label="Planck 2018", zorder=5, alpha=0.7)
-
-    # LCDM
+                label="Planck", zorder=5, alpha=0.7)
     mask_l = ells_l <= 30
     ax.plot(ells_l[mask_l], D_l[mask_l], "--", color=TOL["grey"], lw=1.5, alpha=0.7, label=r"$\Lambda$CDM")
 
-    # Top configs
     colors = [TOL["red"], TOL["blue"], TOL["green"], TOL["purple"], TOL["teal"]]
     for i, r in enumerate(top):
-        D = np.array(r["D_ell"])
+        D = np.array(r["_D_ell"])
         c = colors[i % len(colors)]
-        label = rf"$\phi_0$={r['phi0']:.1f}, $y_0$={r['y0']:+.2f}, $\chi^2$={r['chi2']:.1f}"
-        ax.plot(ells, D, "-", color=c, lw=1.2, label=label, alpha=0.85)
+        ell_plot = np.arange(2, 2 + len(D))
+        label = rf"$\phi_0$={r['phi0']:.1f}, $y_0$={r['y0']:+.2f}"
+        ax.plot(ell_plot[:29], D[:29], "-", color=c, lw=1.2, label=label, alpha=0.85)
 
     ax.set_xlabel(r"$\ell$", fontsize=11)
     ax.set_ylabel(r"$D_\ell^{TT}$ [$\mu$K$^2$]", fontsize=11)
-    ax.legend(fontsize=7, loc="upper right", ncol=1, framealpha=0.8)
+    ax.legend(fontsize=6.5, loc="upper right", ncol=1, framealpha=0.8)
     ax.grid(True, alpha=0.2)
     ax.set_xlim(1.5, 30.5)
+
+    # ---- RIGHT: full-sky (ℓ=2-2500) with binned Planck data ----
+    ax = axes[1]
+    lcdm_plot = ells_l
+    ax.plot(lcdm_plot, D_l, "--", color=TOL["grey"], lw=1.2, alpha=0.6, label=r"$\Lambda$CDM")
+
+    if use_full:
+        try:
+            b_ells, b_D, b_lo, b_hi = load_planck_binned()
+            b_sigma = (b_lo + b_hi) / 2
+            ax.errorbar(b_ells, b_D, yerr=b_sigma, fmt="o", color=TOL["dark"],
+                        capsize=1.5, markersize=2, elinewidth=0.6, alpha=0.5, label="Planck binned")
+        except Exception:
+            pass
+
+    for i, r in enumerate(top):
+        D = np.array(r["_D_ell"])
+        c = colors[i % len(colors)]
+        ell_plot = np.arange(2, 2 + len(D))
+        ch = r["_chi2"]
+        ax.plot(ell_plot, D, "-", color=c, lw=0.8, alpha=0.7,
+                label=rf"$\chi^2$={ch:.0f}")
+
+    ax.set_xlabel(r"$\ell$", fontsize=11)
+    ax.set_ylabel(r"$D_\ell^{TT}$ [$\mu$K$^2$]", fontsize=11)
+    ax.legend(fontsize=6.5, loc="upper right", ncol=1, framealpha=0.8)
+    ax.grid(True, alpha=0.2)
+    ax.set_xlim(1.5, 2500)
 
     fig.tight_layout()
     return img_to_b64(fig)
@@ -229,10 +345,11 @@ def plot_dell_overlay(ok_records, ells, planck_data, lcdm_d):
 # ---------------------------------------------------------------------------
 
 def plot_ps_overlay(ok_records, k_phys, planck_data):
-    top = sorted([r for r in ok_records if r.get("status") == "ok" and r["chi2"] <= CHI2_LCDM + 5],
-                 key=lambda r: r["chi2"])[:5]
+    chi2_lcdm = ok_records[0]["_chi2_lcdm"] if ok_records else 2573
+    top = sorted([r for r in ok_records if r.get("status") == "ok" and r["_chi2"] <= chi2_lcdm + 5],
+                 key=lambda r: r["_chi2"])[:5]
     if not top:
-        top = sorted(ok_records, key=lambda r: r["chi2"])[:5]
+        top = sorted(ok_records, key=lambda r: r["_chi2"])[:5]
 
     ns_lcdm = 0.965
     ps_lcdm = As * (k_phys / k_pivot_phys) ** (ns_lcdm - 1.0)
@@ -245,7 +362,7 @@ def plot_ps_overlay(ok_records, k_phys, planck_data):
     for i, r in enumerate(top):
         P = np.array(r["P_S"])[:len(k_phys)]
         c = colors[i % len(colors)]
-        label = rf"$\phi_0$={r['phi0']:.1f}, $y_0$={r['y0']:+.2f}, $\chi^2$={r['chi2']:.1f}"
+        label = rf"$\phi_0$={r['phi0']:.1f}, $y_0$={r['y0']:+.2f}, $\chi^2$={r['_chi2']:.0f}"
         ax.loglog(k_phys, P, "-", color=c, lw=1.2, label=label, alpha=0.85)
 
     ax.axvline(k_pivot_phys, color=TOL["grey"], ls=":", lw=1, alpha=0.4, label=f"$k_{{\\rm pivot}}$={k_pivot_phys:.3f}")
@@ -264,7 +381,7 @@ def plot_ps_overlay(ok_records, k_phys, planck_data):
 # ---------------------------------------------------------------------------
 
 def plot_correlations(ok_records):
-    chi2s = np.array([r["chi2"] for r in ok_records])
+    chi2s = np.array([r["_chi2"] for r in ok_records])
     supps = np.array([r.get("suppression_pct", 0) for r in ok_records])
     d2s = np.array([r["d2"] for r in ok_records])
     nstars = np.array([r["N_star"] for r in ok_records])
@@ -300,12 +417,19 @@ def plot_golden_comparison(ok_records, ells, k_phys, planck_data, lcdm_d):
     p_ells, D_p, D_lo, D_hi = planck_data
     ells_l, _, D_l = lcdm_d
 
-    passing = [r for r in ok_records if r["chi2"] <= CHI2_LCDM and r["d2"] < D2_LCDM and r["N_star"] >= 50]
-    best = min(passing, key=lambda r: r["chi2"]) if passing else min(ok_records, key=lambda r: r["chi2"])
+    use_full = ok_records[0].get("_mode") == "full" if ok_records else False
+    chi2_lcdm = ok_records[0]["_chi2_lcdm"] if ok_records else 2573
 
-    fig, axes = plt.subplots(1, 2, figsize=(8.5, 3.2))
+    passing = [r for r in ok_records if r["_chi2"] <= chi2_lcdm + 5 and r["d2"] < D2_LCDM and r["N_star"] >= 50]
+    best = min(passing, key=lambda r: r["_chi2"]) if passing else min(ok_records, key=lambda r: r["_chi2"])
 
-    # ---- D_ell panel ----
+    if use_full:
+        fig, axes = plt.subplots(1, 3, figsize=(11.5, 3.2),
+                                 gridspec_kw={"width_ratios": [1.2, 2.5, 2]})
+    else:
+        fig, axes = plt.subplots(1, 2, figsize=(8.5, 3.2))
+
+    # ---- D_ell panel: low-ℓ ----
     ax = axes[0]
     mask_p = p_ells <= 30
     ax.errorbar(p_ells[mask_p], D_p[mask_p], yerr=[D_lo[mask_p], D_hi[mask_p]],
@@ -314,14 +438,14 @@ def plot_golden_comparison(ok_records, ells, k_phys, planck_data, lcdm_d):
     mask_l = ells_l <= 30
     ax.plot(ells_l[mask_l], D_l[mask_l], "--", color=TOL["grey"], lw=1.5, alpha=0.6, label=r"$\Lambda$CDM")
 
-    D_new = np.array(best["D_ell"])
-    ax.plot(ells, D_new, "-", color=TOL["red"], lw=1.8, label=rf"New best ($\chi^2$={best['chi2']:.1f})")
+    D_new = np.array(best["_D_ell"])
+    ax.plot(np.arange(2, 2+len(D_new))[:29], D_new[:29], "-", color=TOL["red"], lw=1.8,
+            label=rf"New best ($\chi^2$={best['_chi2']:.1f})")
 
-    # Estimate golden D_ell from nearest config in scan data
     golden_near = min(ok_records, key=lambda r: abs(r["phi0"]-GOLDEN["phi0"]) + abs(r["y0"]-GOLDEN["y0"])*0.5 + abs(r["N_star"]-GOLDEN["N_star"])*0.05)
-    D_golden = np.array(golden_near["D_ell"])
-    ax.plot(ells, D_golden, "-.", color=TOL["purple"], lw=1.5, alpha=0.7,
-            label=rf"Golden-like ($\chi^2$={golden_near['chi2']:.1f})")
+    D_golden = np.array(golden_near["_D_ell"])
+    ax.plot(np.arange(2, 2+len(D_golden))[:29], D_golden[:29], "-.", color=TOL["purple"], lw=1.5, alpha=0.7,
+            label=rf"Golden-like ($\chi^2$={golden_near['_chi2']:.1f})")
 
     ax.set_xlabel(r"$\ell$", fontsize=11)
     ax.set_ylabel(r"$D_\ell^{TT}$ [$\mu$K$^2$]", fontsize=11)
@@ -329,8 +453,33 @@ def plot_golden_comparison(ok_records, ells, k_phys, planck_data, lcdm_d):
     ax.grid(True, alpha=0.2)
     ax.set_xlim(1.5, 30.5)
 
+    # ---- Full-sky D_ell panel (only if full-chi2 mode) ----
+    if use_full:
+        ax = axes[1]
+        from scripts.chi2_analysis import load_planck_binned
+        ax.plot(ells_l, D_l, "--", color=TOL["grey"], lw=1.2, alpha=0.6, label=r"$\Lambda$CDM")
+        try:
+            b_ells, b_D, b_lo, b_hi = load_planck_binned()
+            b_sigma = (b_lo + b_hi) / 2
+            ax.errorbar(b_ells, b_D, yerr=b_sigma, fmt="o", color=TOL["dark"],
+                        capsize=1.5, markersize=2, elinewidth=0.6, alpha=0.4, label="Planck")
+        except Exception:
+            pass
+
+        ell_plot = np.arange(2, 2 + len(D_new))
+        ax.plot(ell_plot, D_new, "-", color=TOL["red"], lw=1.2, alpha=0.8, label="New best")
+        ax.plot(ell_plot[:len(D_golden)], D_golden, "-.", color=TOL["purple"], lw=1.2, alpha=0.7, label="Golden-like")
+        ax.set_xlabel(r"$\ell$", fontsize=11)
+        ax.set_ylabel(r"$D_\ell^{TT}$ [$\mu$K$^2$]", fontsize=11)
+        ax.legend(fontsize=8, loc="upper right", framealpha=0.8)
+        ax.grid(True, alpha=0.2)
+        ax.set_xlim(1.5, 2500)
+        ax2 = axes[2]
+    else:
+        ax2 = axes[1]
+
     # ---- P_S panel ----
-    ax = axes[1]
+    ax = ax2
     ns_lcdm = 0.965
     ps_lcdm = As * (k_phys / k_pivot_phys) ** (ns_lcdm - 1.0)
     ax.loglog(k_phys, ps_lcdm, "--", color=TOL["grey"], lw=1.5, alpha=0.5, label=r"$\Lambda$CDM")
@@ -360,18 +509,26 @@ def plot_golden_comparison(ok_records, ells, k_phys, planck_data, lcdm_d):
     html.append(f'<img src="data:image/png;base64,{img_to_b64(fig)}" class="dashboard-img">')
 
     # Metrics comparison table
+    chi2_lcdm_label = best["_chi2_lcdm"] if "full" in str(best.get("_mode", "")) else CHI2_LCDM_LOW
+    metric_label = "χ²_full" if best.get("_mode") == "full" else "χ²_low"
+    golden_chi2_use = GOLDEN["chi2"] if best.get("_mode") != "full" else GOLDEN["chi2"]
+
     html.append('<h3>Metrics Comparison</h3>')
-    html.append('<table class="metric-table" style="margin:0 auto; min-width:400px;">')
+    html.append('<table class="metric-table" style="margin:0 auto; min-width:450px;">')
     html.append(f'<tr><th>Metric</th><th>Golden (φ₀=6.60, y₀=-0.736, N*=52.6)</th><th>New Best</th></tr>')
-    html.append(f'<tr><td>χ²</td><td>{GOLDEN["chi2"]:.2f}</td><td>{best["chi2"]:.2f}</td></tr>')
-    html.append(f'<tr><td>Δχ² vs LCDM</td><td>{GOLDEN["chi2"]-CHI2_LCDM:+.2f}</td><td>{best["chi2"]-CHI2_LCDM:+.2f}</td></tr>')
+    html.append(f'<tr><td>{metric_label}</td><td>{golden_chi2_use:.1f}</td><td>{best["_chi2"]:.1f}</td></tr>')
+    dchi2 = best["_chi2"] - chi2_lcdm_label
+    dchi2_g = golden_chi2_use - chi2_lcdm_label
+    html.append(f'<tr><td>Δ{metric_label} vs LCDM</td><td>{dchi2_g:+.1f}</td><td>{dchi2:+.1f}</td></tr>')
+    if best.get("_mode") == "full" and best.get("_chi2_bin") is not None:
+        html.append(f'<tr><td>χ²_binned</td><td>—</td><td>{best["_chi2_bin"]:.1f}</td></tr>')
     html.append(f'<tr><td>D₂ [μK²]</td><td>{GOLDEN["d2"]:.0f}</td><td>{best["d2"]:.0f}</td></tr>')
     html.append(f'<tr><td>φ₀</td><td>{GOLDEN["phi0"]:.2f}</td><td>{best["phi0"]:.2f}</td></tr>')
     html.append(f'<tr><td>y₀</td><td>{GOLDEN["y0"]:+.3f}</td><td>{best["y0"]:+.3f}</td></tr>')
     html.append(f'<tr><td>N<sub>*</sub></td><td>{GOLDEN["N_star"]:.1f}</td><td>{best["N_star"]:.1f}</td></tr>')
     html.append(f'<tr><td>Suppression</td><td>~63%</td><td>{best.get("suppression_pct", 0):.1f}%</td></tr>')
-    dchi2_improvement = GOLDEN["chi2"] - best["chi2"]
-    html.append(f'<tr><td><strong>χ² improvement</strong></td><td></td><td><strong>{dchi2_improvement:+.2f}</strong></td></tr>')
+    improvement = golden_chi2_use - best["_chi2"]
+    html.append(f'<tr><td><strong>{metric_label} improvement</strong></td><td></td><td><strong>{improvement:+.1f}</strong></td></tr>')
     html.append('</table>')
 
     return "\n".join(html)
@@ -513,42 +670,89 @@ def auto_detect_latest():
     )
 
 
+def auto_detect_full_chi2():
+    log_dir = get_path("logs", "")
+    candidates = sorted([f for f in os.listdir(log_dir) if f.startswith("camb_full_chi2") and f.endswith(".jsonl")])
+    return os.path.join(log_dir, candidates[-1]) if candidates else None
+
+
 def main():
     p = argparse.ArgumentParser(description="CAMB Scan Dashboard")
     p.add_argument("--phase1", type=str, default=None, help="Phase 1 JSONL path")
     p.add_argument("--phase2", type=str, default=None, help="Phase 2 JSONL path")
+    p.add_argument("--full-chi2", type=str, default=None, help="Full chi2 JSONL path")
     p.add_argument("--open", action="store_true", help="Open in browser after generation")
     args = p.parse_args()
 
     phase1_path = args.phase1
     phase2_path = args.phase2
+    full_chi2_path = args.full_chi2
 
-    if not phase1_path and not phase2_path:
-        phase1_path, phase2_path = auto_detect_latest()
-        print(f"Auto-detected:")
-        print(f"  Phase 1: {phase1_path}")
-        print(f"  Phase 2: {phase2_path}")
+    # Auto-detect full-chi2 if not specified
+    if not full_chi2_path:
+        full_chi2_path = auto_detect_full_chi2()
+        if full_chi2_path:
+            print(f"Auto-detected full-chi2: {full_chi2_path}")
 
-    if not phase1_path and not phase2_path:
-        print("ERROR: No log files found. Specify --phase1 and/or --phase2.")
-        sys.exit(1)
+    use_full_chi2 = full_chi2_path is not None and os.path.exists(full_chi2_path)
 
-    print("Loading data...")
-    headers, all_records = load_jsonls(phase1_path, phase2_path)
-    ok_records = records_to_ok(all_records)
-    print(f"  Total records: {len(all_records)}, OK: {len(ok_records)}")
+    if not use_full_chi2:
+        # Legacy mode — load original phase logs
+        if not phase1_path and not phase2_path:
+            phase1_path, phase2_path = auto_detect_latest()
+            print(f"Auto-detected:")
+            print(f"  Phase 1: {phase1_path}")
+            print(f"  Phase 2: {phase2_path}")
 
-    print("Loading LCDM baseline and Planck data...")
-    ells = get_ells_from_headers(headers)
-    k_phys = get_kphys_from_headers(headers)
-    planck_data = get_planck()
-    lcdm_data = get_lcdm(ell_max=30)
+        if not phase1_path and not phase2_path:
+            print("ERROR: No log files found. Specify --phase1 and/or --phase2.")
+            sys.exit(1)
+
+        print("Loading data (low-ℓ mode)...")
+        headers, all_records = load_jsonls(phase1_path, phase2_path)
+        ok_records = records_to_ok(all_records)
+        print(f"  Total records: {len(all_records)}, OK: {len(ok_records)}")
+
+        print("Loading LCDM baseline and Planck data...")
+        ells = get_ells_from_headers(headers)
+        k_phys = get_kphys_from_headers(headers)
+        planck_data = get_planck()
+        lcdm_data = get_lcdm(ell_max=30)
+
+    else:
+        # Full-chi2 mode
+        print(f"Loading data (full-chi² mode)...")
+        ok_records = load_full_chi2(full_chi2_path)
+        print(f"  OK records: {len(ok_records)}")
+
+        # Get k_phys from phase headers for P_S plots
+        if not phase1_path and not phase2_path:
+            phase1_path, phase2_path = auto_detect_latest()
+        headers, _ = load_jsonls(phase1_path, phase2_path)
+        ells = get_ells_from_headers(headers) if headers else np.arange(2, 31)
+        k_phys = get_kphys_from_headers(headers) if headers else np.logspace(-5, 0, 80)
+
+        # Attach P_S from original logs
+        ps_lookup = build_ps_lookup(phase1_path, phase2_path)
+        ok_records = attach_ps_from_lookup(ok_records, ps_lookup)
+        found_ps = sum(1 for r in ok_records if "P_S" in r)
+        print(f"  P_S attached: {found_ps}/{len(ok_records)}")
+
+        planck_data = get_planck()
+        lcdm_data = get_lcdm(ell_max=2500)
+
+    # Normalize fields
+    ok_records = prepare_records(ok_records, use_full_chi2)
 
     print("Building dashboard...")
+    if use_full_chi2:
+        print(f"  Mode: full-ℓ (LCDM χ² = {CHI2_LCDM_FULL})")
+    else:
+        print(f"  Mode: low-ℓ (LCDM χ² = {CHI2_LCDM_LOW})")
 
     # Split by phase for stats
-    ok_p1 = [r for r in ok_records if r.get("_phase") == "phase1"]
-    ok_p2 = [r for r in ok_records if r.get("_phase") == "phase2"]
+    ok_p1 = [r for r in ok_records if r.get("_phase") == "phase1" or r.get("_source_phase") == "phase1"]
+    ok_p2 = [r for r in ok_records if r.get("_phase") == "phase2" or r.get("_source_phase") == "phase2"]
 
     # Section 1: Summary HTML
     print("  1/6 Executive summary...")
