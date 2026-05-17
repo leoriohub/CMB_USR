@@ -19,8 +19,9 @@ class HiggsModel(InflationModel):
         self.x0 = 5.70
         self.y0 = -0.10
 
-        # Inflation ends at T ~ 472 for xi=15000
-        self.T_max = 500.0
+        # Inflation ends at T ~ 472 for xi=15000 (SR), but USR configs
+        # with small y0 need longer integration (up to ~1500).
+        self.T_max = 2000.0
         self.bg_steps = 1000
 
     def f(self, x):

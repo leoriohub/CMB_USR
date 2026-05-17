@@ -55,29 +55,62 @@ def build_bg_interpolators_fast(bg_sol, T_span):
     return x_interp, y_interp, z_interp, n_interp
 
 
-def find_end_of_inflation(epsH):
+def find_end_of_inflation(epsH, window_frac=0.05):
     """
-    Find index where epsilon_H last crosses 1 (true end of inflation).
+    Find index where epsilon_H permanently crosses 1 (true end of inflation).
+
+    Strategy:
+      1. Find the start of inflation (first eps < 1).
+      2. Find all upward crossings (eps goes from <1 to >=1) after start.
+      3. For each upward crossing, check if eps MEAN-stays >= 1 over the
+         next `window` steps. The first crossing that satisfies this is
+         the true end of inflation.
+      4. If no permanent crossing is found, fall back to scanning
+         backward from the last step above 1.
+
+    This correctly handles:
+      - SR starts (eps0 < 1): start_idx = 0, single upward crossing
+      - USR/kinetic-dominance starts (eps0 > 1): start_idx after
+        the initial transient decays below 1
+      - USR transient spikes: eps briefly exceeds 1 and drops back;
+        the mean over window remains < 1, so they are skipped.
 
     Returns -1 if inflation never begins or never ends within the window.
-    Scans backward so the USR peak (eps > 1 in the middle) isn't mistaken
-    for the end of inflation.
+    The caller (run_pspectrum_pipeline) falls back to the last index if -1.
     """
-    in_inflation = False
+    window = max(20, int(len(epsH) * window_frac))
+
+    # 1. Find start of inflation (first eps < 1)
     start_idx = -1
     for idx, eps in enumerate(epsH):
-        if not in_inflation:
-            if eps < 1.0:
-                in_inflation = True
-                start_idx = idx
-        else:
-            pass
+        if eps < 1.0:
+            start_idx = idx
+            break
     if start_idx == -1:
         return -1
-    # Scan backward from end to find the LAST time eps >= 1
-    for idx in range(len(epsH) - 1, start_idx - 1, -1):
-        if epsH[idx] >= 1.0:
+
+    # 2. Find all upward crossings after start
+    candidates = []
+    for i in range(start_idx + 1, len(epsH)):
+        if epsH[i - 1] < 1.0 and epsH[i] >= 1.0:
+            candidates.append(i)
+
+    if not candidates:
+        return -1
+
+    # 3. For each candidate, check if eps STAYS above 1
+    for idx in candidates:
+        end = min(idx + window, len(epsH))
+        if np.mean(epsH[idx:end]) >= 1.0:
             return idx
+
+    # 4. Fallback: if eps is above 1 at the end but no permanent crossing
+    #    was found, step backward to locate the first crossing.
+    if epsH[-1] >= 1.0:
+        for idx in range(len(epsH) - 1, start_idx - 1, -1):
+            if epsH[idx] < 1.0:
+                return idx + 1
+
     return -1
 
 
