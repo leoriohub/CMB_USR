@@ -82,7 +82,8 @@ def passes_criteria(chi2, d2, n_star, k_dip, mode="chi2", max_chi2=None):
     if max_chi2 is None:
         max_chi2 = CHI2_LCDM if mode == "chi2" else 35.0
     return (chi2 <= max_chi2 and d2 < D2_LCDM
-            and n_star >= 50 and K_DIP_MIN <= k_dip <= K_DIP_MAX)
+            and 50 <= n_star <= 65
+            and K_DIP_MIN <= k_dip <= K_DIP_MAX)
 
 
 def load_completed(log_path):
@@ -587,6 +588,8 @@ def setup_args():
     # Mode control
     p.add_argument("--quick", action="store_true",
                    help="Fast screening: ~36 weighted k-modes, CAMB ell_max=30 (~2s/config)")
+    p.add_argument("--full-chi2", action="store_true",
+                   help="Full CAMB ell_max=2500 for chi2_full (~3x slower per config)")
     p.add_argument("--mode", choices=["chi2", "d2"], default="chi2",
                    help="Optimization mode (default: chi2)")
     p.add_argument("--max-chi2", type=float, default=None,
@@ -633,8 +636,13 @@ def main():
         args.phase = "broad"
         args.quick = True
 
-    if args.quick:
+    if args.quick and not args.full_chi2:
         args.ell_max = 30
+    if args.full_chi2:
+        if not args.quick and "--quick" not in " ".join(sys.argv):
+            print("  --full-chi2 requires --quick. Enabling automatically.", flush=True)
+            args.quick = True
+        args.ell_max = 2500
 
     completed_phase1 = set()
     completed_phase2 = set()
