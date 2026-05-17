@@ -201,6 +201,13 @@ When setting `model.y0 = -0.736`: initial dx/dT = -0.736.
 ### 8. Additional Conventions
 - Scripts are temporary unless user explicitly says to keep them. Delete analysis scripts after use.
 - Heavy compute (scans, optimizations) runs on lab machine via `ssh uni`. Lab machine project path: `~/Documentos/CMB_USR/`. Sync only via GitHub push/pull — never rsync the full project.
+- **Lab execution pattern (prevents SSH hangs):**
+  1. Write script locally, commit+push to GitHub
+  2. `ssh uni "cd ~/Documentos/CMB_USR && git pull && source ~/miniconda3/etc/profile.d/conda.sh && conda activate cmb-anomaly && nohup python script.py > ~/jobname.log 2>&1 & echo PID=\$!"`
+  3. Track with SHORT timeouts (10-15s): `ssh uni "grep -c 'pattern' ~/jobname.log; tail -3 ~/jobname.log"`
+  4. Do NOT use `sleep N && ssh ...` — blocks indefinitely. Instead use polling with short timeouts.
+  5. Check completion: `ssh uni "ps aux | grep script.py | grep -v grep | wc -l"`
+  6. Results are in JSONL logs under `outputs/simulations/logs/` on the lab. Parse with a script copied via `scp`.
 - Long-running jobs use JSONL incremental logging (crash-safe).
 - Commit messages: semantic, atomic, imperative mood (e.g. "add: ...", "fix: ...", "refactor: ...").
 
