@@ -144,11 +144,26 @@ def evaluate_config(phi0, y0, N_star, args, k_phys_grid=None):
         ps_data = {"k_phys": k_phys, "P_S": P_S}
         d2_val, ells_c, D_c, C_TT, C_TE, C_EE = compute_camb_curves(
             ps_data, ell_max_camb)
-        ell_max_chi2 = min(29, ell_max_camb)
-        chi2_m = chi2_vs_planck(ells_c, D_c, ell_max_chi2)
         ells_l, C_l = lcdm_baseline(ell_max_camb)
         D_l = C_ell_to_d_ell(ells_l, C_l)
-        chi2_l = chi2_vs_planck(ells_l, D_l, ell_max_chi2)
+
+        low_ell_chi2 = chi2_vs_planck(ells_c, D_c, 29)
+        low_ell_lcdm = chi2_vs_planck(ells_l, D_l, 29)
+
+        if getattr(args, 'full_chi2', False):
+            from scripts.chi2_analysis import chi2_binned, chi2_unbinned
+            chi2_b, chi2_l_b, np_b = chi2_binned(D_c, ells_c, D_l, ells_l)
+            chi2_u, chi2_l_u, np_u = chi2_unbinned(D_c, ells_c, D_l, ells_l)
+            chi2_m = round(chi2_u, 2)
+            chi2_l = round(chi2_l_u, 2)
+            chi2_binned_model = round(chi2_b, 2)
+            chi2_binned_lcdm = round(chi2_l_b, 2)
+        else:
+            chi2_m = round(low_ell_chi2, 2)
+            chi2_l = round(low_ell_lcdm, 2)
+            chi2_binned_model = None
+            chi2_binned_lcdm = None
+
         dchi2 = chi2_m - chi2_l
     except Exception as e:
         return {"status": "camb_fail", "error": str(e), "k_dip": k_dip}
@@ -161,7 +176,7 @@ def evaluate_config(phi0, y0, N_star, args, k_phys_grid=None):
             supp = (1.0 - ps_dip / ps_pivot) * 100
 
     meta = result.get("metadata", {})
-    return {
+    entry = {
         "status": "ok",
         "chi2": round(chi2_m, 2),
         "chi2_lcdm": round(chi2_l, 2),
@@ -177,6 +192,12 @@ def evaluate_config(phi0, y0, N_star, args, k_phys_grid=None):
         "C_ell_TE": C_TE.tolist(),
         "C_ell_EE": C_EE.tolist(),
         "P_S": P_S.tolist(),
+    }
+    if getattr(args, 'full_chi2', False):
+        entry["chi2_low"] = round(low_ell_chi2, 2)
+        entry["chi2_binned_model"] = chi2_binned_model
+        entry["chi2_binned_lcdm"] = chi2_binned_lcdm
+    return entry
     }
 
 
