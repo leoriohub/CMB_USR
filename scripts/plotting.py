@@ -129,8 +129,8 @@ def find_ps(phi0, y0, nstar, tolerance=3.0):
     return scored[0][1], scored[0][2]
 
 
-def plot_ps(k_phys, P_S, label="Model", filename="ps", category="powerloss",
-            show_lcdm=True, k_dip=None, k_pivot=True):
+def plot_ps(k_phys, P_S, label="Higgs USR", filename="ps", category="powerloss",
+            show_lcdm=True, k_dip=None):
     """Plot primordial power spectrum with optional LCDM baseline."""
     mask = np.isfinite(P_S)
     if np.sum(mask) > 5:
@@ -149,7 +149,7 @@ def plot_ps(k_phys, P_S, label="Model", filename="ps", category="powerloss",
         ns_lcdm = 0.965
         ps_lcdm = As * (k_dense / k_pivot_phys) ** (ns_lcdm - 1.0)
         ax.semilogx(k_dense, ps_lcdm, "-", color=TOL["dark"], lw=1.1, alpha=0.6,
-                  label=r"$\Lambda$CDM")
+                  label=r"$\Lambda$CDM ($n_s=0.965$)")
 
     if k_dip is not None and k_dip > 0:
         ps_dip = float(np.interp(k_dip, k_phys, P_S))
