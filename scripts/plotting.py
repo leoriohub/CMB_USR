@@ -296,6 +296,9 @@ def plot_camb_fullsky(camb_data, filename="camb_fullsky", category="powerloss"):
     D_lo = camb_data["D_err_lower"]
     D_hi = camb_data["D_err_upper"]
 
+    from scripts.chi2_analysis import load_planck_binned
+    b_ells, b_D, b_lo, b_hi = load_planck_binned()
+
     fig = plt.figure(figsize=(7, 3.3))
     gs = fig.add_gridspec(1, 2, width_ratios=[1, 4], wspace=0)
     ax_left = fig.add_subplot(gs[0])
@@ -326,6 +329,10 @@ def plot_camb_fullsky(camb_data, filename="camb_fullsky", category="powerloss"):
     ax_left.errorbar(p_ells, D_p, yerr=[D_lo, D_hi], fmt="o",
                      color=TOL["dark"], capsize=1.5, markersize=2,
                      elinewidth=0.4, label="Planck 2018", zorder=5)
+
+    ax_right.errorbar(b_ells, b_D, yerr=[b_lo, b_hi], fmt="o",
+                      color=TOL["dark"], capsize=1, markersize=1.5,
+                      elinewidth=0.3, zorder=5)
 
     ax_left.set_xlabel(r"$\ell$", fontsize=11)
     ax_right.set_xlabel(r"$\ell$", fontsize=11)
