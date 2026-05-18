@@ -121,10 +121,10 @@ def attach_ps_from_lookup(records, lookup):
 def prepare_records(records, use_full_chi2):
     for r in records:
         if use_full_chi2:
-            r["_chi2"] = r.get("chi2_unbinned", 9999)
-            r["_chi2_lcdm"] = r.get("chi2_lcdm_unbinned", CHI2_LCDM_FULL)
+            r["_chi2"] = r.get("chi2_unbinned", r.get("chi2", 9999))
+            r["_chi2_lcdm"] = r.get("chi2_lcdm_unbinned", r.get("chi2_lcdm", CHI2_LCDM_FULL))
             r["_D_ell"] = r.get("D_ell_full", r.get("D_ell", []))
-            r["_chi2_bin"] = r.get("chi2_binned", None)
+            r["_chi2_bin"] = r.get("chi2_binned", r.get("chi2_binned_model", None))
             r["_mode"] = "full"
             if "d2" not in r and len(r["_D_ell"]) > 0:
                 r["d2"] = round(r["_D_ell"][0], 1)
@@ -718,6 +718,14 @@ def main():
         k_phys = get_kphys_from_headers(headers)
         planck_data = get_planck()
         lcdm_data = get_lcdm(ell_max=30)
+
+        # Auto-detect inline full-chi2 in phase logs
+        if ok_records:
+            median_chi2 = np.median([r.get("chi2", 0) for r in ok_records])
+            if median_chi2 > 2000:
+                print("  Auto-detected inline full-chi2 in phase logs")
+                use_full_chi2 = True
+                lcdm_data = get_lcdm(ell_max=2500)
 
     else:
         # Full-chi2 mode
