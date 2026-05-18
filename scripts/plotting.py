@@ -171,7 +171,7 @@ def plot_ps(k_phys, P_S, label="Model", filename="ps", category="powerloss",
     ax.set_xlabel(r"$k\ [{\rm Mpc}^{-1}]$", fontsize=7)
     ax.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$", fontsize=7)
     ax.legend(fontsize=6)
-    ax.grid(True, alpha=0.25, which="both")
+    ax.grid(True, alpha=0.25, which="major")
 
     fig.tight_layout()
     save_fig(fig, filename, category)
