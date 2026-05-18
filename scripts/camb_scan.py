@@ -29,7 +29,7 @@ from models import HiggsModel
 import inf_dyn_background as bg_solver
 
 T_cmb = 2.7255
-K_DIP_MIN = 1.4e-4
+K_DIP_MIN = 5e-5
 K_DIP_MAX = 2.1e-3
 CHI2_LCDM = 20.47
 CHI2_LCDM_FULL = 2573.04
