@@ -9,7 +9,7 @@ at N_star = 55 and 60.
 
 Usage:
     conda activate cmb-anomaly
-    python scripts/reproduce_table1.py
+    python scripts/x_cmb_robustness.py
 """
 import sys
 import numpy as np
