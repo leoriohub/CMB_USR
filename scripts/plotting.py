@@ -160,9 +160,6 @@ def plot_ps(k_phys, P_S, label="Model", filename="ps", category="powerloss",
                     arrowprops=dict(arrowstyle="->", color=TOL["red"], lw=1.5),
                     fontsize=7, color=TOL["red"])
 
-    if k_pivot:
-        ax.axvline(k_pivot_phys, color=TOL["grey"], ls="--", lw=1, alpha=0.4)
-
     ax.tick_params(labelsize=7)
     ax.tick_params(axis="y", labelsize=7)
     ax.yaxis.set_major_formatter(plt.ScalarFormatter(useMathText=True))
