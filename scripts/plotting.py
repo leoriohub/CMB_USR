@@ -309,15 +309,16 @@ def plot_camb_fullsky(camb_data, filename="camb_fullsky", category="powerloss"):
     ax_right.tick_params(left=False)
 
     ax_left.set_xscale("log")
-    ax_left.set_xlim(1.8, 32)
+    ax_left.set_xlim(1.8, 30)
     ax_left.set_xticks([2, 10, 30])
     ax_left.get_xaxis().set_major_formatter(plt.ScalarFormatter())
     ax_left.tick_params(axis="x", which="minor", bottom=False)
 
-    ax_right.set_xlim(32, ells.max())
-    ax_right.tick_params(labelleft=False)
+    ax_right.set_xlim(30, ells.max())
+    ax_right.tick_params(labelleft=False, labelsize=7)
 
-    ax_left.set_ylabel(r"$D_\ell^{TT}$ [$\mu$K$^2$]", fontsize=11)
+    ax_left.tick_params(labelsize=7)
+    ax_left.set_ylabel(r"$D_\ell^{TT}$ [$\mu$K$^2$]", fontsize=8)
     ax_left.set_ylim(-100, 6500)
 
     for ax in [ax_left, ax_right]:
@@ -334,14 +335,14 @@ def plot_camb_fullsky(camb_data, filename="camb_fullsky", category="powerloss"):
                       color=TOL["dark"], capsize=1, markersize=1.5,
                       elinewidth=0.3, zorder=5)
 
-    ax_left.set_xlabel(r"$\ell$", fontsize=11)
-    ax_right.set_xlabel(r"$\ell$", fontsize=11)
+    ax_left.set_xlabel(r"$\ell$", fontsize=8)
+    ax_right.set_xlabel(r"$\ell$", fontsize=8)
 
     ax_left.grid(True, alpha=0.15, which="both")
     ax_right.grid(True, alpha=0.15, which="both")
 
-    ax_right.axvline(x=32, color=TOL["grey"], ls="--", lw=1.5, zorder=0)
-    ax_right.legend(loc="upper right", fontsize=9)
+    ax_right.axvline(x=30, color=TOL["grey"], ls="--", lw=1.5, zorder=0)
+    ax_right.legend(loc="upper right", fontsize=7)
 
     fig.tight_layout()
     save_fig(fig, filename, category)
