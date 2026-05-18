@@ -200,6 +200,8 @@ When setting `model.y0 = -0.736`: initial dx/dT = -0.736.
 
 ### 8. Additional Conventions
 - Scripts are temporary unless user explicitly says to keep them. Delete analysis scripts after use.
+- **Never auto-commit or auto-push.** Always ask for explicit approval before any git commit or push.
+- **Never touch `paper/images/` or `paper/` unless user explicitly asks.** Plots live in `outputs/plots/`. Only copy to `paper/images/` when user specifically requests it.
 - Heavy compute (scans, optimizations) runs on lab machine via `ssh uni`. Lab machine project path: `~/Documentos/CMB_USR/`. Sync only via GitHub push/pull — never rsync the full project.
 - **Lab execution pattern (prevents SSH hangs):**
   1. Write script locally, commit+push to GitHub
