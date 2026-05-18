@@ -44,6 +44,7 @@ for phi0, y0, nstar in CONFIGS:
         "D_err_upper": np.array(rec["c_ell"]["planck_data"]["D_ell_err_upper"]),
     }
 
-    plot_ps(k_phys, P_S, filename=f"ps_phi{phi0}_y0{y0}_nstar{nstar}", category="powerloss")
+    plot_ps(k_phys, P_S,
+            filename=f"ps_phi{phi0}_y0{y0}_nstar{nstar}", category="powerloss")
     plot_camb_fullsky(camb_data, filename=f"camb_fullsky_phi{phi0}_y0{y0}_nstar{nstar}", category="powerloss")
     print(f"  Plotted: phi0={phi0} y0={y0} N*={nstar}")
