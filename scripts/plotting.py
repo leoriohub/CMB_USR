@@ -143,12 +143,12 @@ def plot_ps(k_phys, P_S, label="Model", filename="ps", category="powerloss",
 
     fig, ax = plt.subplots(figsize=(3.35, 2.6))
 
-    ax.loglog(k_dense, ps_dense, "-", color=TOL["red"], lw=1.5, label=label)
+    ax.semilogx(k_dense, ps_dense, "-", color=TOL["red"], lw=1.3, label=label)
 
     if show_lcdm:
         ns_lcdm = 0.965
         ps_lcdm = As * (k_dense / k_pivot_phys) ** (ns_lcdm - 1.0)
-        ax.loglog(k_dense, ps_lcdm, "-", color=TOL["dark"], lw=1.2, alpha=0.6,
+        ax.semilogx(k_dense, ps_lcdm, "-", color=TOL["dark"], lw=1.1, alpha=0.6,
                   label=r"$\Lambda$CDM")
 
     if k_dip is not None and k_dip > 0:
@@ -158,14 +158,19 @@ def plot_ps(k_phys, P_S, label="Model", filename="ps", category="powerloss",
                     xy=(k_dip, ps_dip),
                     xytext=(0.55, 0.7), textcoords="axes fraction",
                     arrowprops=dict(arrowstyle="->", color=TOL["red"], lw=1.5),
-                    fontsize=10, color=TOL["red"])
+                    fontsize=7, color=TOL["red"])
 
     if k_pivot:
         ax.axvline(k_pivot_phys, color=TOL["grey"], ls="--", lw=1, alpha=0.4)
 
-    ax.set_xlabel(r"$k\ [{\rm Mpc}^{-1}]$", fontsize=10)
-    ax.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$", fontsize=10)
-    ax.legend(fontsize=8)
+    ax.tick_params(labelsize=7)
+    ax.tick_params(axis="y", labelsize=7)
+    ax.yaxis.set_major_formatter(plt.ScalarFormatter(useMathText=True))
+    ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+    ax.yaxis.get_offset_text().set_fontsize(6)
+    ax.set_xlabel(r"$k\ [{\rm Mpc}^{-1}]$", fontsize=7)
+    ax.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$", fontsize=7)
+    ax.legend(fontsize=6)
     ax.grid(True, alpha=0.25, which="both")
 
     fig.tight_layout()
@@ -315,10 +320,10 @@ def plot_camb_fullsky(camb_data, filename="camb_fullsky", category="powerloss"):
     ax_left.tick_params(axis="x", which="minor", bottom=False)
 
     ax_right.set_xlim(30, ells.max())
-    ax_right.tick_params(labelleft=False, labelsize=7)
+    ax_right.tick_params(labelleft=False, labelsize=8)
 
-    ax_left.tick_params(labelsize=7)
-    ax_left.set_ylabel(r"$D_\ell^{TT}$ [$\mu$K$^2$]", fontsize=8)
+    ax_left.tick_params(labelsize=8)
+    ax_left.set_ylabel(r"$D_\ell^{TT}$ [$\mu$K$^2$]", fontsize=9)
     ax_left.set_ylim(-100, 6500)
 
     for ax in [ax_left, ax_right]:
@@ -335,14 +340,14 @@ def plot_camb_fullsky(camb_data, filename="camb_fullsky", category="powerloss"):
                       color=TOL["dark"], capsize=1, markersize=1.5,
                       elinewidth=0.3, zorder=5)
 
-    ax_left.set_xlabel(r"$\ell$", fontsize=8)
-    ax_right.set_xlabel(r"$\ell$", fontsize=8)
+    ax_left.set_xlabel(r"$\ell$", fontsize=9)
+    ax_right.set_xlabel(r"$\ell$", fontsize=9)
 
     ax_left.grid(True, alpha=0.15, which="both")
     ax_right.grid(True, alpha=0.15, which="both")
 
     ax_right.axvline(x=30, color=TOL["grey"], ls="--", lw=1.5, zorder=0)
-    ax_right.legend(loc="upper right", fontsize=7)
+    ax_right.legend(loc="upper right", fontsize=8)
 
     fig.tight_layout()
     save_fig(fig, filename, category)
