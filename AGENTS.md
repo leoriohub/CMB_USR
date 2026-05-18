@@ -220,13 +220,14 @@ Tune initial conditions (φ₀, y₀) and N_star for Higgs inflation (ξ=15000, 
 - **Higgs USR**: Starts in kinetic dominance (ε_H=2.15 at N=0), extreme Hubble friction kills it in <0.1 e-fold. Localized dip via ε_H suppression, not a hard cutoff.
 - **Punctuated Inflation** (reference model only): Creates a peak via η_H>0 amplification. Aligned at N_star=77.2 → peak at k=10⁻³. Used exclusively for solver validation and cross-checking pipeline behavior.
 
-### Current Best Configs
-- Higgs (N_star≥50): φ₀=6.62, y₀=−0.675, N_star=59.0, D₂=767 μK², χ²_full=2571.7 (vs LCDM 2573.0, Δ=−1.3 over 2507 pts), suppression=62.3%
-- Deepest dip (N_star≈38): stronger suppression but lower N_star
+### Current Best Configs (full-resolution, corrected)
+- **Best χ²** (6.40,−0.475,59): χ²_full=2574.2 (+1.2 vs LCDM), D₂=918 μK² (11%↓), supp=31%. Matches LCDM essentially perfectly.
+- **Best D₂** (5.75,−0.170,55): χ²_full=2613.8 (+40.7), D₂=677 μK² (34%↓), supp=39%. Best quadrupole suppression.
+- **Best balance** (5.70,−0.170,52): χ²_full=2582.6 (+9.6), D₂=847 μK² (18%↓), supp=36%. Good χ² + meaningful D₂ suppression.
 - Punctuated (reference only): φ₀=12.00, y₀=0.000, N_star=77.2, m=1.1323e-7, λ=3.3299e-15
 
 ### Key Constraint
-Deep Higgs dips require violent kinetic kicks that shorten total inflation (N_total≈43.6). N_star≥50 configs need higher φ₀ (further on plateau) and milder kicks, which weakens the dip and raises χ².
+USR suppression at CMB scales requires fine-tuned initial conditions. The mechanism works (D₂ down 34% at cost of +41 χ²) but no config outperforms LCDM across the full spectrum. Deep dips (D₂<700) come at higher χ²_full cost.
 
 ### Reference Files
 - `models/punctuated.py` — Punctuated inflaton (validation only) bg_steps=100k
@@ -265,20 +266,20 @@ if model < data. This is already correct in `camb_wrapper.py` and
 ### 11. Core Solver Architecture — DO NOT MODIFY
 The root-level solver files (`inf_dyn_background.py`, `inf_dyn_MS_full.py`, `pspectrum_pipeline.py`) are the physics core of the project. Do NOT move, rename, refactor, or modify these files unless explicitly asked by the user. They contain the ODE integration, Mukhanov-Sasaki solver, and pipeline orchestration that every downstream script depends on. Changes to these files can silently break every consumer without visible errors in the modified file itself.
 
-### 12. Best Config — Statistically Superior to LCDM
-The best config (φ₀=6.62, y₀=−0.675, N_star=59.0) **outperforms LCDM** against Planck 2018 TT:
+### 12. Best Config — χ²-Competitive Suppression
 
-| Metric | Value |
-|---|---|
-| Full-ℓ χ² (ℓ=2-2507) | model=2571.7, LCDM=2573.0, Δ=−1.3 |
-| High-ℓ ratio (ℓ>2000) | 0.999 (±0.1% deficit) |
-| D_ℓ peak (ℓ=220) | model=5756, LCDM=5757 μK² |
-| D₂ quadrupole | model=767, LCDM=972 μK² |
-| Suppression | 62.3% relative to LCDM at ℓ=2 |
+After the `find_end_of_inflation` fix (forward-scan with permanence check), no Higgs USR config outperforms LCDM across the full spectrum. The best configs achieve significant D₂ suppression at modest χ² cost:
 
-**Why no high-ℓ offset:** Post-dip n_s ≈ 0.960, close to LCDM's 0.965. The As normalization at k₀=0.05 absorbs dip amplitude. What remains (Δn_s = −0.005 drift across 1.8 decades) is well below cosmic variance at ℓ>2000.
+| Config | χ²_full (ℓ=2-2508) | D₂ [μK²] | Suppression | Δχ² vs LCDM |
+|--------|-------------------|-----------|-------------|-------------|
+| 6.40,−0.475,59 | 2574.2 | 918 (−11%) | 31% | +1.2 |
+| 5.70,−0.170,52 | 2582.6 | 847 (−18%) | 36% | +9.6 |
+| 5.75,−0.170,55 | 2613.8 | 677 (−34%) | 39% | +40.7 |
+| 6.55,−0.780,50 | 2637.6 | 835 (−19%) | 47% | +64.6 |
+| LCDM | 2573.0 | 1029 | — | — |
 
-**Diagnostic script:** `scripts/check_full_dell.py` — runs full pipeline, produces Planck 2018-style broken-axis D_ℓ plot with binned Planck TT data.
+**Diagnostic script:** `scripts/run_full_analysis.py` — runs full pipeline, produces broken-axis D_ℓ plot with Planck data.
+**Quick scan:** `python scripts/camb_scan.py --phase broad --quick --full-chi2` (~20 min).
 
 **Planck data files:** Downloaded from IRSA (R3.01/R3.02), stored in `data/Planck/`:
 - Binned TT/TE/EE spectrum (ℓ≈47-2500)
