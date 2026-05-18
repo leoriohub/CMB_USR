@@ -31,3 +31,9 @@ paper/
 skills-lock.json
 .worktrees/
 cmb_anomaly.egg-info/
+
+# Notebooks with paper-figure exploration code (project-internal, not for version control)
+notebooks/*.ipynb
+
+# Notebooks with paper-figure exploration code
+notebooks/*.ipynb
