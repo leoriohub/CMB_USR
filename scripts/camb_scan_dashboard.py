@@ -2,11 +2,13 @@
 CAMB Scan Results Dashboard
 
 Generates a standalone HTML dashboard with all key info from camb_scan JSONL logs.
+Collapsible sections, configurable filtering by chi2/D2/suppression/dip position/N_star.
 
 Usage:
-  python scripts/camb_scan_dashboard.py                              # latest logs auto-detect
+  python scripts/camb_scan_dashboard.py                                                       # latest logs auto-detect
   python scripts/camb_scan_dashboard.py --phase1 <path> --phase2 <path>
-  python scripts/camb_scan_dashboard.py --open                       # open in browser after generation
+  python scripts/camb_scan_dashboard.py --chi2-max-delta 50 --supp-min 10 --top-n 10           # relaxed filter, more plots
+  python scripts/camb_scan_dashboard.py --no-golden --no-correlations --open                  # minimal dashboard
 """
 import argparse
 import base64
@@ -18,6 +20,7 @@ from datetime import datetime
 from io import BytesIO
 
 import numpy as np
+from dataclasses import dataclass
 
 import matplotlib
 matplotlib.use("Agg")
@@ -28,6 +31,21 @@ from scripts.plotting import TOL, get_path, make_filename
 from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
 from scripts.camb_wrapper import compute_cl_camb_powerlaw
 from scripts.constants import As, k_pivot_phys, ROOT_DIR
+
+
+@dataclass
+class FilterConfig:
+    chi2_max_delta: float = 5.0
+    d2_max: float | None = None
+    supp_min: float = 0.0
+    nstar_min: float = 0.0
+    dip_min: float | None = None
+    dip_max: float | None = None
+    top_n: int = 5
+    table_top_n: int = 15
+    hide_golden: bool = False
+    hide_correlations: bool = False
+
 
 CHI2_LCDM_LOW = 20.47
 CHI2_LCDM_FULL = 2573.0
@@ -137,6 +155,18 @@ def prepare_records(records, use_full_chi2):
     return records
 
 
+def apply_filters(records, cfg, chi2_lcdm):
+    def _passes(r):
+        chi2_ok = r["_chi2"] <= chi2_lcdm + cfg.chi2_max_delta
+        d2_ok = cfg.d2_max is None or r.get("d2", 9999) <= cfg.d2_max
+        supp_ok = r.get("suppression_pct", 0) >= cfg.supp_min
+        nstar_ok = r["N_star"] >= cfg.nstar_min
+        dip = r.get("k_dip", -1)
+        dip_ok = (cfg.dip_min is None or dip >= cfg.dip_min) and (cfg.dip_max is None or dip <= cfg.dip_max)
+        return chi2_ok and d2_ok and supp_ok and nstar_ok and dip_ok
+    return [r for r in records if _passes(r)]
+
+
 def load_full_chi2(path):
     records = []
     if not path or not os.path.exists(path):
@@ -166,7 +196,7 @@ def img_to_b64(fig):
 # SECTION 1: Executive Summary (HTML table, no plot)
 # ---------------------------------------------------------------------------
 
-def build_summary_html(ok_p1, ok_p2, all_ok):
+def build_summary_html(ok_p1, ok_p2, all_ok, cfg):
     html = []
 
     # Metrics
@@ -186,8 +216,8 @@ def build_summary_html(ok_p1, ok_p2, all_ok):
     html.append('</div>')
 
     # Passing criteria
-    passing = [r for r in all_ok if r["_chi2"] <= chi2_lcdm + 5 and r["d2"] < D2_LCDM and r["N_star"] >= 50]
-    html.append(f'<p>Configs with {metric_label} ≤ LCDM+5 ({chi2_lcdm:.0f}) + N<sub>*</sub> ≥ 50: <strong>{len(passing)}</strong></p>')
+    passing = apply_filters(all_ok, cfg, chi2_lcdm)
+    html.append(f'<p>Configs passing filter (Δχ² ≤ {cfg.chi2_max_delta:.0f}): <strong>{len(passing)}</strong></p>')
     html.append(f'<p>LCDM reference: {metric_label} = <strong>{chi2_lcdm:.1f}</strong></p>')
 
     # Best config detail
@@ -211,8 +241,8 @@ def build_summary_html(ok_p1, ok_p2, all_ok):
     html.append('</div>')
 
     # Top 15 table
-    passing_sorted = sorted(passing, key=lambda r: r["_chi2"])[:15]
-    html.append(f'<h3>Top 15 by {metric_label}</h3>')
+    passing_sorted = sorted(passing, key=lambda r: r["_chi2"])[:cfg.table_top_n]
+    html.append(f'<h3>Top {cfg.table_top_n} by {metric_label}</h3>')
     html.append('<div class="table-wrap"><table class="data-table">')
     html.append('<tr><th>#</th><th>Phase</th><th>φ₀</th><th>y₀</th><th>N<sub>*</sub></th>'
                 f'<th>{metric_label}</th><th>Δ</th>'
@@ -270,13 +300,14 @@ def plot_param_space(ok_records):
 # SECTION 3: D_ell Overlay
 # ---------------------------------------------------------------------------
 
-def plot_dell_overlay(ok_records, ells, planck_data, lcdm_d):
+def plot_dell_overlay(ok_records, ells, planck_data, lcdm_d, cfg):
     p_ells, D_p, D_lo, D_hi = planck_data
     ells_l, _, D_l = lcdm_d
 
     use_full = ok_records[0].get("_mode") == "full" if ok_records else False
-    top = sorted([r for r in ok_records if r.get("status") == "ok" and r["_chi2"] <= ok_records[0]["_chi2_lcdm"] + 5],
-                 key=lambda r: r["_chi2"])[:5]
+    chi2_lcdm = ok_records[0].get("_chi2_lcdm", CHI2_LCDM_FULL if use_full else CHI2_LCDM_LOW)
+    filtered = apply_filters(ok_records, cfg, chi2_lcdm)
+    top = sorted(filtered, key=lambda r: r["_chi2"])[:cfg.top_n]
     if not top:
         top = sorted(ok_records, key=lambda r: r["_chi2"])[:5]
 
@@ -344,12 +375,20 @@ def plot_dell_overlay(ok_records, ells, planck_data, lcdm_d):
 # SECTION 4: P_S(k) Overlay
 # ---------------------------------------------------------------------------
 
-def plot_ps_overlay(ok_records, k_phys, planck_data):
+def plot_ps_overlay(ok_records, k_phys, planck_data, cfg):
     chi2_lcdm = ok_records[0]["_chi2_lcdm"] if ok_records else 2573
-    top = sorted([r for r in ok_records if r.get("status") == "ok" and r["_chi2"] <= chi2_lcdm + 5],
-                 key=lambda r: r["_chi2"])[:5]
+    filtered = apply_filters(ok_records, cfg, chi2_lcdm)
+    top = sorted([r for r in filtered if "P_S" in r], key=lambda r: r["_chi2"])[:cfg.top_n]
     if not top:
-        top = sorted(ok_records, key=lambda r: r["_chi2"])[:5]
+        top = sorted([r for r in ok_records if "P_S" in r], key=lambda r: r["_chi2"])[:5]
+
+    if not top:
+        fig, ax = plt.subplots(figsize=(5, 3.2))
+        ax.text(0.5, 0.5, "P_S(k) data not available\n(not stored in these logs)", transform=ax.transAxes,
+                ha="center", va="center", fontsize=12, color=TOL["grey"])
+        ax.set_xlabel(r"$k$ [Mpc$^{-1}$]", fontsize=11)
+        fig.tight_layout()
+        return img_to_b64(fig)
 
     ns_lcdm = 0.965
     ps_lcdm = As * (k_phys / k_pivot_phys) ** (ns_lcdm - 1.0)
@@ -413,14 +452,14 @@ def plot_correlations(ok_records):
 # SECTION 6: Golden Comparison
 # ---------------------------------------------------------------------------
 
-def plot_golden_comparison(ok_records, ells, k_phys, planck_data, lcdm_d):
+def plot_golden_comparison(ok_records, ells, k_phys, planck_data, lcdm_d, cfg):
     p_ells, D_p, D_lo, D_hi = planck_data
     ells_l, _, D_l = lcdm_d
 
     use_full = ok_records[0].get("_mode") == "full" if ok_records else False
     chi2_lcdm = ok_records[0]["_chi2_lcdm"] if ok_records else 2573
 
-    passing = [r for r in ok_records if r["_chi2"] <= chi2_lcdm + 5 and r["d2"] < D2_LCDM and r["N_star"] >= 50]
+    passing = apply_filters(ok_records, cfg, chi2_lcdm)
     best = min(passing, key=lambda r: r["_chi2"]) if passing else min(ok_records, key=lambda r: r["_chi2"])
 
     if use_full:
@@ -480,15 +519,23 @@ def plot_golden_comparison(ok_records, ells, k_phys, planck_data, lcdm_d):
 
     # ---- P_S panel ----
     ax = ax2
+    has_ps_best = "P_S" in best
+    has_ps_golden = "P_S" in golden_near
     ns_lcdm = 0.965
     ps_lcdm = As * (k_phys / k_pivot_phys) ** (ns_lcdm - 1.0)
     ax.loglog(k_phys, ps_lcdm, "--", color=TOL["grey"], lw=1.5, alpha=0.5, label=r"$\Lambda$CDM")
 
-    P_new = np.array(best["P_S"])[:len(k_phys)]
-    ax.loglog(k_phys, P_new, "-", color=TOL["red"], lw=1.8, label=rf"New best")
+    if has_ps_best:
+        P_new = np.array(best["P_S"])[:len(k_phys)]
+        ax.loglog(k_phys, P_new, "-", color=TOL["red"], lw=1.8, label=rf"New best")
 
-    P_golden = np.array(golden_near["P_S"])[:len(k_phys)]
-    ax.loglog(k_phys, P_golden, "-.", color=TOL["purple"], lw=1.5, alpha=0.7, label=rf"Golden-like")
+    if has_ps_golden:
+        P_golden = np.array(golden_near["P_S"])[:len(k_phys)]
+        ax.loglog(k_phys, P_golden, "-.", color=TOL["purple"], lw=1.5, alpha=0.7, label=rf"Golden-like")
+
+    if not has_ps_best and not has_ps_golden:
+        ax.text(0.5, 0.5, "P_S(k) data not available", transform=ax.transAxes,
+                ha="center", va="center", fontsize=11, color=TOL["grey"])
 
     ax.axvspan(1.4e-4, 2.1e-3, color=TOL["yellow"], alpha=0.08, label=r"CMB low-$\ell$")
     ax.axvline(k_pivot_phys, color=TOL["grey"], ls=":", lw=1, alpha=0.4)
@@ -586,51 +633,65 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <body>
 <div class="sidebar">
   <h2>Navigation</h2>
-  <a href="#summary">1. Executive Summary</a>
-  <a href="#param-space">2. Parameter Space</a>
-  <a href="#dell-overlay">3. D<sub>ℓ</sub> Overlay</a>
-  <a href="#ps-overlay">4. P<sub>S</sub>(k) Overlay</a>
-  <a href="#correlations">5. Correlations</a>
-  <a href="#golden">6. Golden Comparison</a>
+  {sidebar}
 </div>
 <div class="content">
   <h1>CAMB Scan Results Dashboard</h1>
   <div class="subtitle">Generated: {date} | Scan: {phase1_name}, {phase2_name}</div>
 
+  <details open>
+  <summary><h2 style="display:inline; font-size:20px; color:#1a1a2e; border:none; padding:0; margin:0;">1. Executive Summary</h2></summary>
   <section id="summary">
-    <h2>1. Executive Summary</h2>
     {summary}
   </section>
+  </details>
 
+  <details>
+  <summary><h2 style="display:inline; font-size:20px; color:#1a1a2e; border:none; padding:0; margin:0;">2. Parameter Space Maps</h2></summary>
   <section id="param-space">
-    <h2>2. Parameter Space Maps</h2>
-    <p>Broad scan (Phase 1) + fine scan (Phase 2) colored by χ² and suppression %.</p>
     <img src="data:image/png;base64,{param_space}" class="dashboard-img">
   </section>
+  </details>
 
+  <details>
+  <summary><h2 style="display:inline; font-size:20px; color:#1a1a2e; border:none; padding:0; margin:0;">3. D<sub>ℓ</sub> Overlay</h2></summary>
   <section id="dell-overlay">
-    <h2>3. D<sub>ℓ</sub> Overlay</h2>
-    <p>Top 5 configs vs ΛCDM and Planck 2018 low-ℓ TT (ℓ=2-30).</p>
     <img src="data:image/png;base64,{dell_overlay}" class="dashboard-img">
   </section>
+  </details>
 
+  <details>
+  <summary><h2 style="display:inline; font-size:20px; color:#1a1a2e; border:none; padding:0; margin:0;">4. P<sub>S</sub>(k) Overlay</h2></summary>
   <section id="ps-overlay">
-    <h2>4. P<sub>S</sub>(k) Overlay</h2>
-    <p>Primordial power spectra of top 5 configs vs ΛCDM. Yellow band = CMB low-ℓ window.</p>
     <img src="data:image/png;base64,{ps_overlay}" class="dashboard-img">
   </section>
+  </details>
 
+  <details>
+  <summary><h2 style="display:inline; font-size:20px; color:#1a1a2e; border:none; padding:0; margin:0;">5. Correlation Plots</h2></summary>
   <section id="correlations">
-    <h2>5. Correlation Plots</h2>
-    <p>Pairwise relationships between key metrics across all successful configs.</p>
-    <img src="data:image/png;base64,{correlations}" class="dashboard-img">
+    {corr_section}
   </section>
+  </details>
 
+  <details>
+  <summary><h2 style="display:inline; font-size:20px; color:#1a1a2e; border:none; padding:0; margin:0;">6. Golden Comparison</h2></summary>
   <section id="golden">
-    <h2>6. Golden Comparison</h2>
-    <p>Best new config vs closest golden-like config in scan data.</p>
-    {golden}
+    {golden_section}
   </section>
+  </details>
+
+  <script>
+  document.querySelectorAll('.sidebar a').forEach(function(a) {{
+    a.addEventListener('click', function(e) {{
+      var target = document.querySelector(a.getAttribute('href'));
+      if (target) {{
+        var details = target.closest('details');
+        if (details) details.open = true;
+      }}
+    }});
+  }});
+  </script>
 
   <div class="footer">
     CMB Anomaly Project &mdash; Higgs USR Inflation (ξ=15000, λ=0.13)
@@ -641,12 +702,34 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
 
 def build_html(summary_html, param_space_b64, dell_b64, ps_b64, corr_b64, golden_html,
-               phase1_path, phase2_path):
+               phase1_path, phase2_path, cfg):
     p1_name = os.path.basename(phase1_path) if phase1_path else "N/A"
     p2_name = os.path.basename(phase2_path) if phase2_path else "N/A"
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
+    sidebar_links = []
+    sidebar_links.append('<a href="#summary">1. Executive Summary</a>')
+    sidebar_links.append('<a href="#param-space">2. Parameter Space</a>')
+    sidebar_links.append('<a href="#dell-overlay">3. D<sub>ℓ</sub> Overlay</a>')
+    sidebar_links.append('<a href="#ps-overlay">4. P<sub>S</sub>(k) Overlay</a>')
+    if not cfg.hide_correlations:
+        sidebar_links.append('<a href="#correlations">5. Correlations</a>')
+    if not cfg.hide_golden:
+        sidebar_links.append('<a href="#golden">6. Golden Comparison</a>')
+    sidebar = "\n    ".join(sidebar_links)
+
+    if not cfg.hide_correlations and corr_b64:
+        corr_section = f'<p>Pairwise relationships between key metrics across successful configs.</p>\n    <img src="data:image/png;base64,{corr_b64}" class="dashboard-img">'
+    else:
+        corr_section = ""
+
+    if not cfg.hide_golden and golden_html:
+        golden_section = golden_html
+    else:
+        golden_section = ""
+
     return HTML_TEMPLATE.format(
+        sidebar=sidebar,
         date=date_str,
         phase1_name=p1_name,
         phase2_name=p2_name,
@@ -654,8 +737,8 @@ def build_html(summary_html, param_space_b64, dell_b64, ps_b64, corr_b64, golden
         param_space=param_space_b64,
         dell_overlay=dell_b64,
         ps_overlay=ps_b64,
-        correlations=corr_b64,
-        golden=golden_html,
+        corr_section=corr_section,
+        golden_section=golden_section,
     )
 
 
@@ -682,7 +765,40 @@ def main():
     p.add_argument("--phase2", type=str, default=None, help="Phase 2 JSONL path")
     p.add_argument("--full-chi2", type=str, default=None, help="Full chi2 JSONL path")
     p.add_argument("--open", action="store_true", help="Open in browser after generation")
+    p.add_argument("--chi2-max-delta", type=float, default=5.0,
+                   help="Max Δχ² vs LCDM for passing filter (default: 5)")
+    p.add_argument("--d2-max", type=float, default=None,
+                   help="Max D₂ [μK²] for passing filter")
+    p.add_argument("--supp-min", type=float, default=0.0,
+                   help="Min suppression %% for passing filter (default: 0)")
+    p.add_argument("--nstar-min", type=float, default=0.0,
+                   help="Min N_star for passing filter (default: 0)")
+    p.add_argument("--dip-min", type=float, default=None,
+                   help="Min k_dip [Mpc⁻¹] for passing filter")
+    p.add_argument("--dip-max", type=float, default=None,
+                   help="Max k_dip [Mpc⁻¹] for passing filter")
+    p.add_argument("--top-n", type=int, default=5,
+                   help="Number of configs in overlay plots (default: 5)")
+    p.add_argument("--table-top-n", type=int, default=15,
+                   help="Number of configs in summary table (default: 15)")
+    p.add_argument("--no-golden", action="store_true",
+                   help="Skip golden comparison section")
+    p.add_argument("--no-correlations", action="store_true",
+                   help="Skip correlation plots section")
     args = p.parse_args()
+
+    filter_config = FilterConfig(
+        chi2_max_delta=args.chi2_max_delta,
+        d2_max=args.d2_max,
+        supp_min=args.supp_min,
+        nstar_min=args.nstar_min,
+        dip_min=args.dip_min,
+        dip_max=args.dip_max,
+        top_n=args.top_n,
+        table_top_n=args.table_top_n,
+        hide_golden=args.no_golden,
+        hide_correlations=args.no_correlations,
+    )
 
     phase1_path = args.phase1
     phase2_path = args.phase2
@@ -752,44 +868,63 @@ def main():
     # Normalize fields
     ok_records = prepare_records(ok_records, use_full_chi2)
 
+    chi2_lcdm = CHI2_LCDM_FULL if use_full_chi2 else CHI2_LCDM_LOW
+    filtered_records = apply_filters(ok_records, filter_config, chi2_lcdm)
+
     print("Building dashboard...")
-    if use_full_chi2:
-        print(f"  Mode: full-ℓ (LCDM χ² = {CHI2_LCDM_FULL})")
-    else:
-        print(f"  Mode: low-ℓ (LCDM χ² = {CHI2_LCDM_LOW})")
+    print(f"  Mode: {'full-ℓ' if use_full_chi2 else 'low-ℓ'} (LCDM χ² = {chi2_lcdm})")
+    print(f"  Filter: Δχ² ≤ {filter_config.chi2_max_delta:.0f}, D₂ {f'≤ {filter_config.d2_max}' if filter_config.d2_max else 'any'}, supp ≥ {filter_config.supp_min}%, N* ≥ {filter_config.nstar_min}")
+    print(f"  Records: {len(filtered_records)}/{len(ok_records)} pass")
 
     # Split by phase for stats
     ok_p1 = [r for r in ok_records if r.get("_phase") == "phase1" or r.get("_source_phase") == "phase1"]
     ok_p2 = [r for r in ok_records if r.get("_phase") == "phase2" or r.get("_source_phase") == "phase2"]
 
+    section_count = 6
+    section_i = 0
+
     # Section 1: Summary HTML
-    print("  1/6 Executive summary...")
-    summary_html = build_summary_html(ok_p1, ok_p2, ok_records)
+    section_i += 1
+    print(f"  {section_i}/{section_count} Executive summary...")
+    summary_html = build_summary_html(ok_p1, ok_p2, ok_records, filter_config)
 
     # Section 2: Parameter space
-    print("  2/6 Parameter space maps...")
-    param_b64 = plot_param_space(ok_records)
+    section_i += 1
+    print(f"  {section_i}/{section_count} Parameter space maps...")
+    param_b64 = plot_param_space(filtered_records)
 
     # Section 3: D_ell overlay
-    print("  3/6 D_ell overlay...")
-    dell_b64 = plot_dell_overlay(ok_records, ells, planck_data, lcdm_data)
+    section_i += 1
+    print(f"  {section_i}/{section_count} D_ell overlay...")
+    dell_b64 = plot_dell_overlay(filtered_records, ells, planck_data, lcdm_data, filter_config)
 
     # Section 4: P_S(k) overlay
-    print("  4/6 P_S(k) overlay...")
-    ps_b64 = plot_ps_overlay(ok_records, k_phys, planck_data)
+    section_i += 1
+    print(f"  {section_i}/{section_count} P_S(k) overlay...")
+    ps_b64 = plot_ps_overlay(filtered_records, k_phys, planck_data, filter_config)
 
     # Section 5: Correlations
-    print("  5/6 Correlation plots...")
-    corr_b64 = plot_correlations(ok_records)
+    section_i += 1
+    if not filter_config.hide_correlations:
+        print(f"  {section_i}/{section_count} Correlation plots...")
+        corr_b64 = plot_correlations(filtered_records)
+    else:
+        print(f"  {section_i}/{section_count} Correlation plots... skipped")
+        corr_b64 = None
 
     # Section 6: Golden comparison
-    print("  6/6 Golden comparison...")
-    golden_html = plot_golden_comparison(ok_records, ells, k_phys, planck_data, lcdm_data)
+    section_i += 1
+    if not filter_config.hide_golden:
+        print(f"  {section_i}/{section_count} Golden comparison...")
+        golden_html = plot_golden_comparison(filtered_records, ells, k_phys, planck_data, lcdm_data, filter_config)
+    else:
+        print(f"  {section_i}/{section_count} Golden comparison... skipped")
+        golden_html = None
 
     # Assemble HTML
     print("Assembling HTML...")
     html = build_html(summary_html, param_b64, dell_b64, ps_b64, corr_b64, golden_html,
-                      phase1_path, phase2_path)
+                      phase1_path, phase2_path, filter_config)
 
     out_path = get_path("diagnostics", OUTPUT_HTML)
     with open(out_path, "w") as f:
