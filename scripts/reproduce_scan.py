@@ -16,8 +16,8 @@ import numpy as np
 
 from models import HiggsModel
 from pspectrum_pipeline import run_pspectrum_pipeline, build_weighted_kgrid
-from scripts.camb_wrapper import compute_cl_full_camb, compute_chi2_camb
-from scripts.planck_data import C_ell_to_d_ell
+from scripts.camb_wrapper import compute_cl_full_camb, compute_cl_camb_powerlaw
+from scripts.planck_data import C_ell_to_d_ell, get_planck_data_asymmetric
 from scripts.constants import As, k_pivot_phys
 
 
@@ -103,8 +103,17 @@ def main():
 
         ps_data = {"k_phys": result["k_phys"], "P_S": result["P_S"]}
         try:
-            d2_new, _, _ = compute_d2(ps_data)
-            chi2_new, chi2_lcdm, _ = compute_chi2_camb(ps_data, ell_max=29)
+            ells_c, C_TT, _, _ = compute_cl_full_camb(ps_data, ell_max=2500)
+            D_new = C_ell_to_d_ell(ells_c, C_TT)
+            d2_new = float(D_new[0])
+
+            # LCDM baseline for full chi2
+            ells_l, C_l, _, _ = compute_cl_camb_powerlaw(ell_max=2500)
+            D_l = C_ell_to_d_ell(ells_l, C_l)
+
+            # Full chi2 (same method as original scan)
+            from scripts.chi2_analysis import chi2_unbinned
+            chi2_new, chi2_lcdm_new, _ = chi2_unbinned(D_new, ells_c, D_l, ells_l)
         except Exception as e:
             print(f"  {i:4d} {phi0:6.2f} {y0:8.3f} {N_star:6.1f}  "
                   f"CAMB FAIL: {e}")
@@ -127,16 +136,16 @@ def main():
                   flush=True)
 
     t_total = time.time() - t_start
-    print(f"\nTotal: {len(entries)} configs in {t_total:.0f}s ({t_total/len(entries):.2f}s/config)")
-    print(f"Max |chi2_diff| = {max_dchi2:.2e}")
-    print(f"Max |d2_diff|   = {max_dd2:.2e}")
+print(f"\nTotal: {len(entries)} configs in {t_total:.0f}s ({t_total/len(entries):.2f}s/config)")
+print(f"Max |chi2_diff| = {max_dchi2:.4f}")
+print(f"Max |d2_diff|   = {max_dd2:.4f} uK^2")
 
-    if max_dchi2 < 1.0 and max_dd2 < 10.0:
-        print("PASS: Deviations within tolerance.")
-        sys.exit(0)
-    else:
-        print("FAIL: Deviations exceed tolerance.")
-        sys.exit(1)
+if max_dchi2 < 2.0 and max_dd2 < 2.0:
+    print(f"PASS: Deviations within tolerance (chi2<2, d2<2 uK^2).")
+    sys.exit(0)
+else:
+    print("FAIL: Deviations exceed tolerance.")
+    sys.exit(1)
 
 
 if __name__ == "__main__":
