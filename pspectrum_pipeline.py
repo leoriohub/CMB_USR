@@ -35,6 +35,7 @@ from scripts.plotting import make_filename
 import inf_dyn_background as bg_solver
 import inf_dyn_MS_full as ms_solver
 from models import HiggsModel, FullHiggsModel, PunctuatedInflationModel
+from numba_ms_solver import numba_run_ms
 
 # Fast CubicSpline-based interpolator (avoids interp1d overhead for per-step calls)
 from scipy.interpolate import CubicSpline
@@ -186,24 +187,36 @@ def extract_mode_initial_conditions(bg_sol, T_span_bg, end_idx, k_code, k_start_
     return xi, y0, zi, ni, t_start, t_end, start_idx
 
 
-def _compute_single_mode(args):
-    """Worker function for parallel k-mode execution. Returns (idx, P_S, P_T, start_idx, error)."""
-    idx, k_code, bg_sol, T_span_bg, end_idx, k_start_factor, ms_steps, model = args
+def _compute_mode_batch(args):
+    """Worker for batched parallel k-mode execution.
+
+    Builds background interpolation ONCE per batch, then processes
+    each mode sequentially. Returns list of (idx, P_S, P_T, start_idx, error).
+    """
+    indices, k_codes, bg_sol, T_span_bg, end_idx, k_start_factor, ms_steps, model = args
     try:
         interp = build_bg_interpolators_fast(bg_sol, T_span_bg)
-        xi, y0_val, zi, ni, t_start, t_end, start_idx = extract_mode_initial_conditions(
-            bg_sol, T_span_bg, end_idx, k_code, k_start_factor
-        )
-        T_ms = np.linspace(t_start, t_end, ms_steps)
-        ms_sol = ms_solver.run_ms_simulation(interp, ni, T_ms, k_code, model)
-        derived_ms = ms_solver.get_ms_derived_quantities_with_bg(ms_sol, interp, T_ms, model, k_code, ni)
-        ps = float(derived_ms["P_S"][-1])
-        pt = float(derived_ms["P_T"][-1])
-        if not (np.isfinite(ps) and ps > 0):
-            return idx, None, None, start_idx, f"non-finite P_S={ps}"
-        return idx, ps, pt, start_idx, None
     except Exception as e:
-        return idx, None, None, -1, str(e)
+        return [(idx, None, None, -1, f"interp failed: {e}") for idx in indices]
+
+    results = []
+    for idx, k_code in zip(indices, k_codes):
+        try:
+            xi, y0v, zi, ni, t_start, t_end, start_idx = extract_mode_initial_conditions(
+                bg_sol, T_span_bg, end_idx, k_code, k_start_factor
+            )
+            T_ms = np.linspace(t_start, t_end, ms_steps)
+            ms_sol = ms_solver.run_ms_simulation(interp, ni, T_ms, k_code, model)
+            d = ms_solver.get_ms_derived_quantities_with_bg(ms_sol, interp, T_ms, model, k_code, ni)
+            ps = float(d["P_S"][-1])
+            pt = float(d["P_T"][-1])
+            if np.isfinite(ps) and ps > 0:
+                results.append((idx, ps, pt, start_idx, None))
+            else:
+                results.append((idx, None, None, start_idx, f"non-finite P_S={ps}"))
+        except Exception as e:
+            results.append((idx, None, None, -1, str(e)))
+    return results
 
 
 def run_pspectrum_pipeline(
@@ -226,6 +239,7 @@ def run_pspectrum_pipeline(
     save_outputs=True,
     k_phys_grid=None,
     n_workers=1,
+    use_numba=True,
 ):
     """
     Compute P_S(k) for a grid of k-modes for a given inflation model.
@@ -319,7 +333,7 @@ def run_pspectrum_pipeline(
     _extract = extract_mode_initial_conditions
 
     n_modes = len(k_code_grid)
-    checkpoint_interval = max(n_modes // 10, 1)
+    checkpoint_interval = max(n_modes // 10, min(n_modes // 4, 25))
     t_start_all = time.time()
     failed_modes = []
     errors = []
@@ -417,31 +431,44 @@ def run_pspectrum_pipeline(
             errors.append(f"mode {idx} (k={k_code_grid[idx]:.4e}): non-finite P_S={ps}")
 
     if n_workers > 1:
-        from concurrent.futures import ProcessPoolExecutor, as_completed
+        from concurrent.futures import             ProcessPoolExecutor, as_completed
         import multiprocessing
         n_actual = min(n_workers, n_modes, multiprocessing.cpu_count())
         print(f"  Computing {n_modes} k-modes on {n_actual} workers...")
-        tasks = [
-            (i, kc, bg_sol, T_span_bg, end_idx, k_start_factor, ms_steps, model)
-            for i, kc in enumerate(k_code_grid)
-        ]
+
+        # Batch: one IPC round-trip per worker instead of per mode
+        indices = list(range(n_modes))
+        chunks = []
+        for w in range(n_actual):
+            ci = indices[w::n_actual]
+            ck = [k_code_grid[i] for i in ci]
+            chunks.append((ci, ck, bg_sol, T_span_bg, end_idx,
+                           k_start_factor, ms_steps, model))
+
         done_count = 0
         with ProcessPoolExecutor(max_workers=n_actual) as executor:
-            futures = {executor.submit(_compute_single_mode, t): t[0] for t in tasks}
+            futures = {executor.submit(_compute_mode_batch, c): c[0][0] for c in chunks}
             for future in as_completed(futures):
-                done_count += 1
-                idx, ps, pt, si, err = future.result()
-                record_result(idx, ps, pt, si, err)
+                for idx, ps, pt, si, err in future.result():
+                    done_count += 1
+                    record_result(idx, ps, pt, si, err)
                 if done_count % checkpoint_interval == 0:
-                    print(f"    {done_count}/{n_modes} modes done")
+                    elapsed = time.time() - t_start_all
+                    rate = done_count / max(elapsed, 0.01)
+                    eta = (n_modes - done_count) / rate
+                    print(f"    {done_count}/{n_modes} modes  "
+                          f"[{elapsed:.0f}s<{eta:.0f}s, {rate:.1f}mode/s]",
+                          flush=True)
                     save_checkpoint(done_count)
     else:
         try:
             from tqdm import tqdm
-            iterator = tqdm(enumerate(k_code_grid), total=n_modes, desc="  k-modes", unit="mode")
+            iterator = tqdm(enumerate(k_code_grid), total=n_modes,
+                            desc="  k-modes", unit="mode",
+                            mininterval=1.0)  # 1s update for SSH
         except ImportError:
             iterator = enumerate(k_code_grid)
-            print(f"  Computing {n_modes} k-modes (serial)...")
+            print(f"  Computing {n_modes} k-modes (serial)...", flush=True)
 
         for idx, k_code in iterator:
             ps, pt, si, err = _solve_one_mode_fast(idx, k_code)
