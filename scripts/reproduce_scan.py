@@ -16,7 +16,7 @@ import numpy as np
 
 from models import HiggsModel
 from pspectrum_pipeline import run_pspectrum_pipeline, build_weighted_kgrid
-from scripts.camb_wrapper import compute_cl_full_camb
+from scripts.camb_wrapper import compute_cl_full_camb, compute_chi2_camb
 from scripts.planck_data import C_ell_to_d_ell
 from scripts.constants import As, k_pivot_phys
 
@@ -104,14 +104,13 @@ def main():
         ps_data = {"k_phys": result["k_phys"], "P_S": result["P_S"]}
         try:
             d2_new, _, _ = compute_d2(ps_data)
+            chi2_new, chi2_lcdm, _ = compute_chi2_camb(ps_data, ell_max=29)
         except Exception as e:
             print(f"  {i:4d} {phi0:6.2f} {y0:8.3f} {N_star:6.1f}  "
                   f"CAMB FAIL: {e}")
             continue
 
-        dchi2 = abs(chi2_old - rec.get("chi2_lcdm", 0)) - abs(d2_new - rec.get("chi2_lcdm", 0))
-        # Actually, just compare chi2 values directly
-        chi2_diff = abs(chi2_old)
+        chi2_diff = abs(chi2_old - chi2_new)
         dd2 = abs(d2_old - d2_new)
 
         # Track max deviations
