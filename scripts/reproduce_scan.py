@@ -136,16 +136,16 @@ def main():
                   flush=True)
 
     t_total = time.time() - t_start
-print(f"\nTotal: {len(entries)} configs in {t_total:.0f}s ({t_total/len(entries):.2f}s/config)")
-print(f"Max |chi2_diff| = {max_dchi2:.4f}")
-print(f"Max |d2_diff|   = {max_dd2:.4f} uK^2")
+    print(f"\nTotal: {len(entries)} configs in {t_total:.0f}s ({t_total/len(entries):.2f}s/config)")
+    print(f"Max |chi2_diff| = {max_dchi2:.4f}")
+    print(f"Max |d2_diff|   = {max_dd2:.4f} uK^2")
 
-if max_dchi2 < 2.0 and max_dd2 < 2.0:
-    print(f"PASS: Deviations within tolerance (chi2<2, d2<2 uK^2).")
-    sys.exit(0)
-else:
-    print("FAIL: Deviations exceed tolerance.")
-    sys.exit(1)
+    if max_dchi2 < 2.0 and max_dd2 < 2.0:
+        print(f"PASS: Deviations within tolerance (chi2<2, d2<2 uK^2).")
+        sys.exit(0)
+    else:
+        print("FAIL: Deviations exceed tolerance.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
