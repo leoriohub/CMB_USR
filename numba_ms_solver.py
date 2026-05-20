@@ -82,7 +82,7 @@ def _get_potential_cached(model):
 def make_rhs(f, df, d2f, S, v0):
     """Create a @njit MS ODE RHS with captured potential functions."""
     Si2 = 1.0 / (S*S)
-    @njit
+    @njit(cache=True)
     def rhs(vars_8, T, bc, k_rel, ni):
         x = _spline_eval(T, *bc[0])
         y = _spline_eval(T, *bc[1])
