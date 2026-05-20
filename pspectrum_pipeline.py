@@ -191,9 +191,10 @@ def _compute_mode_batch(args):
     """Worker for batched parallel k-mode execution.
 
     Builds background interpolation ONCE per batch, then processes
-    each mode sequentially. Returns list of (idx, P_S, P_T, start_idx, error).
+    each mode sequentially. Dispatches to Numba or Python per mode.
+    Returns list of (idx, P_S, P_T, start_idx, error).
     """
-    indices, k_codes, bg_sol, T_span_bg, end_idx, k_start_factor, ms_steps, model = args
+    indices, k_codes, bg_sol, T_span_bg, end_idx, k_start_factor, ms_steps, model, use_numba = args
     try:
         interp = build_bg_interpolators_fast(bg_sol, T_span_bg)
     except Exception as e:
@@ -206,7 +207,10 @@ def _compute_mode_batch(args):
                 bg_sol, T_span_bg, end_idx, k_code, k_start_factor
             )
             T_ms = np.linspace(t_start, t_end, ms_steps)
-            ms_sol = ms_solver.run_ms_simulation(interp, ni, T_ms, k_code, model)
+            if use_numba:
+                ms_sol = numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, model)
+            else:
+                ms_sol = ms_solver.run_ms_simulation(interp, ni, T_ms, k_code, model)
             d = ms_solver.get_ms_derived_quantities_with_bg(ms_sol, interp, T_ms, model, k_code, ni)
             ps = float(d["P_S"][-1])
             pt = float(d["P_T"][-1])
@@ -443,7 +447,7 @@ def run_pspectrum_pipeline(
             ci = indices[w::n_actual]
             ck = [k_code_grid[i] for i in ci]
             chunks.append((ci, ck, bg_sol, T_span_bg, end_idx,
-                           k_start_factor, ms_steps, model))
+                           k_start_factor, ms_steps, model, use_numba))
 
         done_count = 0
         with ProcessPoolExecutor(max_workers=n_actual) as executor:
