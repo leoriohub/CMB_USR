@@ -65,6 +65,19 @@ def _extract_potential(model):
     return None, None, None
 
 
+_POTENTIAL_CACHE = {}
+
+def _get_potential_cached(model):
+    """Cached version of _extract_potential. Same model params → same @njit fns."""
+    key = (type(model).__name__, getattr(model, 'alpha', None),
+           getattr(model, 'm', None), getattr(model, 'lam', None),
+           getattr(model, 'xi_val', None), getattr(model, 'v0', None),
+           getattr(model, '_alpha', None))
+    if key not in _POTENTIAL_CACHE:
+        _POTENTIAL_CACHE[key] = _extract_potential(model)
+    return _POTENTIAL_CACHE[key]
+
+
 def make_rhs(f, df, d2f, S, v0):
     """Create a @njit MS ODE RHS with captured potential functions."""
     Si2 = 1.0 / (S*S)
@@ -99,7 +112,7 @@ def _get_integrator(model, S, v0):
     if key in _INTEGRATOR_CACHE:
         return _INTEGRATOR_CACHE[key]
 
-    f, df, d2f = _extract_potential(model)
+    f, df, d2f = _get_potential_cached(model)
     rhs = make_rhs(f, df, d2f, S, v0)
 
     @njit
@@ -176,7 +189,7 @@ def _get_integrator(model, S, v0):
 
 
 def numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, model, S=5e-5, bg_coefs=None):
-    f_nb, dfdx_nb, d2fdx2_nb = _extract_potential(model)
+    f_nb, dfdx_nb, d2fdx2_nb = _get_potential_cached(model)
     if f_nb is None:
         raise NotImplementedError(
             f"Numba not supported for {type(model).__name__}. "
