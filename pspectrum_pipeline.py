@@ -35,7 +35,7 @@ from scripts.plotting import make_filename
 import inf_dyn_background as bg_solver
 import inf_dyn_MS_full as ms_solver
 from models import HiggsModel, FullHiggsModel, PunctuatedInflationModel
-from numba_ms_solver import numba_run_ms
+from numba_ms_solver import numba_run_ms, build_numba_splines
 
 # Fast CubicSpline-based interpolator (avoids interp1d overhead for per-step calls)
 from scipy.interpolate import CubicSpline
@@ -190,15 +190,16 @@ def extract_mode_initial_conditions(bg_sol, T_span_bg, end_idx, k_code, k_start_
 def _compute_mode_batch(args):
     """Worker for batched parallel k-mode execution.
 
-    Builds background interpolation ONCE per batch, then processes
-    each mode sequentially. Dispatches to Numba or Python per mode.
+    Builds background interpolation AND Numba spline coefs ONCE per batch,
+    then processes each mode sequentially. Dispatches to Numba or Python.
     Returns list of (idx, P_S, P_T, start_idx, error).
     """
     indices, k_codes, bg_sol, T_span_bg, end_idx, k_start_factor, ms_steps, model, use_numba = args
     try:
         interp = build_bg_interpolators_fast(bg_sol, T_span_bg)
+        bg_coefs = build_numba_splines(bg_sol, T_span_bg)
     except Exception as e:
-        return [(idx, None, None, -1, f"interp failed: {e}") for idx in indices]
+        return [(idx, None, None, -1, f"setup failed: {e}") for idx in indices]
 
     results = []
     for idx, k_code in zip(indices, k_codes):
@@ -208,7 +209,8 @@ def _compute_mode_batch(args):
             )
             T_ms = np.linspace(t_start, t_end, ms_steps)
             if use_numba:
-                ms_sol = numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, model)
+                ms_sol = numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, model,
+                                      bg_coefs=bg_coefs)
             else:
                 ms_sol = ms_solver.run_ms_simulation(interp, ni, T_ms, k_code, model)
             d = ms_solver.get_ms_derived_quantities_with_bg(ms_sol, interp, T_ms, model, k_code, ni)
@@ -342,8 +344,9 @@ def run_pspectrum_pipeline(
     failed_modes = []
     errors = []
 
-    # Build background interpolation for serial mode
+    # Build background interpolation and spline coefficients (shared)
     bg_interp = build_bg_interpolators_fast(bg_sol, T_span_bg)
+    bg_coefs = build_numba_splines(bg_sol, T_span_bg)
 
     # Build metadata early (needs pivot info from above, which we have)
     run_id = str(uuid.uuid4())[:8]
