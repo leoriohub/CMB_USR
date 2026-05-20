@@ -413,7 +413,11 @@ def run_pspectrum_pipeline(
                 bg_sol, T_span_bg, end_idx, k_code_val, k_start_factor
             )
             T_ms = _linspace(t_start, t_end, ms_steps)
-            ms_sol = _run_ms(bg_interp, ni, T_ms, k_code_val, model)
+            if use_numba:
+                ms_sol = numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code_val, model,
+                                      bg_coefs=bg_coefs)
+            else:
+                ms_sol = _run_ms(bg_interp, ni, T_ms, k_code_val, model)
             d = _get_derived(ms_sol, bg_interp, T_ms, model, k_code_val, ni)
             ps = float(d["P_S"][-1])
             pt = float(d["P_T"][-1])
