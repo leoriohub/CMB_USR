@@ -175,7 +175,7 @@ def _get_integrator(model, S, v0):
     return integrate
 
 
-def numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, model, S=5e-5):
+def numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, model, S=5e-5, bg_coefs=None):
     f_nb, dfdx_nb, d2fdx2_nb = _extract_potential(model)
     if f_nb is None:
         raise NotImplementedError(
@@ -183,7 +183,7 @@ def numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, model, S=5e-5):
             f"Use Python solver (inf_dyn_MS_full.run_ms_simulation)."
         )
     v0 = model.v0; k_rel = k_code * np.exp(-ni)
-    bc = build_numba_splines(bg_sol, T_span_bg)
+    bc = bg_coefs if bg_coefs is not None else build_numba_splines(bg_sol, T_span_bg)
 
     zc = bc[2]
     zi = _spline_eval(T_ms[0], *zc)
