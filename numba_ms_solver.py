@@ -20,7 +20,7 @@ except ImportError:
         return wrapper
 
 
-@njit
+@njit(cache=True)
 def _spline_eval(t, t_grid, a, b, c, d):
     i = np.searchsorted(t_grid, t) - 1
     i = max(0, min(i, len(t_grid) - 2))
@@ -66,6 +66,7 @@ def _extract_potential(model):
 
 
 _POTENTIAL_CACHE = {}
+_NUMBA_CALL_COUNT = 0
 
 def _get_potential_cached(model):
     """Cached version of _extract_potential. Same model params → same @njit fns."""
@@ -115,7 +116,7 @@ def _get_integrator(model, S, v0):
     f, df, d2f = _get_potential_cached(model)
     rhs = make_rhs(f, df, d2f, S, v0)
 
-    @njit
+    @njit(cache=True)
     def integrate(y0, T_start, T_end, output_t, bc, k_rel, ni,
                   h_init=1e-2, rtol=1e-8, atol=1e-10, max_steps=200000):
         # ── DP5 coefficients (flat, Numba-compatible) ────────────
