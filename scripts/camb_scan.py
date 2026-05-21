@@ -21,11 +21,12 @@ from pspectrum_pipeline import (
     run_pspectrum_pipeline, find_end_of_inflation,
     build_weighted_kgrid,
 )
-from scripts.camb_wrapper import compute_cl_camb_powerlaw
+from scripts.camb_wrapper import compute_cl_camb_powerlaw, compute_cl_full_camb
 from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
 from scripts.optimizer_utils import find_k_dip, _write_log
 from scripts.constants import As, k_pivot_phys
 from scripts.plotting import get_path
+from scripts.chi2_analysis import chi2_model_lcdm
 from models import HiggsModel
 import inf_dyn_background as bg_solver
 
@@ -48,7 +49,6 @@ def _generate_grids(args):
 
 def compute_camb_curves(ps_data, ell_max):
     """Full CAMB: returns d2, ells, D_ell, C_TT, C_TE, C_EE."""
-    from scripts.camb_wrapper import compute_cl_full_camb
     ells, C_TT, C_TE, C_EE = compute_cl_full_camb(ps_data, ell_max=ell_max)
     D = C_ell_to_d_ell(ells, C_TT)
     return float(D[0]), ells, D, C_TT, C_TE, C_EE
@@ -56,7 +56,6 @@ def compute_camb_curves(ps_data, ell_max):
 
 def chi2_vs_planck(ells_model, D_model, ell_max_chi2=29):
     """Asymmetric diagonal chi2 vs Planck low-ell TT."""
-    from scripts.chi2_analysis import chi2_model_lcdm
     chi2, _ = chi2_model_lcdm(
         D_model, ells_model,
         ell_max=ell_max_chi2,
@@ -67,7 +66,6 @@ def chi2_vs_planck(ells_model, D_model, ell_max_chi2=29):
 def lcdm_baseline(ell_max):
     """Cached LCDM D_ell at given ell_max."""
     if ell_max not in _lcdm_cache:
-        from scripts.camb_wrapper import compute_cl_camb_powerlaw
         ells, C, _, _ = compute_cl_camb_powerlaw(ell_max=ell_max)
         _lcdm_cache[ell_max] = (ells, C)
     ells, C = _lcdm_cache[ell_max]
