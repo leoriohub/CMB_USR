@@ -246,6 +246,7 @@ def run_pspectrum_pipeline(
     k_phys_grid=None,
     n_workers=1,
     use_numba=True,
+    executor=None,
 ):
     """
     Compute P_S(k) for a grid of k-modes for a given inflation model.
@@ -457,8 +458,9 @@ def run_pspectrum_pipeline(
                            k_start_factor, ms_steps, model, use_numba))
 
         done_count = 0
-        with ProcessPoolExecutor(max_workers=n_actual) as executor:
-            futures = {executor.submit(_compute_mode_batch, c): c[0][0] for c in chunks}
+        pool = executor if executor is not None else ProcessPoolExecutor(max_workers=n_actual)
+        try:
+            futures = {pool.submit(_compute_mode_batch, c): c[0][0] for c in chunks}
             for future in as_completed(futures):
                 for idx, ps, pt, si, err in future.result():
                     done_count += 1
@@ -471,6 +473,9 @@ def run_pspectrum_pipeline(
                           f"[{elapsed:.0f}s<{eta:.0f}s, {rate:.1f}mode/s]",
                           flush=True)
                     save_checkpoint(done_count)
+        finally:
+            if executor is None:
+                pool.shutdown()
     else:
         try:
             from tqdm import tqdm
