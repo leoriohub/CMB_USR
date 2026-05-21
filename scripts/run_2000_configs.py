@@ -3,8 +3,6 @@ import json, time, random, sys
 import numpy as np
 from models import HiggsModel
 from pspectrum_pipeline import run_pspectrum_pipeline, build_weighted_kgrid
-from scripts.camb_wrapper import compute_cl_full_camb
-from scripts.planck_data import C_ell_to_d_ell
 from scripts.constants import As, k_pivot_phys
 
 random.seed(42)
@@ -35,6 +33,16 @@ for _ in range(N_CONFIGS):
 
 m = HiggsModel(lam=0.13, xi=15000.0)
 
+# Warmup: run one config serially to populate Numba disk cache
+print(" Warming up Numba (serial, 1 config)...", flush=True)
+_ = run_pspectrum_pipeline(
+    m, phi0=6.0, y0=-0.2, N_star=50.0,
+    k_pivot_phys=k_pivot_phys, k_phys_grid=k_phys,
+    normalize_to_As=True, As=As,
+    n_workers=1, use_numba=True, ms_steps=500, save_outputs=False,
+)
+print(" Warmup done.", flush=True)
+
 t_start = time.time()
 ok = 0
 fail = 0
@@ -50,15 +58,8 @@ for i, (phi0, y0, N_star) in enumerate(configs):
 
     if r["status"] == "success":
         ok += 1
-        ps_data = {"k_phys": r["k_phys"], "P_S": r["P_S"]}
-        try:
-            ells, CTT, _, _ = compute_cl_full_camb(ps_data, ell_max=2500)
-            d2 = float(C_ell_to_d_ell(ells, CTT)[0])
-        except Exception:
-            d2 = -1
     else:
         fail += 1
-        d2 = -1
 
     t = time.time() - t0
     elapsed = time.time() - t_start
