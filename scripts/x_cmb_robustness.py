@@ -14,9 +14,7 @@ Usage:
 import numpy as np
 
 from models import HiggsModel, FullHiggsModel
-import inf_dyn_background as bg_solver
-from pspectrum_pipeline import find_end_of_inflation
-
+from scripts.usr_utils import compute_xcmb as _compute_xcmb
 
 xi_values = [10.0, 100.0, 500.0, 1000.0, 5000.0, 10000.0, 15000.0]
 lam_bench = 0.13
@@ -25,38 +23,16 @@ N_star_values = [55, 60]
 
 T_MAX = 2000.0
 BG_STEPS = 100000
-T_span = np.linspace(0, T_MAX, BG_STEPS)
 
 
-def compute_xcmb(ModelClass, lam, xi, N_star, x0, y0):
+def _xcmb_for_model(ModelClass, lam, xi, N_star, x0, y0):
+    """Wrapper: usr_utils.compute_xcmb -> x_cmb or None."""
     try:
-        model = ModelClass(lam=lam, xi=xi)
+        xc, _ = _compute_xcmb(x0=x0, y0_sr=y0, N_star=N_star, lam=lam, xi=xi,
+                              T_max=T_MAX, bg_steps=BG_STEPS, model_cls=ModelClass)
+        return xc
     except Exception:
         return None
-
-    model.x0 = x0
-    model.y0 = y0
-    model.T_max = T_MAX
-    model.bg_steps = BG_STEPS
-
-    try:
-        bg = bg_solver.run_background_simulation(model, T_span)
-    except Exception:
-        return None
-
-    derived = bg_solver.get_derived_quantities(bg, model)
-
-    end_idx = find_end_of_inflation(derived["epsH"])
-    if end_idx < 1:
-        return None
-
-    N_total = float(derived["N"][end_idx])
-    if N_total < N_star:
-        return None
-
-    N_pivot = N_total - N_star
-    pivot_idx = int(np.argmin(np.abs(derived["N"][:end_idx] - N_pivot)))
-    return float(bg[0][pivot_idx])
 
 
 def format_row(xi, lam_val, vals):
@@ -88,7 +64,7 @@ def main():
 
         for ns in N_star_values:
             for model_name, ModelClass in [("approx", HiggsModel), ("full", FullHiggsModel)]:
-                xc = compute_xcmb(ModelClass, lam_val, xi, ns, x0, y0_sr)
+                xc = _xcmb_for_model(ModelClass, lam_val, xi, ns, x0, y0_sr)
                 vals.append(xc)
                 if ns == 55:
                     row["N_star_55"][model_name] = xc
@@ -124,6 +100,9 @@ def main():
     # -- N_total por modelo --
     print()
     print("  N_total summary (approx, xi=15000):")
+    import inf_dyn_background as bg_solver
+    from pspectrum_pipeline import find_end_of_inflation
+    T_span = np.linspace(0, T_MAX, BG_STEPS)
     m = HiggsModel(lam=lam_bench, xi=xi_bench)
     m.x0 = x0; m.y0 = y0_sr; m.T_max = T_MAX; m.bg_steps = BG_STEPS
     bg = bg_solver.run_background_simulation(m, T_span)
