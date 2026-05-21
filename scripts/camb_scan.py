@@ -56,15 +56,11 @@ def compute_camb_curves(ps_data, ell_max):
 
 def chi2_vs_planck(ells_model, D_model, ell_max_chi2=29):
     """Asymmetric diagonal chi2 vs Planck low-ell TT."""
-    p_ells, D_p, D_lo, D_hi = get_planck_data_asymmetric()
-    chi2 = 0.0
-    for i, ell_val in enumerate(p_ells):
-        if ell_val > ell_max_chi2:
-            continue
-        idx = int(np.argmin(np.abs(ells_model - ell_val)))
-        res = D_model[idx] - D_p[i]
-        sigma = D_hi[i] if res > 0 else D_lo[i]
-        chi2 += (res / sigma) ** 2
+    from scripts.chi2_analysis import chi2_model_lcdm
+    chi2, _ = chi2_model_lcdm(
+        D_model, ells_model,
+        ell_max=ell_max_chi2,
+    )
     return chi2
 
 
