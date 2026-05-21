@@ -15,8 +15,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from scripts.constants import As, k_pivot_phys, T_cmb, ROOT_DIR
 from scipy.interpolate import interp1d
+
+from scripts.constants import As, k_pivot_phys, T_cmb, ROOT_DIR
 
 TOL = {
     "blue": "#4477AA",
