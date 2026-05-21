@@ -13,13 +13,10 @@ import sys
 import numpy as np
 
 from scripts.constants import As, k_pivot_phys, T_cmb
+from scripts.planck_data import C_ell_to_d_ell
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
-
-def _d_ell(ells, C_ell):
-    """Convert dimensionless C_ell to D_ell [muK^2]."""
-    return C_ell * ells * (ells + 1) / (2 * np.pi) * (T_cmb * 1e6) ** 2
 
 
 def find_ps_file(name_pattern):
@@ -131,7 +128,7 @@ def test_lcdm_benchmark():
 
     ell_max = 2500
     ells, C, _, _ = compute_cl_camb_powerlaw(ell_max=ell_max)
-    D = _d_ell(ells, C)
+    D = C_ell_to_d_ell(ells, C)
 
     # Find acoustic peak
     peak_idx = int(np.argmax(D[30:]) + 30)
@@ -192,11 +189,11 @@ def test_feature_propagation():
 
     # LCDM reference
     ells_l, C_l, _, _ = compute_cl_camb_powerlaw(ell_max=2500)
-    D_l = _d_ell(ells_l, C_l)
+    D_l = C_ell_to_d_ell(ells_l, C_l)
 
     for label, data in [("Higgs", higgs_data), ("Punctuated", punct_data)]:
         ells, C, _, _ = compute_cl_full_camb(data, ell_max=2500)
-        D = _d_ell(ells, C)
+        D = C_ell_to_d_ell(ells, C)
 
         # Low-ell behavior (ell=2..10)
         low = slice(0, 9)
@@ -251,7 +248,7 @@ def test_chi2_sanity():
 
     # LCDM chi2 via CAMB
     ells, C, _, _ = compute_cl_camb_powerlaw(ell_max=29)
-    D_l = _d_ell(ells, C)
+    D_l = C_ell_to_d_ell(ells, C)
     p_ells, D_p, D_lo, D_hi = get_planck_data_asymmetric()
 
     def chi2_fn(D_model):
@@ -322,7 +319,7 @@ def test_edge_cases():
         k = np.logspace(-4, -2, 50)
         pk = As * (k / k_pivot_phys) ** (0.965 - 1)
         ells, C, _, _ = compute_cl_full_camb({"k_phys": k, "P_S": pk}, ell_max=100)
-        D = _d_ell(ells, C)
+        D = C_ell_to_d_ell(ells, C)
         if np.all(np.isfinite(D)):
             details.append(f"Narrow k-range: runs OK, D_100={D[98]:.1f} muK^2 [PASS]")
         else:
@@ -338,7 +335,7 @@ def test_edge_cases():
         ps = As * (k / k_pivot_phys) ** (0.965 - 1)
         ps[50:60] = np.nan
         ells, C, _, _ = compute_cl_full_camb({"k_phys": k, "P_S": ps}, ell_max=100)
-        D = _d_ell(ells, C)
+        D = C_ell_to_d_ell(ells, C)
         if np.all(np.isfinite(D)):
             details.append("P_S with NaN: runs OK, finite output [PASS]")
         else:
