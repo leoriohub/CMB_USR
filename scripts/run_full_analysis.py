@@ -90,18 +90,13 @@ def compute_camb(result, phi0, y0, nstar, ell_max=2500):
 
     planck_ells, D_planck, D_err_lower, D_err_upper = get_planck_data_asymmetric()
 
-    chi2_model = 0.0
-    chi2_lcdm = 0.0
-    for i, ell_val in enumerate(planck_ells):
-        if ell_val > 29:
-            continue
-        idx = int(np.argmin(np.abs(ells_camb - ell_val)))
-        r_model = D_camb[idx] - D_planck[i]
-        r_lcdm = D_pl[idx] - D_planck[i]
-        sigma = D_err_upper[i] if r_model > 0 else D_err_lower[i]
-        chi2_model += (r_model / sigma) ** 2
-        sigma = D_err_upper[i] if r_lcdm > 0 else D_err_lower[i]
-        chi2_lcdm += (r_lcdm / sigma) ** 2
+    from scripts.chi2_analysis import chi2_model_lcdm
+    chi2_model, chi2_lcdm = chi2_model_lcdm(
+        D_camb, ells_camb,
+        planck_ells=planck_ells, D_planck=D_planck,
+        D_err_lower=D_err_lower, D_err_upper=D_err_upper,
+        D_lcdm=D_pl, ells_lcdm=ells_pl,
+    )
 
     record = {
         "_type": "result",
