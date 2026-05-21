@@ -87,14 +87,29 @@ def _extend_pspectrum(k_phys, P_S, k_min=1e-6, k_max=10.0, n_extend=200):
     k_at_min = k_ok[0]
     k_at_max = k_ok[-1]
 
-    k_lo = np.logspace(np.log10(k_min), np.log10(k_at_min), n_extend, endpoint=False)
-    k_hi = np.logspace(np.log10(k_at_max), np.log10(k_max), n_extend, endpoint=False)[1:]
+    # Only extend at ends the data doesn't already cover.
+    # If k_at_min < k_min the low-k extension would create a
+    # descending array → unsorted k_full → CAMB spline failure.
+    if k_at_min > k_min:
+        k_lo = np.logspace(np.log10(k_min), np.log10(k_at_min), n_extend, endpoint=False)
+        P_S_lo = P_S_at_kmin * (k_lo / k_at_min) ** ns_lo
+    else:
+        k_lo, P_S_lo = np.array([]), np.array([])
 
-    P_S_lo = P_S_at_kmin * (k_lo / k_at_min) ** ns_lo
-    P_S_hi = P_S_at_kmax * (k_hi / k_at_max) ** ns_hi
+    if k_at_max < k_max:
+        k_hi = np.logspace(np.log10(k_at_max), np.log10(k_max), n_extend, endpoint=False)[1:]
+        P_S_hi = P_S_at_kmax * (k_hi / k_at_max) ** ns_hi
+    else:
+        k_hi, P_S_hi = np.array([]), np.array([])
 
     k_full = np.concatenate([k_lo, k_ok, k_hi])
     P_S_full = np.concatenate([P_S_lo, P_S_ok, P_S_hi])
+
+    if not np.all(np.diff(k_full) > 0):
+        raise ValueError(
+            f"Extended k-grid is not monotonic (k_min={k_min:.1e}, "
+            f"k_at_min={k_at_min:.1e}, k_max={k_max:.1e}, k_at_max={k_at_max:.1e})"
+        )
 
     return k_full, P_S_full
 
