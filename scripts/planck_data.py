@@ -23,6 +23,10 @@ from scripts.constants import T_cmb
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "Planck")
 DATA_FILE = os.path.join(DATA_DIR, "planck_2018_low_ell_tt.csv")
 
+# PLIK binned/unbinned likelihood data from Planck 2018 Release 3.01
+_PLIK_UNBINNED = os.path.join(DATA_DIR, "COM_PowerSpect_CMB-TT-full_R3.01.txt")
+_PLIK_BINNED = os.path.join(DATA_DIR, "COM_PowerSpect_CMB-TT-binned_R3.01.txt")
+
 _planck_data = None
 
 
@@ -72,3 +76,15 @@ def C_ell_to_d_ell(ells, C_ell, Tcmb=T_cmb):
     """Convert dimensionless C_ell to D_ell [μK^2]."""
     conv = (Tcmb * 1e6) ** 2
     return C_ell * ells * (ells + 1.0) * conv / (2.0 * np.pi)
+
+
+def load_planck_unbinned():
+    """Load Planck 2018 unbinned TT spectrum (ℓ=2-2508), returns (ells, D_ell)."""
+    data = np.loadtxt(_PLIK_UNBINNED, skiprows=1)
+    return data[:, 0].astype(int), data[:, 1]
+
+
+def load_planck_binned():
+    """Load Planck 2018 binned TT spectrum (ℓ≈47-2500), returns (ells, D_ell, D_err_sym)."""
+    data = np.loadtxt(_PLIK_BINNED, skiprows=1)
+    return data[:, 0].astype(int), data[:, 1], data[:, 2]
