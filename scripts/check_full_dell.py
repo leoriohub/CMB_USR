@@ -100,17 +100,13 @@ def run_checks(ells_model, D_model, ells_lcdm, D_lcdm, planck_data):
                        f"Insufficient range: model ℓ_max={ells_model[-1]}"))
 
     # 7. Chi²
-    chi2 = 0.0
-    for i, ell_val in enumerate(p_ells):
-        idx = int(np.argmin(np.abs(ells_model - ell_val)))
-        res = D_model[idx] - D_p[i]
-        sigma = D_hi[i] if res > 0 else D_lo[i]
-        chi2 += (res / sigma) ** 2
-    chi2_lcdm = 0.0
-    for i, ell_val in enumerate(p_ells):
-        res = D_int_lcdm(ell_val) - D_p[i]
-        sigma = D_hi[i] if res > 0 else D_lo[i]
-        chi2_lcdm += (res / sigma) ** 2
+    from scripts.chi2_analysis import chi2_model_lcdm
+    chi2, chi2_lcdm = chi2_model_lcdm(
+        D_model, ells_model,
+        planck_ells=p_ells, D_planck=D_p,
+        D_err_lower=D_lo, D_err_upper=D_hi,
+        D_lcdm=D_lcdm, ells_lcdm=ells_lcdm, ell_max=9999,
+    )
     checks.append(("7. χ² vs Planck low-ℓ", chi2 < chi2_lcdm,
                    f"model χ²={chi2:.2f}, LCDM χ²={chi2_lcdm:.2f}, Δ={chi2-chi2_lcdm:+.2f}"))
 

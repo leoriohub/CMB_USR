@@ -184,7 +184,7 @@ def compute_chi2_camb(pspectrum_data, ell_max=29):
 
     Uses asymmetric Commander errors, same convention as the SW-only chi^2.
     """
-    from scripts.planck_data import get_planck_data_asymmetric
+    from scripts.chi2_analysis import chi2_model_lcdm
 
     ells, C_ell, _, _ = compute_cl_full_camb(pspectrum_data, ell_max=ell_max)
     D_ell = C_ell_to_d_ell(ells, C_ell)
@@ -195,21 +195,11 @@ def compute_chi2_camb(pspectrum_data, ell_max=29):
     ells_pl, C_ell_pl, _, _ = _LCDM_CACHE[ell_max]
     D_ell_pl = C_ell_to_d_ell(ells_pl, C_ell_pl)
 
-    planck_ells, D_planck, D_err_lower, D_err_upper = get_planck_data_asymmetric()
-
-    def chi2_model_fn(D_model):
-        chi2 = 0.0
-        for i, ell_val in enumerate(planck_ells):
-            if ell_val > ell_max:
-                continue
-            idx = int(np.argmin(np.abs(ells - ell_val)))
-            residual = D_model[idx] - D_planck[i]
-            sigma = D_err_upper[i] if residual > 0 else D_err_lower[i]
-            chi2 += (residual / sigma) ** 2
-        return chi2
-
-    chi2_m = chi2_model_fn(D_ell)
-    chi2_l = chi2_model_fn(D_ell_pl)
+    chi2_m, chi2_l = chi2_model_lcdm(
+        D_ell, ells,
+        D_lcdm=D_ell_pl, ells_lcdm=ells_pl,
+        ell_max=ell_max,
+    )
 
     return chi2_m, chi2_l, chi2_m - chi2_l
 
