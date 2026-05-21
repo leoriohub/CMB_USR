@@ -217,18 +217,19 @@ def print_comparison(file_stats):
 
 
 def export_results(records, fmt, prefix):
+    from scripts.plotting import get_path
     if not records:
         print("  No records to export")
         return
     export_keys = ["phi0", "y0", "N_star", "chi2", "d2", "k_dip", "suppression_pct", "N_total"]
     if fmt == "json":
-        path = f"{prefix}.json"
+        path = get_path("scans", f"{prefix}.json")
         with open(path, "w") as f:
             clean = [{k: r.get(k) for k in export_keys} for r in records]
             json.dump(clean, f, indent=2)
         print(f"  Exported: {path} ({len(clean)} records)")
     elif fmt == "csv":
-        path = f"{prefix}.csv"
+        path = get_path("scans", f"{prefix}.csv")
         with open(path, "w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=export_keys, extrasaction="ignore")
             w.writeheader()
