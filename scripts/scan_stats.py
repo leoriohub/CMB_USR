@@ -57,6 +57,16 @@ def load_records(path):
     return records
 
 
+def _safe_eval(expr, namespace):
+    """Restricted eval: only allows field access + comparison operators."""
+    allowed = set(namespace.keys()) | {'True', 'False', 'None'}
+    code = compile(expr, '<filter>', 'eval')
+    for name in code.co_names:
+        if name not in allowed:
+            raise ValueError(f"Disallowed name in filter: {name}")
+    return eval(code, {"__builtins__": {}}, namespace)
+
+
 def filter_records(records, expr):
     if not expr:
         return records
@@ -68,7 +78,7 @@ def filter_records(records, expr):
     errors = 0
     for r in records:
         try:
-            result = eval(normalized, {"__builtins__": {}}, dict(r))
+            result = _safe_eval(normalized, dict(r))
             if result:
                 filtered.append(r)
         except Exception:
