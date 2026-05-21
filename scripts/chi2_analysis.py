@@ -34,22 +34,51 @@ def load_planck_binned():
     return (data[:, 0], data[:, 1], data[:, 2], data[:, 3])
 
 
+def chi2_model_lcdm(D_model, ells_model, planck_ells=None, D_planck=None,
+                    D_err_lower=None, D_err_upper=None,
+                    D_lcdm=None, ells_lcdm=None, ell_max=29):
+    """Compute χ² for model vs Planck low-ℓ, optionally also for LCDM.
+
+    If planck_* is None, loads from planck_data.get_planck_data_asymmetric().
+    Uses np.interp (smooth) for interpolation.
+    Returns (chi2_model, chi2_lcdm).
+    """
+    if planck_ells is None:
+        from scripts.planck_data import get_planck_data_asymmetric
+        planck_ells, D_planck, D_err_lower, D_err_upper = get_planck_data_asymmetric()
+
+    chi2_m = 0.0
+    for i, ell_val in enumerate(planck_ells):
+        if ell_val > ell_max:
+            continue
+        dm = np.interp(ell_val, ells_model, D_model)
+        rm = dm - D_planck[i]
+        sigma = D_err_upper[i] if rm > 0 else D_err_lower[i]
+        chi2_m += (rm / sigma) ** 2
+
+    chi2_l = 0.0
+    if D_lcdm is not None and ells_lcdm is not None:
+        for i, ell_val in enumerate(planck_ells):
+            if ell_val > ell_max:
+                continue
+            dl = np.interp(ell_val, ells_lcdm, D_lcdm)
+            rl = dl - D_planck[i]
+            sigma = D_err_upper[i] if rl > 0 else D_err_lower[i]
+            chi2_l += (rl / sigma) ** 2
+
+    return chi2_m, chi2_l
+
+
 def _chi2_model_lcdm(D_model, ells_model, D_lcdm, ells_lcdm,
                      planck_ells, planck_D, planck_lo, planck_hi):
-    chi2_m = 0.0
-    chi2_l = 0.0
-    n = 0
-    for ell, dp, dlo, dhi in zip(planck_ells, planck_D, planck_lo, planck_hi):
-        dm = np.interp(ell, ells_model, D_model)
-        dl = np.interp(ell, ells_lcdm, D_lcdm)
-        rm = dm - dp
-        sigma_m = dhi if rm > 0 else dlo
-        chi2_m += (rm / sigma_m) ** 2
-        rl = dl - dp
-        sigma_l = dhi if rl > 0 else dlo
-        chi2_l += (rl / sigma_l) ** 2
-        n += 1
-    return chi2_m, chi2_l, n
+    """Legacy private wrapper — used by chi2_commander/unbinned/binned."""
+    chi2_m, chi2_l = chi2_model_lcdm(
+        D_model, ells_model,
+        planck_ells=planck_ells, D_planck=planck_D,
+        D_err_lower=planck_lo, D_err_upper=planck_hi,
+        D_lcdm=D_lcdm, ells_lcdm=ells_lcdm, ell_max=9999,
+    )
+    return chi2_m, chi2_l, len(planck_ells)
 
 
 def chi2_commander(D_model, ells_model, D_lcdm, ells_lcdm):
