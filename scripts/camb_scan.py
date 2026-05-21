@@ -109,9 +109,11 @@ def load_completed(log_path):
     return completed
 
 
-def evaluate_config(phi0, y0, N_star, args, k_phys_grid=None):
-    """Run pipeline + CAMB. Pass k_phys_grid to use custom k-grid (quick mode)."""
-    model = HiggsModel(lam=args.lam, xi=args.xi)
+def evaluate_config(phi0, y0, N_star, args, k_phys_grid=None,
+                    executor=None, model=None):
+    """Run pipeline + CAMB. Pass k_phys_grid + executor + model for reuse."""
+    if model is None:
+        model = HiggsModel(lam=args.lam, xi=args.xi)
     try:
         result = run_pspectrum_pipeline(
             model=model, phi0=phi0, y0=y0,
@@ -122,6 +124,7 @@ def evaluate_config(phi0, y0, N_star, args, k_phys_grid=None):
             num_k=args.num_k if k_phys_grid is None else 0,
             k_phys_grid=k_phys_grid,
             n_workers=args.workers,
+            executor=executor,
             save_outputs=False,
         )
     except Exception as e:
