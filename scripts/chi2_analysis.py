@@ -7,31 +7,17 @@ import os
 import numpy as np
 
 from scripts.constants import ROOT_DIR
-from scripts.planck_data import C_ell_to_d_ell
+from scripts.planck_data import (
+    C_ell_to_d_ell,
+    get_planck_data_asymmetric,
+    load_planck_unbinned,
+    load_planck_binned,
+)
 
 
 def load_planck_low():
-    data = np.loadtxt(
-        os.path.join(ROOT_DIR, "data/Planck/planck_2018_low_ell_tt.csv"),
-        skiprows=1, delimiter=",",
-    )
-    return (data[:, 0].astype(int), data[:, 1], data[:, 2], data[:, 3])
-
-
-def load_planck_unbinned():
-    data = np.loadtxt(
-        os.path.join(ROOT_DIR, "data/Planck/COM_PowerSpect_CMB-TT-full_R3.01.txt"),
-        skiprows=1,
-    )
-    return (data[:, 0].astype(int), data[:, 1], data[:, 2], data[:, 3])
-
-
-def load_planck_binned():
-    data = np.loadtxt(
-        os.path.join(ROOT_DIR, "data/Planck/COM_PowerSpect_CMB-TT-binned_R3.01.txt"),
-        skiprows=1,
-    )
-    return (data[:, 0], data[:, 1], data[:, 2], data[:, 3])
+    """Load Commander low-ℓ data (ℓ=2-29) with asymmetric errors."""
+    return get_planck_data_asymmetric()
 
 
 def chi2_model_lcdm(D_model, ells_model, planck_ells=None, D_planck=None,
