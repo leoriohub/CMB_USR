@@ -160,14 +160,14 @@ def plot_ps(k_phys, P_S, label="Higgs USR", filename="ps", category="powerloss",
                     arrowprops=dict(arrowstyle="->", color=TOL["red"], lw=1.5),
                     fontsize=7, color=TOL["red"])
 
-    ax.tick_params(labelsize=7)
-    ax.tick_params(axis="y", labelsize=7)
+    ax.tick_params(labelsize=12)
+    ax.tick_params(axis="y", labelsize=12)
     ax.yaxis.set_major_formatter(plt.ScalarFormatter(useMathText=True))
     ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
-    ax.yaxis.get_offset_text().set_fontsize(6)
-    ax.set_xlabel(r"$k\ [{\rm Mpc}^{-1}]$", fontsize=7)
-    ax.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$", fontsize=7)
-    ax.legend(fontsize=6)
+    ax.yaxis.get_offset_text().set_fontsize(10)
+    ax.set_xlabel(r"$k\ [{\rm Mpc}^{-1}]$", fontsize=14)
+    ax.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$", fontsize=14)
+    ax.legend(fontsize=11)
     ax.grid(True, alpha=0.25, which="major")
 
     fig.tight_layout()
@@ -196,12 +196,12 @@ def plot_dell(ells, D_ell_model, planck_ells=None, D_planck=None,
     if ells_lcdm is not None and D_ell_lcdm is not None:
         mask = ells_lcdm <= ell_max
         D_lcdm_interp = interp1d(ells_lcdm[mask], D_ell_lcdm[mask], kind="cubic")(ell_dense)
-        ax.plot(ell_dense, D_lcdm_interp, "--", color=TOL["grey"], lw=1.2,
-                alpha=0.6, label=r"$\Lambda$CDM")
+    ax.plot(ell_dense, D_lcdm_interp, "--", color=TOL["grey"], lw=1.2,
+            alpha=0.6, label=r"$\Lambda$CDM")
 
-    ax.set_xlabel(r"$\ell$", fontsize=10)
-    ax.set_ylabel(r"$D_\ell^{TT}\ [\mu{\rm K}^2]$", fontsize=10)
-    ax.legend(fontsize=8)
+    ax.set_xlabel(r"$\ell$", fontsize=14)
+    ax.set_ylabel(r"$D_\ell^{TT}\ [\mu{\rm K}^2]$", fontsize=14)
+    ax.legend(fontsize=11)
     ax.grid(True, alpha=0.25, which="both")
     ax.set_xlim(1.5, ell_max + 0.5)
 

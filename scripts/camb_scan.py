@@ -218,7 +218,6 @@ def run_phase1(args, completed):
     print(f"{'='*60}", flush=True)
 
     log_path = get_path("logs", f"camb_phase1_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
-    log_file = open(log_path, "a")
 
     if getattr(args, 'quick', False):
         k_phys = build_weighted_kgrid(
@@ -228,19 +227,22 @@ def run_phase1(args, completed):
         ells_grid = np.arange(args.ell_max + 1)
     else:
         k_phys, ells_grid = _generate_grids(args)
-    _write_log(log_file, {
-        "_type": "header",
-        "k_phys": k_phys.tolist(),
-        "ells": ells_grid.tolist(),
-        "xi": args.xi,
-        "lam": args.lam,
-        "k_min": args.k_min,
-        "k_max": args.k_max,
-        "num_k": args.num_k,
-        "ell_max": args.ell_max,
-        "k_pivot_phys": k_pivot_phys,
-        "As": As,
-    })
+
+    log_file = open(log_path, "a")
+    try:
+        _write_log(log_file, {
+            "_type": "header",
+            "k_phys": k_phys.tolist(),
+            "ells": ells_grid.tolist(),
+            "xi": args.xi,
+            "lam": args.lam,
+            "k_min": args.k_min,
+            "k_max": args.k_max,
+            "num_k": args.num_k,
+            "ell_max": args.ell_max,
+            "k_pivot_phys": k_pivot_phys,
+            "As": As,
+        })
 
     t0 = time.time()
     results = []
@@ -356,7 +358,8 @@ def run_phase1(args, completed):
 
         print()
 
-    log_file.close()
+    finally:
+        log_file.close()
     elapsed = time.time() - t0
     print(f"\n  Phase 1 complete: {done} evals in {elapsed:.0f}s "
           f"({elapsed/60:.1f}m)", flush=True)
@@ -434,7 +437,6 @@ def run_phase2(args, completed, regions):
     print(f"{'='*60}", flush=True)
 
     log_path = get_path("logs", f"camb_phase2_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
-    log_file = open(log_path, "a")
 
     if getattr(args, 'quick', False):
         k_phys = build_weighted_kgrid(
@@ -444,25 +446,28 @@ def run_phase2(args, completed, regions):
         ells_grid = np.arange(args.ell_max + 1)
     else:
         k_phys, ells_grid = _generate_grids(args)
-    _write_log(log_file, {
-        "_type": "header",
-        "k_phys": k_phys.tolist(),
-        "ells": ells_grid.tolist(),
-        "xi": args.xi,
-        "lam": args.lam,
-        "k_min": args.k_min,
-        "k_max": args.k_max,
-        "num_k": args.num_k,
-        "ell_max": args.ell_max,
-        "k_pivot_phys": k_pivot_phys,
-        "As": As,
-    })
 
-    total_est = len(regions) * args.n_phi0_fine * args.n_y0_fine * args.n_nstar_fine
-    t0 = time.time()
-    done = [0]
+    log_file = open(log_path, "a")
+    try:
+        _write_log(log_file, {
+            "_type": "header",
+            "k_phys": k_phys.tolist(),
+            "ells": ells_grid.tolist(),
+            "xi": args.xi,
+            "lam": args.lam,
+            "k_min": args.k_min,
+            "k_max": args.k_max,
+            "num_k": args.num_k,
+            "ell_max": args.ell_max,
+            "k_pivot_phys": k_pivot_phys,
+            "As": As,
+        })
 
-    for reg_idx, (phi0_center, y0_center, ns_center) in enumerate(regions):
+        total_est = len(regions) * args.n_phi0_fine * args.n_y0_fine * args.n_nstar_fine
+        t0 = time.time()
+        done = [0]
+
+        for reg_idx, (phi0_center, y0_center, ns_center) in enumerate(regions):
         phi0_vals = np.linspace(phi0_center - args.phi0_fine_window,
                                 phi0_center + args.phi0_fine_window,
                                 args.n_phi0_fine)
@@ -515,7 +520,8 @@ def run_phase2(args, completed, regions):
                           f"{chi2_str}  ok={n_ok}  ETA {eta/60:.0f}m",
                           end="", flush=True)
 
-    log_file.close()
+    finally:
+        log_file.close()
     elapsed = time.time() - t0
     print(f"\n\n  Phase 2 complete: {done[0]} evals in "
           f"{elapsed:.0f}s ({elapsed/60:.1f}m)", flush=True)
