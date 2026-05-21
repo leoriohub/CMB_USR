@@ -24,7 +24,7 @@ from pspectrum_pipeline import (
 from scripts.camb_wrapper import compute_cl_camb_powerlaw
 from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
 from scripts.optimizer_utils import find_k_dip, _write_log
-from scripts.constants import As, k_pivot_phys, ROOT_DIR
+from scripts.constants import As, k_pivot_phys
 from scripts.plotting import get_path
 from models import HiggsModel
 import inf_dyn_background as bg_solver

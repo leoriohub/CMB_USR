@@ -20,7 +20,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from scripts.constants import As, k_pivot_phys, T_cmb, ROOT_DIR
+from scripts.constants import As, k_pivot_phys, T_cmb
 from pspectrum_pipeline import run_pspectrum_pipeline
 from scripts.camb_wrapper import (
     compute_cl_full_camb, compute_cl_camb_powerlaw, compute_chi2_camb,
