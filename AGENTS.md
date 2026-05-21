@@ -199,7 +199,12 @@ When setting `model.y0 = -0.736`: initial dx/dT = -0.736.
 **Backward compat:** `model.phi0` is an alias for `model.x0`.
 
 ### 8. Additional Conventions
-- Scripts are temporary unless user explicitly says to keep them. Delete analysis scripts after use.
+- **No one-off analysis scripts in `scripts/`.** `scripts/` is for importable modules, pipelines, and reusable tools. One-off experiments belong in:
+  1. `notebooks/` as Jupyter notebooks (preferred)
+  2. `outputs/archive/` as standalone `.py` files ONLY for reproducibility (clearly labelled)
+- **Delete analysis scripts immediately after use.** If a one-off script was written to explore data or test a hypothesis, delete it from git before committing the results. Use Jupyter notebooks in `notebooks/` for transient analysis instead.
+- **Before adding a new file to `scripts/`, ask:** Is this importable by other code? If no, it doesn't belong here. Put it in a notebook or `outputs/archive/`.
+- **Never commit temp scripts.** If you wrote `scripts/frobnicate_widgets.py` to test an idea, delete it before `git commit`. The idea that survives becomes a proper module or gets documented in AGENTS.md.
 - **Never auto-commit or auto-push.** Always ask for explicit approval before any git commit or push.
 - **Never touch `paper/images/` or `paper/` unless user explicitly asks.** Plots live in `outputs/plots/`. Only copy to `paper/images/` when user specifically requests it.
 - Heavy compute (scans, optimizations) runs on lab machine via `ssh uni`. Lab machine project path: `~/Documentos/CMB_USR/`. Sync only via GitHub push/pull — never rsync the full project.
