@@ -242,119 +242,86 @@ def run_phase1(args, completed):
             "As": As,
         })
 
-    t0 = time.time()
-    results = []
-    done = 0
+        t0 = time.time()
+        results = []
+        done = 0
 
-    for phi0 in phi0_vals:
-        for y0 in y0_vals:
-            done_phase = len(results) + sum(1 for r in results
-                                            if r.get("status") != "bg_fail")
+        for phi0 in phi0_vals:
+            for y0 in y0_vals:
+                done_phase = len(results) + sum(1 for r in results
+                                                if r.get("status") != "bg_fail")
 
-            # Quick background check + N_star auto-alignment
-            model_check = HiggsModel(lam=args.lam, xi=args.xi)
-            model_check.x0 = phi0
-            model_check.y0 = y0
-            T_bg = np.linspace(0, model_check.T_max, model_check.bg_steps)
+                # Quick background check + N_star auto-alignment
+                model_check = HiggsModel(lam=args.lam, xi=args.xi)
+                model_check.x0 = phi0
+                model_check.y0 = y0
+                T_bg = np.linspace(0, model_check.T_max, model_check.bg_steps)
 
-            try:
-                sol = bg_solver.run_background_simulation(model_check, T_bg)
-                d = bg_solver.get_derived_quantities(sol, model_check)
-            except Exception:
-                done += 1
-                eta = (time.time() - t0) / done * (total - done) if done else 0
-                print(f"\r  [{done:3d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
-                      f"SKIP (bg_fail) ETA {eta/60:.0f}m", end="", flush=True)
-                results.append({"phi0": phi0, "y0": y0, "status": "bg_fail"})
-                continue
-
-            end_idx = find_end_of_inflation(d["epsH"])
-            if end_idx == -1:
-                end_idx = len(d["epsH"]) - 1
-            N_total = float(d["N"][end_idx])
-
-            eps_inf = d["epsH"][(d["N"] >= 0) & (d["N"] < N_total)]
-            if len(eps_inf) < 10:
-                done += 1
-                eta = (time.time() - t0) / done * (total - done) if done else 0
-                print(f"\r  [{done:3d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
-                      f"SKIP (no_usr) ETA {eta/60:.0f}m", end="", flush=True)
-                results.append({"phi0": phi0, "y0": y0, "status": "no_usr"})
-                continue
-
-            dip_N = float(d["N"][np.argmin(eps_inf[10:]) + 10])
-            N_after_dip = N_total - dip_N
-            # delta_N: e-folds between pivot exit and dip k-mode.
-            # With k_pivot=0.002 Mpc^-1, delta_N is ~3.2 e-folds smaller
-            # than it was with the Planck 0.05 pivot (ln(0.05/0.002) ≈ 3.22).
-            delta_N = np.log(k_pivot_phys / args.k_dip_target)
-            nstar_auto = N_after_dip - delta_N
-
-            if nstar_auto <= 0 or nstar_auto > N_total:
-                done += 1
-                eta = (time.time() - t0) / done * (total - done) if done else 0
-                print(f"\r  [{done:3d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
-                      f"SKIP (bad_nstar) ETA {eta/60:.0f}m", end="", flush=True)
-                results.append({"phi0": phi0, "y0": y0, "status": "bad_nstar"})
-                continue
-
-            if nstar_auto <= 0 or nstar_auto > N_total - 1:
-                done += 1
-                eta = (time.time() - t0) / done * (total - done) if done else 0
-                print(f"\r  [{done:3d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
-                      f"SKIP (bad_nstar) ETA {eta/60:.0f}m", end="", flush=True)
-                results.append({"phi0": phi0, "y0": y0, "status": "bad_nstar"})
-                continue
-
-            # Scan 3 N_star values to find the right dip alignment
-            N_star_candidates = []
-            for offset in [0, 2, 4]:
-                ns = round(nstar_auto + offset, 1)
-                if 50.0 <= ns <= N_total - 1 and ns not in N_star_candidates:
-                    N_star_candidates.append(ns)
-            # Also try exactly 50 if auto is below 50
-            if nstar_auto < 50 and 50.0 not in N_star_candidates:
-                N_star_candidates.append(50.0)
-            if not N_star_candidates:
-                N_star_candidates = [max(50.0, round(nstar_auto, 1))]
-            for N_star in N_star_candidates:
-                key = (round(phi0, 4), round(y0, 4), round(N_star, 2))
-                if key in completed:
+                try:
+                    sol = bg_solver.run_background_simulation(model_check, T_bg)
+                    d = bg_solver.get_derived_quantities(sol, model_check)
+                except Exception:
                     done += 1
+                    eta = (time.time() - t0) / done * (total - done) if done else 0
+                    print(f"\r  [{done:3d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
+                          f"SKIP (bg_fail) ETA {eta/60:.0f}m", end="", flush=True)
+                    results.append({"phi0": phi0, "y0": y0, "status": "bg_fail"})
                     continue
 
-                done += 1
-                entry = {
-                    "_type": "data",
-                    "eval": done, "total": total,
-                    "phi0": round(phi0, 4), "y0": round(y0, 4),
-                    "N_star": N_star,
-                    "N_total": round(N_total, 1),
-                    "dip_N": round(dip_N, 1),
-                    "nstar_auto": round(nstar_auto, 2),
-                    "timestamp": datetime.now().isoformat(),
-                }
+                try:
+                    end_idx = find_end_of_inflation(d["epsH"])
+                    if end_idx < 1:
+                        done += 1
+                        eta = (time.time() - t0) / done * (total - done) if done else 0
+                        print(f"\r  [{done:3d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
+                              f"SKIP (no end) ETA {eta/60:.0f}m", end="", flush=True)
+                        results.append({"phi0": phi0, "y0": y0, "status": "no_end"})
+                        continue
 
-                res = evaluate_config(phi0, y0, N_star, args, k_phys_grid=k_phys)
-                entry.update(res)
-                entry.pop("k_phys", None)
-                entry.pop("ells", None)
+                    N_total = float(d["N"][end_idx])
+                    max_ns = N_total - 1
+                    ns_list = sorted(set([
+                        round(min(N_star_vals[0], max_ns), 1),
+                        round(min(N_star_vals[1], max_ns), 1),
+                        round(min(N_star_vals[2], max_ns), 1),
+                    ]))
+                    for N_star in ns_list:
+                        if (round(phi0, 4), round(y0, 4), round(N_star, 2)) in completed:
+                            continue
+                        _write_log(log_file, {
+                            "_type": "bg_result", "phi0": round(phi0, 4),
+                            "y0": round(y0, 4), "N_star": N_star,
+                            "N_total": N_total, "end_idx": int(end_idx),
+                        })
+                        res = evaluate_config(
+                            phi0, y0, N_star, args,
+                            k_phys_grid=k_phys, model=model_check,
+                        )
+                        res["_type"] = "data"
+                        results.append(res)
 
-                _write_log(log_file, entry)
+                        done += 1
+                        eta = (time.time() - t0) / done * (total - done) if done else 0
+                        chi2_str = (f"chi2={res.get('chi2', '?'):.1f}"
+                                    if res.get("status") == "ok" else
+                                    f"err={res.get('error', '?')[:20]}"
+                                    if res.get("error") else "err")
+                        d2_str = (f"d2={res.get('d2', 0):.0f}"
+                                  if res.get("d2", 0) > 0 else "")
+                        print(f"\r  [{done:3d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
+                              f"N*={N_star:.0f} {chi2_str} {d2_str} "
+                              f"k_dip={res.get('k_dip', 0):.2e} "
+                              f"ETA {eta/60:.0f}m", end="", flush=True)
 
-                eta = (time.time() - t0) / done * (total - done) if done else 0
-                chi2_str = (f"chi2={res.get('chi2', '?'):.1f}"
-                            if res.get("status") == "ok"
-                            else f"SKIP ({res.get('status', '?')})")
-                d2_str = (f"d2={res.get('d2', 0):.0f}"
-                          if "d2" in res and res["d2"]
-                          else "")
-                print(f"\r  [{done:3d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
-                      f"N*={N_star:.0f} {chi2_str} {d2_str} "
-                      f"k_dip={res.get('k_dip', 0):.2e} "
-                      f"ETA {eta/60:.0f}m", end="", flush=True)
+                except Exception as exc:
+                    done += 1
+                    eta = (time.time() - t0) / done * (total - done) if done else 0
+                    print(f"\r  [{done:3d}/{total}] phi0={phi0:.2f} y0={y0:+.3f} "
+                          f"FAIL ({exc!s:.40s}) ETA {eta/60:.0f}m", end="", flush=True)
+                    results.append({"phi0": phi0, "y0": y0, "status": "exception",
+                                    "error": str(exc)})
 
-        print()
+            print()
 
     finally:
         log_file.close()
@@ -466,57 +433,57 @@ def run_phase2(args, completed, regions):
         done = [0]
 
         for reg_idx, (phi0_center, y0_center, ns_center) in enumerate(regions):
-        phi0_vals = np.linspace(phi0_center - args.phi0_fine_window,
-                                phi0_center + args.phi0_fine_window,
-                                args.n_phi0_fine)
-        y0_vals = np.linspace(y0_center - args.y0_fine_window,
-                              y0_center + args.y0_fine_window,
-                              args.n_y0_fine)
-        ns_vals = np.linspace(max(ns_center - args.nstar_fine_window, 50),
-                              ns_center + args.nstar_fine_window,
-                              args.n_nstar_fine)
+            phi0_vals = np.linspace(phi0_center - args.phi0_fine_window,
+                                    phi0_center + args.phi0_fine_window,
+                                    args.n_phi0_fine)
+            y0_vals = np.linspace(y0_center - args.y0_fine_window,
+                                  y0_center + args.y0_fine_window,
+                                  args.n_y0_fine)
+            ns_vals = np.linspace(max(ns_center - args.nstar_fine_window, 50),
+                                  ns_center + args.nstar_fine_window,
+                                  args.n_nstar_fine)
 
-        print(f"\n  Region {reg_idx+1}: phi0~{phi0_center:.2f} "
-              f"y0~{y0_center:.3f} N*~{ns_center:.0f}", flush=True)
-        print(f"    Grid: {len(phi0_vals)}x{len(y0_vals)}x{len(ns_vals)} "
-              f"= {len(phi0_vals)*len(y0_vals)*len(ns_vals)} evals", flush=True)
+            print(f"\n  Region {reg_idx+1}: phi0~{phi0_center:.2f} "
+                  f"y0~{y0_center:.3f} N*~{ns_center:.0f}", flush=True)
+            print(f"    Grid: {len(phi0_vals)}x{len(y0_vals)}x{len(ns_vals)} "
+                  f"= {len(phi0_vals)*len(y0_vals)*len(ns_vals)} evals", flush=True)
 
-        for phi0 in phi0_vals:
-            for y0 in y0_vals:
-                for N_star in ns_vals:
-                    N_star = round(N_star, 1)
-                    key = (round(phi0, 4), round(y0, 4), round(N_star, 2))
-                    if key in completed:
+            for phi0 in phi0_vals:
+                for y0 in y0_vals:
+                    for N_star in ns_vals:
+                        N_star = round(N_star, 1)
+                        key = (round(phi0, 4), round(y0, 4), round(N_star, 2))
+                        if key in completed:
+                            done[0] += 1
+                            continue
+
                         done[0] += 1
-                        continue
+                        entry = {
+                            "_type": "data",
+                            "eval": done[0], "total": total_est,
+                            "phi0": round(phi0, 4), "y0": round(y0, 4),
+                            "N_star": N_star,
+                            "phase": 2, "region": reg_idx + 1,
+                            "timestamp": datetime.now().isoformat(),
+                        }
 
-                    done[0] += 1
-                    entry = {
-                        "_type": "data",
-                        "eval": done[0], "total": total_est,
-                        "phi0": round(phi0, 4), "y0": round(y0, 4),
-                        "N_star": N_star,
-                        "phase": 2, "region": reg_idx + 1,
-                        "timestamp": datetime.now().isoformat(),
-                    }
+                        res = evaluate_config(phi0, y0, N_star, args, k_phys_grid=k_phys)
+                        entry.update(res)
+                        entry.pop("k_phys", None)
+                        entry.pop("ells", None)
 
-                    res = evaluate_config(phi0, y0, N_star, args, k_phys_grid=k_phys)
-                    entry.update(res)
-                    entry.pop("k_phys", None)
-                    entry.pop("ells", None)
+                        _write_log(log_file, entry)
 
-                    _write_log(log_file, entry)
-
-                    eta = (time.time() - t0) / done[0] * (total_est - done[0]) if done[0] else 0
-                    chi2_str = (f"chi2={res.get('chi2', '?'):.1f}"
-                                if res.get("status") == "ok"
-                                else f"SKIP")
-                    n_ok = sum(1 for r in open(log_path).readlines()
-                               if '"status": "ok"' in r) if os.path.exists(log_path) else 0
-                    print(f"\r  [{done[0]:4d}/{total_est}] R{reg_idx+1} "
-                          f"phi0={phi0:.2f} y0={y0:+.3f} N*={N_star:.0f} "
-                          f"{chi2_str}  ok={n_ok}  ETA {eta/60:.0f}m",
-                          end="", flush=True)
+                        eta = (time.time() - t0) / done[0] * (total_est - done[0]) if done[0] else 0
+                        chi2_str = (f"chi2={res.get('chi2', '?'):.1f}"
+                                    if res.get("status") == "ok"
+                                    else f"SKIP")
+                        n_ok = sum(1 for r in open(log_path).readlines()
+                                   if '"status": "ok"' in r) if os.path.exists(log_path) else 0
+                        print(f"\r  [{done[0]:4d}/{total_est}] R{reg_idx+1} "
+                              f"phi0={phi0:.2f} y0={y0:+.3f} N*={N_star:.0f} "
+                              f"{chi2_str}  ok={n_ok}  ETA {eta/60:.0f}m",
+                              end="", flush=True)
 
     finally:
         log_file.close()
