@@ -222,9 +222,10 @@ def main():
     print(f"  D_ℓ ∈ [{D_lcdm.min():.1f}, {D_lcdm.max():.1f}] μK²")
 
     # 5. Planck data
+    from scripts.planck_data import load_planck_binned
     planck_data = get_planck_data_asymmetric()
-    pb = np.loadtxt(os.path.join(ROOT_DIR, "data/Planck/COM_PowerSpect_CMB-TT-binned_R3.01.txt"), skiprows=1)
-    planck_binned = (pb[:, 0], pb[:, 1], pb[:, 2], pb[:, 3])
+    b_ells, b_D, b_err = load_planck_binned()
+    planck_binned = (b_ells, b_D, b_err, b_err)
 
     # 6. Checks
     print("\n[4/5] Physical consistency checks...")
