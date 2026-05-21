@@ -6,6 +6,7 @@ Usage:
   python scripts/camb_scan.py --auto          # Full automatic: broad → fine
   python scripts/camb_scan.py --phase broad   # Phase 1 only
   python scripts/camb_scan.py --phase fine    # Phase 2 only (needs Phase 1 results)
+  python scripts/camb_scan.py --phase random --n-random 2000  # Random config scan
 """
 import argparse
 import json
@@ -524,6 +525,95 @@ def run_phase2(args, completed, regions):
           f"{elapsed:.0f}s ({elapsed/60:.1f}m)", flush=True)
 
 
+def run_random_scan(args):
+    """Run random config scan over phi0/y0/N_star ranges."""
+    import random
+
+    random.seed(args.random_seed)
+    np.random.seed(args.random_seed)
+
+    log_path = get_path("logs", f"camb_random_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
+    with open(log_path, "w") as f:
+        f.write(json.dumps({
+            "_type": "header",
+            "n": args.n_random,
+            "random_seed": args.random_seed,
+            "phi0_range": args.phi0_range,
+            "y0_range": args.y0_range,
+            "nstar_range": args.nstar_range,
+            "xi": args.xi,
+            "lam": args.lam,
+            "k_pivot_phys": k_pivot_phys,
+            "As": As,
+        }) + "\n")
+
+    k_phys = build_weighted_kgrid(
+        args.k_min, args.k_max, k_pivot_phys,
+        dense_zone=(1e-4, 1e-2),
+        n_dense=20 if args.quick else 140,
+        n_outer=8 if args.quick else 70,
+    )
+
+    configs = [(round(random.uniform(args.phi0_range[0], args.phi0_range[1]), 2),
+                round(-random.uniform(abs(args.y0_range[1]), abs(args.y0_range[0])), 3),
+                round(random.uniform(args.nstar_range[0], args.nstar_range[1]), 1))
+               for _ in range(args.n_random)]
+
+    model = HiggsModel(lam=args.lam, xi=args.xi)
+    done = 0
+
+    print(f"\n{'='*60}", flush=True)
+    print(f"  RANDOM SCAN: {args.n_random} configs", flush=True)
+    print(f"  phi0: [{args.phi0_range[0]:.1f}, {args.phi0_range[1]:.1f}]", flush=True)
+    print(f"  y0:   [{args.y0_range[0]:.2f}, {args.y0_range[1]:.2f}]", flush=True)
+    print(f"  N*:   [{args.nstar_range[0]:.0f}, {args.nstar_range[1]:.0f}]", flush=True)
+    print(f"  k-modes: {len(k_phys)}", flush=True)
+    print(f"{'='*60}", flush=True)
+
+    t0 = time.time()
+
+    with open(log_path, "a") as log_file, \
+         ProcessPoolExecutor(args.workers) as executor:
+        for i, (phi0, y0, nstar) in enumerate(configs):
+            res = evaluate_config(phi0, y0, nstar, args,
+                                  k_phys_grid=k_phys,
+                                  executor=executor, model=model)
+            res["_type"] = "data"
+            res["phi0"] = phi0
+            res["y0"] = y0
+            res["N_star"] = nstar
+            log_file.write(json.dumps(res) + "\n")
+            log_file.flush()
+
+            if res.get("status") == "ok":
+                done += 1
+
+            if (i + 1) % 100 == 0:
+                elapsed = time.time() - t0
+                eta = elapsed / (i + 1) * (args.n_random - i - 1)
+                print(f"  [{i+1}/{args.n_random}] {elapsed:.0f}s "
+                      f"ETA {eta:.0f}s  ok={done}", flush=True)
+
+    elapsed = time.time() - t0
+    print(f"\n  Random scan complete: {args.n_random} configs "
+          f"in {elapsed:.0f}s ({elapsed/args.n_random:.2f}s/config) "
+          f"ok={done}/{args.n_random}", flush=True)
+    print(f"  Log: {log_path}", flush=True)
+
+    summary_path = log_path.replace(".jsonl", "_summary.json")
+    ok_records = []
+    with open(log_path) as f:
+        for line in f:
+            r = json.loads(line.strip())
+            if r.get("status") == "ok" and r.get("_type") != "header":
+                ok_records.append(r)
+    ok_records.sort(key=lambda r: r.get("chi2", 999))
+    with open(summary_path, "w") as f:
+        json.dump(ok_records[:50], f, indent=2)
+    print(f"  Top-50 saved: {summary_path}", flush=True)
+    return log_path
+
+
 def print_summary(log_path_broad, log_path_fine=None, mode="chi2", max_chi2=None):
     print(f"\n{'='*60}", flush=True)
     print(f"  SCAN SUMMARY", flush=True)
@@ -577,7 +667,7 @@ def setup_args():
                    help="Automatic two-phase scan")
     p.add_argument("--test", action="store_true",
                    help="Quick test (3x3 grid, no Phase 2)")
-    p.add_argument("--phase", choices=["broad", "fine"], default=None)
+    p.add_argument("--phase", choices=["broad", "fine", "random"], default=None)
 
     # Phase 1 params
     p.add_argument("--phi0-range", nargs=2, type=float, default=[5.5, 7.0])
@@ -594,6 +684,14 @@ def setup_args():
     p.add_argument("--y0-fine-window", type=float, default=0.05)
     p.add_argument("--nstar-fine-window", type=float, default=2.0)
     p.add_argument("--max-regions", type=int, default=3)
+
+    # Random scan params
+    p.add_argument("--n-random", type=int, default=100,
+                   help="Number of random configs for --phase random")
+    p.add_argument("--random-seed", type=int, default=42,
+                   help="RNG seed for --phase random")
+    p.add_argument("--nstar-range", nargs=2, type=float, default=[49.0, 62.0],
+                   help="N_star range for --phase random")
 
     # Targets
     p.add_argument("--k-dip-target", type=float, default=1.8e-4)
@@ -713,7 +811,11 @@ def main():
         run_phase2(args, completed_phase2, regions)
         print_summary(args.phase1_log, mode=args.mode, max_chi2=args.max_chi2)
 
-    if args.phase in ("broad", "fine") or args.test:
+    elif args.phase == "random":
+        log_path_random = run_random_scan(args)
+        print_summary(log_path_random, mode=args.mode, max_chi2=args.max_chi2)
+
+    if args.phase in ("broad", "fine", "random") or args.test:
         pass
 
     print("\nDone.", flush=True)
