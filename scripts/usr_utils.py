@@ -67,14 +67,17 @@ def run_bg_for_usr(phi0, y0, xi=xi_default, lam=lam_default,
 
 
 def compute_xcmb(x0=5.7, y0_sr=-1e-6, N_star=60, lam=lam_default, xi=xi_default,
-                 T_max=2000.0, bg_steps=100000):
+                 T_max=2000.0, bg_steps=100000, model_cls=None):
     """
     Compute field value at CMB pivot exit (N_star e-folds before end).
 
     Uses a slow-roll trajectory to find x_cmb.
     Returns (x_cmb, N_total).
+    model_cls: model class (default: HiggsModel). Pass FullHiggsModel for full potential.
     """
-    model = HiggsModel(lam=lam, xi=xi)
+    if model_cls is None:
+        model_cls = HiggsModel
+    model = model_cls(lam=lam, xi=xi)
     model.x0 = x0
     model.y0 = y0_sr
     T_span = np.linspace(0.0, T_max, bg_steps)
