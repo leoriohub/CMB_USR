@@ -34,7 +34,7 @@ from scripts.plotting import make_filename
 
 import inf_dyn_background as bg_solver
 import inf_dyn_MS_full as ms_solver
-from models import HiggsModel, FullHiggsModel, PunctuatedInflationModel
+from models import HiggsModel, FullHiggsModel, PunctuatedInflationModel, EzquiagaCHIModel, inflection_parameters
 from numba_ms_solver import numba_run_ms, build_numba_splines
 
 # Fast CubicSpline-based interpolator (avoids interp1d overhead for per-step calls)
@@ -197,7 +197,7 @@ def _compute_mode_batch(args):
     indices, k_codes, bg_sol, T_span_bg, end_idx, k_start_factor, ms_steps, model, use_numba = args
     try:
         interp = build_bg_interpolators_fast(bg_sol, T_span_bg)
-        bg_coefs = build_numba_splines(bg_sol, T_span_bg)
+        bg_coefs = build_numba_splines(bg_sol, T_span_bg, model=model)
     except Exception as e:
         return [(idx, None, None, -1, f"setup failed: {e}") for idx in indices]
 
@@ -588,86 +588,169 @@ def run_pspectrum_pipeline(
     }
 
 
+def model_from_config(config):
+    """Construct an InflationModel instance from a config dict."""
+    model_name = config["model"]
+    params = config.get("model_params", {})
+    ics = config.get("ics", {})
+    inflection = config.get("inflection", {})
+
+    if model_name == "HiggsModel":
+        model = HiggsModel(lam=params.get("lam", 0.13), xi=params.get("xi", 15000.0))
+    elif model_name == "FullHiggsModel":
+        model = FullHiggsModel(lam=params.get("lam", 0.1), xi=params.get("xi", 1000.0), v_vev=params.get("v_vev", 0.0))
+    elif model_name == "PunctuatedInflationModel":
+        model = PunctuatedInflationModel(m=params.get("m", 1.1323e-7), lam=params.get("lam", 3.3299e-15), phi0=params.get("phi0_inflection", None))
+    elif model_name == "EzquiagaCHIModel":
+        model = EzquiagaCHIModel(
+            lambda_0=params.get("lambda_0", 2.23e-7),
+            b_lambda=params.get("b_lambda", 1.2e-6),
+            xi_0=params.get("xi_0", 7.55),
+            b_xi=params.get("b_xi", 11.5),
+            c=params.get("c", 0.77),
+            n_grid=params.get("n_grid", 5000),
+        )
+        x_c = inflection.get("x_c")
+        if x_c is not None:
+            beta = inflection.get("beta", 1e-5)
+            a_new, b_new = inflection_parameters(x_c, params.get("c", 0.77), beta)
+            model.a = a_new
+            model.b = b_new
+            model.v0 = model._V0 * model.a / (model.b * model.c)**2
+            print(f"  Self-consistent inflection params: a={a_new:.4f}, b={b_new:.6f}")
+        model.patch_background_solver()
+    else:
+        raise ValueError(f"Unknown model: {model_name}")
+
+    if "x0" in ics:
+        model.x0 = ics["x0"]
+    if "y0" in ics:
+        model.y0 = ics["y0"]
+    if "T_max" in params:
+        model.T_max = params["T_max"]
+    if "bg_steps" in params:
+        model.bg_steps = params["bg_steps"]
+    return model
+
+
 def build_model(args):
-    """Construct an InflationModel instance from parsed CLI arguments."""
-    if args.model == "HiggsModel":
-        return HiggsModel(lam=args.lam, xi=args.xi)
-    if args.model == "FullHiggsModel":
-        return FullHiggsModel(lam=args.lam, xi=args.xi, v_vev=args.v_vev)
+    """Construct an InflationModel instance from parsed CLI arguments (no-config fallback)."""
+    cfg = {"model": args.model or "HiggsModel"}
     if args.model == "PunctuatedInflationModel":
-        return PunctuatedInflationModel(m=args.m, lam=args.lam, phi0=args.phi0_inflection)
-    raise ValueError(f"Unknown model: {args.model} — use HiggsModel, FullHiggsModel, or PunctuatedInflationModel")
+        cfg["model_params"] = {"m": 1.1323e-7, "lam": 3.3299e-15}
+    return model_from_config(cfg)
 
 
 def parse_args():
     """Parse CLI arguments for the P_S(k) pipeline."""
     parser = argparse.ArgumentParser(description="Compute P_S(k) across k grid for a model.")
-    parser.add_argument("--model", default="HiggsModel", choices=[
-        "HiggsModel", "FullHiggsModel", "PunctuatedInflationModel"
+    parser.add_argument("--config", type=str, default=None,
+                        help="JSON config file with model params, ICs, and pipeline settings")
+    parser.add_argument("--model", default=None, choices=[
+        "HiggsModel", "FullHiggsModel", "PunctuatedInflationModel", "EzquiagaCHIModel"
     ])
     parser.add_argument("--phi0", type=float, default=None)
-    parser.add_argument("--phi0-inflection", type=float, default=None, dest="phi0_inflection",
-                        help="Inflection point location (breaks perfect inflection when ≠ m/√λ)")
     parser.add_argument("--y0", type=float, default=None)
-    parser.add_argument("--xi", type=float, default=15000.0)
-    parser.add_argument("--lam", type=float, default=0.13)
-    parser.add_argument("--m", type=float, default=1.1323e-7, help="mass parameter for PunctuatedInflationModel")
-    parser.add_argument("--v-vev", type=float, default=0.0)
 
-    parser.add_argument("--k-min", type=float, default=1e-5)
-    parser.add_argument("--k-max", type=float, default=1.0)
-    parser.add_argument("--num-k", type=int, default=80)
-    parser.add_argument("--k-pivot-phys", type=float, default=k_pivot_phys)
-    parser.add_argument("--N-star", type=float, default=N_star_default)
-    parser.add_argument("--k-start-factor", type=float, default=100.0)
+    parser.add_argument("--k-min", type=float, default=None)
+    parser.add_argument("--k-max", type=float, default=None)
+    parser.add_argument("--num-k", type=int, default=None)
+    parser.add_argument("--k-pivot-phys", type=float, default=None)
+    parser.add_argument("--N-star", type=float, default=None)
+    parser.add_argument("--k-start-factor", type=float, default=None)
 
     parser.add_argument("--bg-steps", type=int, default=None)
     parser.add_argument("--T-max", type=float, default=None)
-    parser.add_argument("--ms-steps", type=int, default=5000)
+    parser.add_argument("--ms-steps", type=int, default=None)
     parser.add_argument("--n-cores", type=int, default=None, dest="n_cores",
                         help="parallel workers (1 = serial)")
     parser.add_argument("--n-workers", type=int, default=None, dest="n_workers",
                         help=argparse.SUPPRESS)
-    parser.add_argument("--use-weighted", action="store_true", help="dense sampling in USR zone 1e-4..1e-2")
-    parser.add_argument("--n-dense", type=int, default=120, help="k-modes in dense zone")
-    parser.add_argument("--n-outer", type=int, default=60, help="k-modes outside dense zone")
-    parser.add_argument("--normalize-to-As", action="store_true")
-    parser.add_argument("--As", type=float, default=As)
-    parser.add_argument("--output-dir", default="outputs/simulations/pspectra")
+    parser.add_argument("--use-weighted", action="store_true", default=None,
+                        help="dense sampling in USR zone 1e-4..1e-2")
+    parser.add_argument("--n-dense", type=int, default=None, help="k-modes in dense zone")
+    parser.add_argument("--n-outer", type=int, default=None, help="k-modes outside dense zone")
+    parser.add_argument("--normalize-to-As", action="store_true", default=None)
+    parser.add_argument("--As", type=float, default=None)
+    parser.add_argument("--output-dir", default=None)
     parser.add_argument("--no-save", action="store_true")
     return parser.parse_args()
+
+
+def _resolve(key, cli_val, config, config_key=None):
+    """CLI value overrides config value."""
+    if cli_val is not None:
+        return cli_val
+    cfg = config.get("pipeline", {}) if config else {}
+    return cfg.get(config_key or key, None)
+
+
+def _resolve_bool(key, cli_val, config):
+    """CLI boolean overrides config boolean. Respects False/None distinction."""
+    if cli_val is not None:
+        return cli_val
+    cfg = config.get("pipeline", {}) if config else {}
+    return cfg.get(key, False)
 
 
 def main():
     """CLI entry point: parse args, build model, run pipeline, print result path."""
     args = parse_args()
-    model = build_model(args)
+    config = None
+    if args.config:
+        with open(args.config) as f:
+            config = json.load(f)
+        model = model_from_config(config)
+    else:
+        model = build_model(args)
+
+    # Resolve pipeline params: CLI overrides config
+    pipe_cfg = config.get("pipeline", {}) if config else {}
+    phi0 = args.phi0 or config.get("ics", {}).get("phi0") if config else None
+    y0 = args.y0 or config.get("ics", {}).get("y0") if config else None
+    N_star = _resolve("N_star", args.N_star, config) or N_star_default
+    k_min = _resolve("k_min", args.k_min, config) or 1e-5
+    k_max = _resolve("k_max", args.k_max, config) or 1.0
+    num_k = _resolve("num_k", args.num_k, config) or 80
+    use_weighted = _resolve_bool("use_weighted", args.use_weighted, config)
+    n_dense = _resolve("n_dense", args.n_dense, config) or 120
+    n_outer = _resolve("n_outer", args.n_outer, config) or 60
+    n_cores = _resolve("n_cores", args.n_cores, config)
+    n_workers = n_cores if n_cores is not None else 1
+    normalize_to_As = _resolve_bool("normalize_to_As", args.normalize_to_As, config)
+    As_target = _resolve("As", args.As, config) or As
+    bg_steps = _resolve("bg_steps", args.bg_steps, config)
+    T_max = _resolve("T_max", args.T_max, config)
+    ms_steps = _resolve("ms_steps", args.ms_steps, config) or 5000
+    output_dir = _resolve("output_dir", args.output_dir, config) or "outputs/simulations/pspectra"
+    k_start_factor = _resolve("k_start_factor", args.k_start_factor, config) or 100.0
+
     k_grid = None
-    if args.use_weighted:
+    if use_weighted:
         k_grid = build_weighted_kgrid(
-            args.k_min, args.k_max, args.k_pivot_phys,
-            n_dense=args.n_dense, n_outer=args.n_outer,
+            k_min, k_max, k_pivot_phys,
+            n_dense=n_dense, n_outer=n_outer,
         )
-    n_workers = args.n_cores if args.n_cores is not None else (args.n_workers or 1)
+
     result = run_pspectrum_pipeline(
         model=model,
-        phi0=args.phi0,
-        y0=args.y0,
-        k_min=args.k_min,
-        k_max=args.k_max,
-        num_k=args.num_k,
-        k_pivot_phys=args.k_pivot_phys,
-        N_star=args.N_star,
-        k_start_factor=args.k_start_factor,
+        phi0=phi0,
+        y0=y0,
+        k_min=k_min,
+        k_max=k_max,
+        num_k=num_k,
+        k_pivot_phys=k_pivot_phys or k_pivot_phys,
+        N_star=N_star,
+        k_start_factor=k_start_factor,
         T_span_bg=None,
-        bg_steps=args.bg_steps,
-        T_max=args.T_max,
-        ms_steps=args.ms_steps,
+        bg_steps=bg_steps,
+        T_max=T_max,
+        ms_steps=ms_steps,
         n_workers=n_workers,
         k_phys_grid=k_grid,
-        normalize_to_As=args.normalize_to_As,
-        As=args.As,
-        output_dir=args.output_dir,
+        normalize_to_As=normalize_to_As,
+        As=As_target,
+        output_dir=output_dir,
         save_outputs=not args.no_save,
     )
 
