@@ -218,7 +218,7 @@ def get_ms_derived_quantities(sol_data, model, k, ni):
         )
     
     with np.errstate(divide='ignore', invalid='ignore'):
-        epsH = -(-z**2 + ((v0*model.f(x)/S**2 - y_idx**2))/3)/z**2
+        epsH = y_idx**2 / (2 * z**2)
         
         # Power spectra using relative k and A
         inv_A2 = np.exp(-2*n_rel)
@@ -253,7 +253,7 @@ def get_ms_derived_quantities_with_bg(pert_sol, bg_interp, T_span, model, k, ni)
     n_rel = n_interp(T_span) - ni
     
     with np.errstate(divide='ignore', invalid='ignore'):
-        epsH = -(-z**2 + ((v0*model.f(x)/S**2 - y_idx**2))/3)/z**2
+        epsH = y_idx**2 / (2 * z**2)
         
         inv_A2 = np.exp(-2*n_rel)
         zeta2 = (v**2 + u**2) * inv_A2 * (S**2) / (2*epsH)
