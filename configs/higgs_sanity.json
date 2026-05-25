@@ -1,0 +1,22 @@
+{
+  "model": "HiggsModel",
+  "model_params": {
+    "lam": 0.13,
+    "xi": 15000.0
+  },
+  "ics": {
+    "phi0": 5.70,
+    "y0": -0.17
+  },
+  "pipeline": {
+    "N_star": 52,
+    "k_min": 1e-5,
+    "k_max": 1.0,
+    "num_k": 80,
+    "use_weighted": true,
+    "n_dense": 120,
+    "n_outer": 60,
+    "normalize_to_As": true,
+    "n_cores": 4
+  }
+}
