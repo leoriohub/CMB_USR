@@ -1,0 +1,25 @@
+{
+  "model": "EzquiagaCHIModel",
+  "model_params": {
+    "lambda_0": 2.23e-7,
+    "b_lambda": 2.23e-7,
+    "xi_0": 7.55,
+    "b_xi": 9.815,
+    "c": 0.77
+  },
+  "ics": {
+    "phi0": 6.0,
+    "y0": -0.0001
+  },
+  "pipeline": {
+    "N_star": 55,
+    "k_min": 1e-6,
+    "k_max": 10.0,
+    "num_k": 80,
+    "use_weighted": true,
+    "n_dense": 120,
+    "n_outer": 60,
+    "normalize_to_As": true,
+    "n_cores": 4
+  }
+}
