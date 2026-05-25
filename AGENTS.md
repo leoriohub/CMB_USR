@@ -297,7 +297,9 @@ After the `find_end_of_inflation` fix (forward-scan with permanence check), no H
 
 **Standard Higgs** (`models/higgs.py:HiggsModel`): ODE variable `x = φ` (Jordan frame). Potential `f(x) = (1 - e^{-αx})²`, monotonic decreasing, no features. USR is **kinetic-driven** — comes from initial `y₀` (small `|y₀|` causes a freeze). Kinetic dominance at start (`ε_H≈3`), Hubble friction kills velocity in <0.1 e-fold, field freezes (`ε_H` dips to ~10⁻³), then catches SR attractor. Tunable via `y₀`.
 
-**Ezquiaga CHI** (`models/ezquiaga_chi.py:EzquiagaCHIModel`): ODE variable `x = χ` (Einstein frame, canonically normalized) — **NOT φ**; Jordan `φ` via numerical spline. Potential has a **near-inflection point** from RG running of both λ(χ) and ξ(χ). USR is **potential-driven** — `η_H` crosses zero from the inflection, so any trajectory passing through it experiences USR regardless of initial velocity. Default `x₀=6.0` (χ) → `φ₀≈1.94 M_P`. NaN-patches required because field can stall near inflection.
+**Ezquiaga CHI** (`models/ezquiaga_chi.py:EzquiagaCHIModel`): Physics described in Jordan frame with `x = φ/μ`. ODE integration uses canonically normalized Einstein frame field χ (numerical spline φ↔χ). Potential (Eq. 6) has a near-inflection from RG running of both λ(x) and ξ(x). Plot potential as V/V₀ vs `x = φ/μ` (paper convention). USR is **potential-driven** — η_H crosses zero from the inflection. Default χ₀=6.0 maps to φ₀≈1.94 M_P. NaN-patches required because field can stall near inflection.
+
+**Why χ exists:** The Jordan frame action has a non-minimal coupling ξ(φ)φ²R. Conformal transforming to the Einstein frame makes gravity canonical but the scalar kinetic term becomes non-canonical. The field redefinition φ→χ (Eq. 5) absorbs this back into a canonical `-½(∂χ)²`. This lets the ODE solver use the standard Klein-Gordon equation `χ'' + 3Hχ' + V'(χ) = 0` without knowing about ξ, the conformal factor Ω, or the transformation chain. The φ↔χ spline is purely computational plumbing — all physics (potential shape, inflection, slow-roll) is in the Jordan frame x = φ/μ.
 
 Parameters (paper's published, ROUNDED):
 - `λ₀ = 2.23×10⁻⁷`, `b_λ = 1.2×10⁻⁶` → `a = 5.3812`
@@ -318,16 +320,19 @@ b_lambda = a * lambda_0   # e.g. 1.190e-6 for lambda_0=2.23e-7
 b_xi = b * xi_0           # e.g. 11.471 for xi_0=7.55
 ```
 
-**Working configurations** (background matches paper qualitatively):
+**Working configurations** (paper's reference: β=10⁻⁵, x_c=0.784, c=0.77):
 
-| Config | β | χ₀ | N_total | χ at pivot | P_S at pivot | n_s | Notes |
-|--------|---|----|---------|-----------|-------------|-----|-------|
-| Paper-like | 3×10⁻³ | 8.0 | 63.0 | 7.57 | 9.3×10⁻¹⁰ | 0.913 | N_total matches paper (~65). Leaky inflection. |
-| Exact inflection | 10⁻⁵ | 8.0 | 87.4 | 5.70 | 9.3×10⁻¹⁰ | 0.913 | Proper near-inflection. More e-folds. |
-| Compact | 10⁻⁵ | 6.5 | 64.1 | — | — | — | Matches paper N_total with exact inflection. |
+| χ₀ | φ₀ (M_P) | N_total | k=0.002 at χ | n_s (k=0.002) | n_s (k=0.05) | Match to ref |
+|----|----------|---------|-------------|---------------|--------------|-------------|
+| 6.5 | 2.31 | 64.1 | 4.82 | 0.85 | 0.79 | Too red, CMB off plateau |
+| 7.5 | 3.27 | 78.6 | 6.40 | 0.940 | 0.931 | Close |
+| **8.0** | **3.90** | **87.4** | **7.06** | **0.957** | **0.952** | **Matches paper n_s=0.952** |
+| 8.5 | 4.69 | 97.0 | 7.69 | 0.967 | 0.964 | Slightly too blue |
 
-All use `a=5.335, b≈1.519` (exact values depend on β), `y₀=-10⁻⁴`. P_S and n_s are from slow-roll formula at pivot N=55. The MS solver produces suppressed P_S due to large positive V'' (d²f/dχ² ≈ 2-9) at large χ — the mode equation becomes a damped oscillator rather than a growing mode. This is model-specific, not a solver bug.
+With χ₀=8.0, k=0.05 (Planck pivot) at χ≈6.8 gives n_s=0.952 — exact match to paper's reference. The paper's N=65 e-folds and n_s=0.952 require enough plateau before the inflection (χ₀≥8) so CMB scales stay on the flat part.
 
-**Diagnostic script**: `scripts/ezquiaga_diagnostics.py` — `python -m scripts.ezquiaga_diagnostics --chi0 8.0`. Produces 3 plots (N-χ, V(χ), P_S(N)) in `outputs/plots/diagnostics/`.
+**Critical: pivot finding by k = a·H, not hardcoded N=55.** The standard N=55 convention assumes a specific expansion history that doesn't hold here. The inflection steals ~33.5 e-folds (ΔN), shifting the k↔N mapping. Always find the pivot by matching k = a·H to the target scale.
 
-**Key contrast**: Standard Higgs USR = initial-condition effect (tune `y₀`). Ezquiaga USR = structural (near-inflection from RG running). PBH-focused — the peak is at small scales (k∼10¹⁴ Mpc⁻¹) for PBH formation (0.01-100 M_⊙), NOT at CMB scales. CMB-scale P_S should remain ∼As.
+**Diagnostic script**: `scripts/ezquiaga_diagnostics.py` — `python -m scripts.ezquiaga_diagnostics --chi0 8.0`. Plots: N-χ (Einstein frame χ), V/V₀ vs x=φ/μ (Jordan frame, paper convention), P_S(N). Pivot found by k=a·H.
+
+**Key contrast**: Standard Higgs USR = initial-condition effect (tune `y₀`). Ezquiaga USR = structural (near-inflection from RG running). PBH-focused — the peak is at small scales (k∼10¹⁴ Mpc⁻¹) for PBH formation (0.01-100 M_⊙). CMB-scale n_s ≈ 0.952 for χ₀≥8.0.

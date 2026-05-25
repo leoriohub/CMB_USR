@@ -17,6 +17,18 @@ def inflection_parameters(x_c, c, beta=1e-5):
 
 
 class EzquiagaCHIModel(InflationModel):
+    """
+    Critical Higgs Inflation model from Ezquiaga et al. (1705.04861).
+
+    The potential V(x) (Eq. 6) is defined in terms of x = phi/mu (Jordan frame).
+    The ODE integration uses chi (Einstein frame, canonically normalized) to
+    avoid the non-canonical kinetic term from the conformal transformation.
+    The phi <-> chi mapping is computed numerically at init via the spline.
+
+    Paper convention for plots:
+      - Potential: V/V0 vs x = phi/mu (Jordan frame)
+      - N evolution: N vs chi (Einstein frame, from ODE)
+    """
 
     def __init__(self, lambda_0=2.23e-7, b_lambda=1.2e-6,
                  xi_0=7.55, b_xi=11.5, c=0.77, n_grid=5000):
