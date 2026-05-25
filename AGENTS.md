@@ -292,3 +292,42 @@ After the `find_end_of_inflation` fix (forward-scan with permanence check), no H
 - Binned TT/TE/EE spectrum (ℓ≈47-2500)
 - Unbinned TT/TE/EE spectrum (ℓ=2-2508)
 - Low-ℓ Commander data (ℓ=2-29)
+
+### 13. Background Evolution — Standard Higgs vs Ezquiaga CHI
+
+**Standard Higgs** (`models/higgs.py:HiggsModel`): ODE variable `x = φ` (Jordan frame). Potential `f(x) = (1 - e^{-αx})²`, monotonic decreasing, no features. USR is **kinetic-driven** — comes from initial `y₀` (small `|y₀|` causes a freeze). Kinetic dominance at start (`ε_H≈3`), Hubble friction kills velocity in <0.1 e-fold, field freezes (`ε_H` dips to ~10⁻³), then catches SR attractor. Tunable via `y₀`.
+
+**Ezquiaga CHI** (`models/ezquiaga_chi.py:EzquiagaCHIModel`): ODE variable `x = χ` (Einstein frame, canonically normalized) — **NOT φ**; Jordan `φ` via numerical spline. Potential has a **near-inflection point** from RG running of both λ(χ) and ξ(χ). USR is **potential-driven** — `η_H` crosses zero from the inflection, so any trajectory passing through it experiences USR regardless of initial velocity. Default `x₀=6.0` (χ) → `φ₀≈1.94 M_P`. NaN-patches required because field can stall near inflection.
+
+Parameters (paper's published, ROUNDED):
+- `λ₀ = 2.23×10⁻⁷`, `b_λ = 1.2×10⁻⁶` → `a = 5.3812`
+- `ξ₀ = 7.55`, `b_ξ = 11.5` → `b = 1.5232`
+- `c = 0.77`, `x_c = 0.784`, `κ²μ² = 0.102`
+
+**CRITICAL:** The published values are rounded and do NOT satisfy the inflection conditions (paper's Eqs. a-b). For x_c=0.784, c=0.77, the exact inflection values are:
+- `a_exact = 5.335304` (0.86% lower than published)
+- `b_exact = 1.519340` (0.25% lower than published)
+
+The paper's rounded parameters give β≈−0.018 (negative — creates a bump, not an inflection), so the field gets trapped at a local minimum. Use `inflection_parameters(x_c, c, β)` from `models/ezquiaga_chi.py` to compute self-consistent values:
+
+```python
+from models.ezquiaga_chi import inflection_parameters
+a, b = inflection_parameters(0.784, 0.77, beta=1e-5)
+# a=5.33530386, b=1.51932465
+b_lambda = a * lambda_0   # e.g. 1.190e-6 for lambda_0=2.23e-7
+b_xi = b * xi_0           # e.g. 11.471 for xi_0=7.55
+```
+
+**Working configurations** (background matches paper qualitatively):
+
+| Config | β | χ₀ | N_total | χ at pivot | P_S at pivot | n_s | Notes |
+|--------|---|----|---------|-----------|-------------|-----|-------|
+| Paper-like | 3×10⁻³ | 8.0 | 63.0 | 7.57 | 9.3×10⁻¹⁰ | 0.913 | N_total matches paper (~65). Leaky inflection. |
+| Exact inflection | 10⁻⁵ | 8.0 | 87.4 | 5.70 | 9.3×10⁻¹⁰ | 0.913 | Proper near-inflection. More e-folds. |
+| Compact | 10⁻⁵ | 6.5 | 64.1 | — | — | — | Matches paper N_total with exact inflection. |
+
+All use `a=5.335, b≈1.519` (exact values depend on β), `y₀=-10⁻⁴`. P_S and n_s are from slow-roll formula at pivot N=55. The MS solver produces suppressed P_S due to large positive V'' (d²f/dχ² ≈ 2-9) at large χ — the mode equation becomes a damped oscillator rather than a growing mode. This is model-specific, not a solver bug.
+
+**Diagnostic script**: `scripts/ezquiaga_diagnostics.py` — `python -m scripts.ezquiaga_diagnostics --chi0 8.0`. Produces 3 plots (N-χ, V(χ), P_S(N)) in `outputs/plots/diagnostics/`.
+
+**Key contrast**: Standard Higgs USR = initial-condition effect (tune `y₀`). Ezquiaga USR = structural (near-inflection from RG running). PBH-focused — the peak is at small scales (k∼10¹⁴ Mpc⁻¹) for PBH formation (0.01-100 M_⊙), NOT at CMB scales. CMB-scale P_S should remain ∼As.
