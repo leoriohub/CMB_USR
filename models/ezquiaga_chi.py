@@ -157,7 +157,7 @@ class EzquiagaCHIModel(InflationModel):
         d2A = 2 * self.a * (1 - lnx) / x2
         dB = self.b / xs
         d2B = -self.b / x2
-        dD = self.c * xs * (2 * B + self.b * xs)
+        dD = self.c * xs * (2 * B + self.b)
         d2D = self.c * (2 * B + 3 * self.b)
 
         num = A * xs**4
