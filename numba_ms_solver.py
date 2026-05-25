@@ -28,13 +28,21 @@ def _spline_eval(t, t_grid, a, b, c, d):
     return a[i] + dt * (b[i] + dt * (c[i] + dt * d[i]))
 
 
-def build_numba_splines(bg_sol, T_span_bg):
+def build_numba_splines(bg_sol, T_span_bg, model=None):
     n_vars = bg_sol.shape[0]
     splines = []
     for i in range(n_vars):
         s = CubicSpline(T_span_bg, bg_sol[i], bc_type='not-a-knot', extrapolate=True)
-        # scipy stores [d, c, b, a] for S(x)=a + b*dx + c*dx^2 + d*dx^3
         splines.append((s.x, s.c[3].copy(), s.c[2].copy(), s.c[1].copy(), s.c[0].copy()))
+    # Pre-compute potential + derivatives for non-native models (e.g. Ezquiaga)
+    if model is not None:
+        x_bg = bg_sol[0]
+        for vals in ([model.f(x) for x in x_bg],
+                     [model.dfdx(x) for x in x_bg],
+                     [model.d2fdx2(x) for x in x_bg]):
+            arr = np.asarray(vals, dtype=float)
+            s = CubicSpline(T_span_bg, arr, bc_type='not-a-knot', extrapolate=True)
+            splines.append((s.x, s.c[3].copy(), s.c[2].copy(), s.c[1].copy(), s.c[0].copy()))
     return splines
 
 
@@ -100,6 +108,29 @@ def make_rhs(f, df, d2f, S, v0):
     return rhs
 
 
+def make_rhs_spline(S, v0):
+    """Create a @njit MS ODE RHS reading potential derivatives from bc[4-6]."""
+    Si2 = 1.0 / (S*S)
+    @njit(cache=True)
+    def rhs(vars_8, T, bc, k_rel, ni):
+        x = _spline_eval(T, *bc[0])
+        y = _spline_eval(T, *bc[1])
+        z = _spline_eval(T, *bc[2])
+        n_rel = _spline_eval(T, *bc[3]) - ni
+        df_val = _spline_eval(T, *bc[5])
+        d2f_val = _spline_eval(T, *bc[6])
+        v0_dfdx = v0 * df_val * Si2
+        dydT = -3.0*z*y - v0_dfdx
+        k2a2 = k_rel*k_rel * np.exp(-2.0*n_rel)
+        m2 = (2.5*y*y + 2.0*y*dydT/z + 2.0*z*z
+              + 0.5*y*y*y*y/(z*z) - v0*d2f_val*Si2 - k2a2)
+        v, vT, u, uT, h, hT, g, gT = vars_8
+        return np.array([vT, -z*vT+v*m2, uT, -z*uT+u*m2,
+                         hT, -z*hT-h*(k2a2-2.0*z*z+0.5*y*y),
+                         gT, -z*gT-g*(k2a2-2.0*z*z+0.5*y*y)])
+    return rhs
+
+
 # ── Dormand-Prince 5(4) Butcher tableau ──────────────────────────────
 # Hairer, Norsett, Wanner (1993), Solving ODEs I, Table 5.2
 # Standard DP5(4)7M coefficients. These define a 6-stage embedded
@@ -108,13 +139,16 @@ def make_rhs(f, df, d2f, S, v0):
 
 _INTEGRATOR_CACHE = {}
 
-def _get_integrator(model, S, v0):
-    key = type(model).__name__
+def _get_integrator(model, S, v0, use_spline=False):
+    key = (type(model).__name__, use_spline)
     if key in _INTEGRATOR_CACHE:
         return _INTEGRATOR_CACHE[key]
 
-    f, df, d2f = _get_potential_cached(model)
-    rhs = make_rhs(f, df, d2f, S, v0)
+    if use_spline:
+        rhs = make_rhs_spline(S, v0)
+    else:
+        f, df, d2f = _get_potential_cached(model)
+        rhs = make_rhs(f, df, d2f, S, v0)
 
     @njit(cache=True)
     def integrate(y0, T_start, T_end, output_t, bc, k_rel, ni,
@@ -191,13 +225,16 @@ def _get_integrator(model, S, v0):
 
 def numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, model, S=5e-5, bg_coefs=None):
     f_nb, dfdx_nb, d2fdx2_nb = _get_potential_cached(model)
-    if f_nb is None:
-        raise NotImplementedError(
-            f"Numba not supported for {type(model).__name__}. "
-            f"Use Python solver (inf_dyn_MS_full.run_ms_simulation)."
-        )
+    use_spline = f_nb is None
+    if use_spline:
+        if bg_coefs is None or len(bg_coefs) < 7:
+            bg_coefs = build_numba_splines(bg_sol, T_span_bg, model=model)
+        integrate = _get_integrator(model, S, model.v0, use_spline=True)
+    else:
+        bg_coefs = bg_coefs if bg_coefs is not None else build_numba_splines(bg_sol, T_span_bg)
+        integrate = _get_integrator(model, S, model.v0)
     v0 = model.v0; k_rel = k_code * np.exp(-ni)
-    bc = bg_coefs if bg_coefs is not None else build_numba_splines(bg_sol, T_span_bg)
+    bc = bg_coefs
 
     zc = bc[2]
     zi = _spline_eval(T_ms[0], *zc)
@@ -206,5 +243,4 @@ def numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, model, S=5e-5, bg_coefs=No
     y0 = np.array([vi, k_rel/np.sqrt(2.0*k_rel)*yv, yv*vi, -k_rel/np.sqrt(2.0*k_rel)*(1-yv*yv),
                    vi, k_rel/np.sqrt(2.0*k_rel)*yv, yv*vi, -k_rel/np.sqrt(2.0*k_rel)*(1-yv*yv)])
 
-    integrate = _get_integrator(model, S, v0)
     return integrate(y0, T_ms[0], T_ms[-1], T_ms, bc, k_rel, ni)
