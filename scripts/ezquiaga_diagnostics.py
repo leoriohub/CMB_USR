@@ -16,42 +16,36 @@ from scripts.plotting import save_fig, TOL
 
 X_C = 0.784
 C_VAL = 0.77
-K_PIVOT = 0.002  # Mpc^-1, CMB pivot
+K_PIVOT = 0.002
 
 
-def scan_beta(betas, chi0=6.0, x_c=X_C, c_val=C_VAL, verbose=True):
+def scan_beta(betas, chi0=6.0, x_c=X_C, c_val=C_VAL):
     results = []
     for beta in betas:
         a, b = inflection_parameters(x_c, c_val, beta)
         model = EzquiagaCHIModel()
-        model.a = a
-        model.b = b
+        model.a = a; model.b = b
         model.v0 = model._V0 * model.a / (model.b * model.c)**2
         model.x0 = chi0
         model.patch_background_solver()
-
         T = np.linspace(0, model.T_max, model.bg_steps)
         bg = run_background_simulation(model, T)
         derived = get_derived_quantities(bg, model)
-
         epsH = derived["epsH"]
         N = derived["N"]
         eps_end = np.where(np.isfinite(epsH) & (epsH >= 1.0))[0]
         N_end = N[eps_end[0]] if len(eps_end) > 0 else N[-1]
-        N_total = float(N_end)
         found = len(eps_end) > 0
-        results.append((beta, a, b, N_total, float(N_end), found))
-        if verbose:
-            flag = " ***" if (55 <= N_total <= 80 and found) else ""
-            print(f"  beta={beta:.6f}: N_total={N_total:.1f}, end={found}{flag}")
+        results.append((beta, a, b, float(N_end), found))
+        flag = " ***" if (55 <= N_end <= 80 and found) else ""
+        print(f"  beta={beta:.6f}: N_total={N_end:.1f}, end={found}{flag}")
     return results
 
 
 def make_model(beta, x_c=X_C, c_val=C_VAL):
     a, b = inflection_parameters(x_c, c_val, beta)
     model = EzquiagaCHIModel()
-    model.a = a
-    model.b = b
+    model.a = a; model.b = b
     model.v0 = model._V0 * model.a / (model.b * model.c)**2
     return model
 
@@ -72,8 +66,6 @@ def plot_N_chi(chi, N_std, end_idx, pivot_idx, chi0):
 
 
 def plot_V_shape(model, end_idx, chi, pivot_idx):
-    """Potential V/V0 vs x = phi/mu (Jordan frame, paper convention)."""
-    # Map pivot and end chi to Jordan frame x
     x_end = model._x_of_chi(float(chi[end_idx]))
     x_pivot = model._x_of_chi(float(chi[pivot_idx]))
     x_max = model._x_of_chi(float(chi[0]))
@@ -113,40 +105,53 @@ def plot_PS_N(N_std, P_S, end_idx, pivot_idx, start_N):
     save_fig(fig, "ezquiaga_PS_N", "diagnostics")
 
 
+def plot_PS_comparison(k_sr, P_S_sr, k_ms, P_S_ms, pivot_k):
+    fig, ax = plt.subplots(figsize=(3.5, 2.8))
+    sr_valid = np.isfinite(P_S_sr) & (P_S_sr > 0)
+    ms_valid = np.isfinite(P_S_ms) & (P_S_ms > 0)
+    ax.loglog(k_sr[sr_valid], P_S_sr[sr_valid], "-", color=TOL["blue"], lw=1.3, label="SR")
+    if np.any(ms_valid):
+        ax.loglog(k_ms[ms_valid], P_S_ms[ms_valid], "--", color=TOL["red"], lw=1.3, label="MS")
+    ax.axvline(pivot_k, color=TOL["green"], ls="-.", lw=0.8, alpha=0.5)
+    ax.annotate("pivot", xy=(pivot_k, ax.get_ylim()[0]),
+                xytext=(5, 10), textcoords="offset points", fontsize=8, color=TOL["green"])
+    ax.set_xlabel("k [Mpc$^{-1}$]", fontsize=14)
+    ax.set_ylabel("P_S", fontsize=14)
+    ax.legend(fontsize=10)
+    ax.tick_params(labelsize=12)
+    fig.tight_layout()
+    save_fig(fig, "ezquiaga_PS_comparison", "diagnostics")
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--chi0", type=float, default=6.0, help="Initial field value")
+    parser.add_argument("--chi0", type=float, default=8.0, help="Initial field value")
+    parser.add_argument("--beta", type=float, default=1e-5,
+                        help="Deviation from exact inflection (paper=1e-5)")
     parser.add_argument("--k-pivot", type=float, default=K_PIVOT,
                         help="CMB pivot scale in Mpc^-1 (default 0.002)")
+    parser.add_argument("--scan-beta", action="store_true",
+                        help="Run beta scan before main run")
     args = parser.parse_args()
     chi0 = args.chi0
+    beta = args.beta
     k_pivot = args.k_pivot
 
     print("=== Ezquiaga CHI Diagnostics ===")
-    print(f"  x_c = {X_C}, c = {C_VAL}, chi0 = {chi0}, k_pivot = {k_pivot} Mpc^-1")
+    print(f"  x_c = {X_C}, c = {C_VAL}, chi0 = {chi0}, beta = {beta}, k_pivot = {k_pivot}")
     print()
 
-    print("Beta scan:")
-    betas = [1e-5, 3e-5, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2, 3e-2, 0.1, 0.2]
-    results = scan_beta(betas, chi0=chi0)
-    print()
+    if args.scan_beta:
+        print("Beta scan:")
+        betas = [1e-5, 3e-5, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2, 3e-2, 0.1, 0.2]
+        scan_beta(betas, chi0=chi0)
+        print()
 
-    candidates = [r for r in results if r[3] >= 55 and r[3] <= 80 and r[5]]
-    if not candidates:
-        candidates = [r for r in results if r[5]]
-    if not candidates:
-        print("  ERROR: no viable background")
-        sys.exit(1)
-    candidates.sort(key=lambda r: abs(r[3] - 65))
-    beta_best, a_best, b_best, N_total_best, _, _ = candidates[0]
-    print(f"Best: beta={beta_best:.6f}, a={a_best:.3f}, b={b_best:.5f}, N_total={N_total_best:.1f}")
-    print()
-
-    model = make_model(beta_best)
+    model = make_model(beta)
     model.x0 = chi0
     model.y0 = -1e-4
-    print(f"  a={model.a:.5f}, b={model.b:.5f}, chi0={chi0}")
+    print(f"  a={model.a:.5f}, b={model.b:.5f}")
 
     T = np.linspace(0, model.T_max, model.bg_steps)
     bg = run_background_simulation(model, T)
@@ -160,7 +165,6 @@ def main():
     N_end_val = float(N[end_idx])
     N_std = N_end_val - N[:end_idx + 1]
 
-    # Find pivot from k = a*H = k_pivot
     S = 5e-5
     k_phys = np.exp(bg[3][:end_idx + 1]) * z_bg[:end_idx + 1] * S
     pivot_idx = int(np.argmin(np.abs(np.log10(k_phys) - np.log10(k_pivot))))
@@ -172,31 +176,56 @@ def main():
     print()
 
     epsH_clip = np.clip(epsH[:end_idx + 1], 1e-30, None)
-    P_S = (S * z_bg[:end_idx + 1])**2 / (8 * np.pi**2 * epsH_clip)
+    P_S_sr = (S * z_bg[:end_idx + 1])**2 / (8 * np.pi**2 * epsH_clip)
 
     settled = np.where(epsH[:end_idx + 1] > 1e-6)[0]
     start_idx = settled[0] if len(settled) > 0 else 0
     start_N = N_std[start_idx]
 
-    # Compute n_s(k) from P_S(k) log-log slope
+    # n_s from log-log slope
     ns_arr = np.full(end_idx + 1, np.nan)
     for idx in range(start_idx + 5, end_idx - 5):
         d = 5
         lk = np.log(k_phys[idx-d:idx+d+1])
-        lp = np.log(P_S[idx-d:idx+d+1])
+        lp = np.log(P_S_sr[idx-d:idx+d+1])
         ns_arr[idx] = 1 + (lp[-1] - lp[0]) / (lk[-1] - lk[0])
-
-    ns_pivot_slope = float(ns_arr[pivot_idx]) if pivot_idx >= start_idx + 5 and pivot_idx < end_idx - 5 else float('nan')
+    ns_pivot = float(ns_arr[pivot_idx]) if pivot_idx >= start_idx + 5 and pivot_idx < end_idx - 5 else float('nan')
     n_s_sr = 1 + 2*float(derived['etaH'][pivot_idx]) - 4*float(derived['epsH'][pivot_idx])
 
-    print(f"  n_s at pivot (P_S log-log slope) = {ns_pivot_slope:.4f}")
+    print(f"  n_s at pivot (P_S log-log slope) = {ns_pivot:.4f}")
     print(f"  n_s at pivot (SR formula)        = {n_s_sr:.4f}")
     print()
 
     print("Plotting...")
     plot_N_chi(chi, N_std, end_idx, pivot_idx, chi0)
     plot_V_shape(model, end_idx, chi, pivot_idx)
-    plot_PS_N(N_std, P_S, end_idx, pivot_idx, start_N)
+    plot_PS_N(N_std, P_S_sr, end_idx, pivot_idx, start_N)
+
+    # MS solver comparison
+    try:
+        print("  Running MS pipeline for comparison...")
+        from pspectrum_pipeline import run_pspectrum_pipeline
+        model.ms_run = True  # tag to avoid NaN-patch re-entry issues
+        result = run_pspectrum_pipeline(
+            model=model, phi0=chi0, y0=-1e-4,
+            k_min=1e-6, k_max=10.0, num_k=80,
+            N_star=55.0, ms_steps=5000,
+            normalize_to_As=True, use_numba=True,
+            n_workers=4, save_outputs=True,
+            bg_steps=model.bg_steps, T_max=model.T_max,
+        )
+        if result["status"] == "success":
+            k_ms = np.array(result["k_phys"])
+            P_S_ms = np.array(result["P_S"])
+            plot_PS_comparison(k_phys[start_idx:end_idx+1],
+                               P_S_sr[start_idx:end_idx+1],
+                               k_ms, P_S_ms, k_pivot)
+            print(f"  MS comparison plot saved")
+        else:
+            print(f"  MS pipeline failed: {result.get('message', 'unknown')}")
+    except Exception as e:
+        print(f"  MS pipeline error: {e}")
+
     print("Done.")
 
 
