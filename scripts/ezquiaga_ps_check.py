@@ -18,6 +18,13 @@ from scripts.plotting import save_fig
 X_C, C_VAL = 0.784, 0.77
 S_CODE = 5e-5
 
+def build_usr_weighted_kgrid(k_min, k_max, n_dense=700, n_outer=40):
+    """Build k-grid with dense zone covering the PBH peak (k=1e9 to 1e13)."""
+    k_lo = np.logspace(np.log10(k_min), 9, n_outer)
+    k_dense = np.logspace(9, 13, n_dense)
+    k_hi = np.logspace(13, np.log10(k_max), n_outer)
+    return np.unique(np.concatenate([k_lo, k_dense, k_hi]))
+
 def compute_ps_sr(bg_sol, end_idx):
     x, y, z, n = bg_sol
     epsH = y**2 / (2 * z**2)
@@ -70,9 +77,12 @@ def main():
     parser = argparse.ArgumentParser(description="SR vs MS P_S(k) for Ezquiaga")
     parser.add_argument("--chi0", type=float, default=8.0)
     parser.add_argument("--beta", type=float, default=1e-5)
-    parser.add_argument("--k-min", type=float, default=3e-7)
-    parser.add_argument("--k-max", type=float, default=30)
-    parser.add_argument("--n-k", type=int, default=80)
+    parser.add_argument("--k-min", type=float, default=1e-8)
+    parser.add_argument("--k-max", type=float, default=1e18)
+    parser.add_argument("--n-dense", type=int, default=500,
+                        help="modes in dense zone (CMB dip through PBH peak)")
+    parser.add_argument("--n-outer", type=int, default=40,
+                        help="modes on tails (sparse)")
     parser.add_argument("--n-workers", type=int, default=min(8, multiprocessing.cpu_count()))
     args = parser.parse_args()
 
@@ -105,10 +115,12 @@ def main():
     valid = np.where(np.isfinite(Ps_sr) & (Ps_sr > 0))[0]
     k_sr, Ps_sr = k_sr[valid], Ps_sr[valid]
 
-    k_grid = np.unique(np.logspace(np.log10(args.k_min), np.log10(args.k_max), args.n_k))
-    k_grid = k_grid[k_grid < k_sr[-1]]
+    k_grid = build_usr_weighted_kgrid(
+        args.k_min, args.k_max,
+        n_dense=args.n_dense, n_outer=args.n_outer
+    )
     n_k = len(k_grid)
-    print(f"  Running MS for {n_k} modes on {args.n_workers} workers...")
+    print(f"  Running MS for {n_k} modes ({args.n_dense} dense + {args.n_outer*2} outer) on {args.n_workers} workers...")
 
     chunks = np.array_split(k_grid, args.n_workers)
     model_params = (model.a, model.b, model.v0, model.x0, model.y0)
@@ -137,11 +149,23 @@ def main():
         gridspec_kw={"height_ratios": [3, 1]}
     )
 
+    from scipy.interpolate import interp1d
+    
     ax1.loglog(k_sr, Ps_sr, "-", color="tab:blue", lw=1.5, label="SR approx")
     ok_ms = np.isfinite(Ps_ms)
     if np.any(ok_ms):
-        ax1.loglog(k_grid[ok_ms], Ps_ms[ok_ms], "o", color="tab:red",
-                   ms=4, label=f"MS solver ({n_ok}/{n_k})")
+        k_ok = k_grid[ok_ms]
+        ps_ok = Ps_ms[ok_ms]
+        # Spline interpolation through MS points for a clean curve
+        order = min(3, len(k_ok) - 1)
+        spl = interp1d(np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
+                       kind="cubic" if order >= 3 else "linear",
+                       bounds_error=False, fill_value=np.nan)
+        k_line = np.logspace(np.log10(k_ok[0]), np.log10(k_ok[-1]), 500)
+        ps_line = np.exp(spl(np.log(k_line)))
+        ax1.loglog(k_line, ps_line, "-", color="tab:red", lw=1.2,
+                   alpha=0.7, label=f"MS solver ({n_ok}/{n_k})")
+        ax1.loglog(k_ok, ps_ok, "o", color="tab:red", ms=2, alpha=0.4)
     ax1.axvline(0.002, color="grey", ls=":", lw=0.8, alpha=0.5)
     ax1.annotate("k=0.002", xy=(0.002, ax1.get_ylim()[0]), fontsize=8,
                  color="grey", ha="center")
