@@ -126,7 +126,8 @@ Every output file goes in its correct subdirectory. **No per-run subdirectories.
 | Subdirectory | Contents |
 |---|---|
 | `outputs/plots/diagnostics/` | Diagnostic/debug plots (epsilon, trajectory checks, background dashboards) |
-| `outputs/plots/powerloss/` | Power-loss mechanism plots (PS, Dℓ, suppression per config) |
+| `outputs/plots/powerloss/` | Power-loss mechanism plots (Dℓ, suppression per config) |
+| `outputs/plots/pspectra/` | P_S(k) power spectrum plots |
 | `outputs/plots/optimizer/` | Optimizer iteration plots |
 | `outputs/plots/paper/` | Final publication-ready plots |
 | `outputs/simulations/c_ell/` | Cℓ angular power spectra (JSON) |
@@ -176,8 +177,13 @@ This repository is public. Do not write into .md files:
 - Embargoed/unpublished results or data
 Rule of thumb: if you would not put it on arXiv, do not put it in a .md file.
 
-### 6. Higgs-Only Scope
-This project is exclusively about Higgs inflation (ξ=15000, λ=0.13) unless explicitly stated otherwise. Punctuated inflation (m=1.1323e-7, λ=3.3299e-15) is a reference model used **only** for validating solvers and cross-checking pipeline behavior — not as a primary target for analysis, optimization, or plotting. Do not run, tune, or analyze punctuated inflation unprompted.
+### 6. Higgs and Ezquiaga Scope
+
+The project covers two inflation models:
+- **Higgs inflation** (ξ=15000, λ=0.13) — primary target for CMB low-ℓ anomaly analysis.
+- **Ezquiaga CHI** (`models/ezquiaga_chi.py`) — critical Higgs inflation with RG-running λ(ξ), PBH-focused, validated against paper reference.
+
+Punctuated inflation (m=1.1323e-7, λ=3.3299e-15) is a reference model used **only** for validating solvers and cross-checking pipeline behavior — not as a primary target for analysis, optimization, or plotting. Do not run, tune, or analyze punctuated inflation unprompted.
 
 ### 7. Unit Conventions (Planck units, M_P = 1)
 
@@ -333,6 +339,17 @@ With χ₀=8.0, k=0.05 (Planck pivot) at χ≈6.8 gives n_s=0.952 — exact matc
 
 **Critical: pivot finding by k = a·H, not hardcoded N=55.** The standard N=55 convention assumes a specific expansion history that doesn't hold here. The inflection steals ~33.5 e-folds (ΔN), shifting the k↔N mapping. Always find the pivot by matching k = a·H to the target scale.
 
-**Diagnostic script**: `scripts/ezquiaga_diagnostics.py` — `python -m scripts.ezquiaga_diagnostics --chi0 8.0`. Plots: N-χ (Einstein frame χ), V/V₀ vs x=φ/μ (Jordan frame, paper convention), P_S(N). Pivot found by k=a·H.
+**Diagnostic plots**: `scripts.plotting.plot_ezquiaga_diagnostics()` — N-χ, V/V₀ vs x, P_S(N).
+**SR vs MS comparison**: `scripts.plotting.plot_ps_sr_ms_comparison()` — P_S(k) overlay with ratio panel.
+Pivot found by k=a·H.
 
 **Key contrast**: Standard Higgs USR = initial-condition effect (tune `y₀`). Ezquiaga USR = structural (near-inflection from RG running). PBH-focused — the peak is at small scales (k∼10¹⁴ Mpc⁻¹) for PBH formation (0.01-100 M_⊙). CMB-scale n_s ≈ 0.952 for χ₀≥8.0.
+
+### 14. pspectrum_pipeline scope — P_S(k) only
+
+`pspectrum_pipeline.py` computes and plots P_S(k) only. It does NOT run CAMB,
+compute D_ℓ, plot backgrounds, or do power-loss analysis. Those belong in
+`camb_wrapper.py`, `run_full_analysis.py`, and `check_full_dell.py`.
+
+Auto-plotting (`--no-plot` to skip) saves P_S(k) plots to
+`outputs/plots/pspectra/` — NOT `outputs/plots/powerloss/`.
