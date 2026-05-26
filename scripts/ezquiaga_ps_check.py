@@ -36,7 +36,7 @@ def compute_ps_sr(bg_sol, end_idx):
     return k_phys, P_S, e
 
 def _solve_batch(args):
-    k_phys_batch, bg_sol, T_span_bg, end_idx, model_params = args
+    k_phys_batch, bg_sol, T_span_bg, end_idx, model_params, ms_method = args
     from scipy.interpolate import CubicSpline
     import inf_dyn_MS_full as ms_solver
     from numba_ms_solver import numba_run_ms, build_numba_splines
@@ -62,7 +62,8 @@ def _solve_batch(args):
         ni = bg_sol[3][si]
         T_ms = np.linspace(T_span_bg[si], t_end, 5000)
         try:
-            sol = numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, m, bg_coefs=bg_coefs)
+            sol = numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, m,
+                               bg_coefs=bg_coefs, method=ms_method)
             d = ms_solver.get_ms_derived_quantities_with_bg(sol, interp, T_ms, m, k_code, ni)
             ps = float(d["P_S"][-1])
             if np.isfinite(ps) and ps > 0:
@@ -84,6 +85,9 @@ def main():
     parser.add_argument("--n-outer", type=int, default=40,
                         help="modes on tails (sparse)")
     parser.add_argument("--n-workers", type=int, default=min(8, multiprocessing.cpu_count()))
+    parser.add_argument("--ms-method", type=str, default='dp5',
+                        choices=['dp5','rk45','dop853','radau','bdf'],
+                        help="MS solver method (dp5=Numba custom, others=scipy.solve_ivp)")
     args = parser.parse_args()
 
     import matplotlib
@@ -124,7 +128,7 @@ def main():
 
     chunks = np.array_split(k_grid, args.n_workers)
     model_params = (model.a, model.b, model.v0, model.x0, model.y0)
-    batch_args = [(ch, bg_sol, T, end_idx, model_params) for ch in chunks]
+    batch_args = [(ch, bg_sol, T, end_idx, model_params, args.ms_method) for ch in chunks]
 
     Ps_ms = np.full(n_k, np.nan)
     k_to_result = {kp: i for i, kp in enumerate(k_grid)}
