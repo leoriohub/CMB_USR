@@ -341,14 +341,14 @@ def run_pspectrum_pipeline(
     _extract = extract_mode_initial_conditions
 
     n_modes = len(k_code_grid)
-    checkpoint_interval = max(n_modes // 10, min(n_modes // 4, 25))
+    checkpoint_interval = max(1, max(n_modes // 10, min(n_modes // 4, 25)))
     t_start_all = time.time()
     failed_modes = []
     errors = []
 
     # Build background interpolation and spline coefficients (shared)
     bg_interp = build_bg_interpolators_fast(bg_sol, T_span_bg)
-    bg_coefs = build_numba_splines(bg_sol, T_span_bg)
+    bg_coefs = build_numba_splines(bg_sol, T_span_bg, model=model)
 
     # Build metadata early (needs pivot info from above, which we have)
     run_id = str(uuid.uuid4())[:8]
