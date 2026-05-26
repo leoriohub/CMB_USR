@@ -466,8 +466,28 @@ def _solve_ms_batch(args):
 
 
 def plot_ps(k_phys, P_S, label="Higgs USR", filename="ps", category="powerloss",
-            show_lcdm=True, k_dip=None):
-    """Plot primordial power spectrum with optional LCDM baseline."""
+            show_lcdm=True, k_dip=None, k_min=None, k_max=None):
+    """Plot primordial power spectrum with optional LCDM baseline.
+
+    Parameters
+    ----------
+    k_phys : array
+        Physical wavenumbers (Mpc^-1)
+    P_S : array
+        Primordial power spectrum values
+    label : str
+        Legend label
+    filename : str
+        Output filename (without extension)
+    category : str
+        Output directory category from OUTPUT_DIRS
+    show_lcdm : bool
+        Overlay LCDM power-law (ns=0.965)
+    k_dip : float or None
+        Mark a vertical line at this k value
+    k_min, k_max : float or None
+        Restrict plotted k-range (default: full data range)
+    """
     mask = np.isfinite(P_S)
     if np.sum(mask) > 5:
         logk_interp = interp1d(np.log(k_phys[mask]), P_S[mask], kind="cubic",
@@ -476,6 +496,12 @@ def plot_ps(k_phys, P_S, label="Higgs USR", filename="ps", category="powerloss",
         ps_dense = np.clip(logk_interp(np.log(k_dense)), 0, None)
     else:
         k_dense, ps_dense = k_phys, P_S
+
+    k_min = k_min if k_min is not None else np.min(k_dense)
+    k_max = k_max if k_max is not None else np.max(k_dense)
+    in_range = (k_dense >= k_min) & (k_dense <= k_max)
+    k_dense = k_dense[in_range]
+    ps_dense = ps_dense[in_range]
 
     fig, ax = plt.subplots(figsize=(3.35, 2.6))
 

@@ -586,6 +586,9 @@ def run_pspectrum_pipeline(
         "P_T": P_T,
         "metadata": metadata,
         "output_file": output_path,
+        "end_idx": end_idx,
+        "bg_sol": bg_sol,
+        "derived_bg": derived_bg,
     }
 
 
@@ -709,8 +712,8 @@ def main():
 
     # Resolve pipeline params: CLI overrides config
     pipe_cfg = config.get("pipeline", {}) if config else {}
-    phi0 = args.phi0 or config.get("ics", {}).get("phi0") if config else None
-    y0 = args.y0 or config.get("ics", {}).get("y0") if config else None
+    phi0 = args.phi0 if args.phi0 is not None else (config.get("ics", {}).get("phi0") if config else None)
+    y0 = args.y0 if args.y0 is not None else (config.get("ics", {}).get("y0") if config else None)
     N_star = _resolve("N_star", args.N_star, config) or N_star_default
     k_min = _resolve("k_min", args.k_min, config) or 1e-5
     k_max = _resolve("k_max", args.k_max, config) or 1.0
@@ -775,6 +778,13 @@ def main():
                 category="ps_plots",
                 show_lcdm=True)
 
+    if auto_plot and "Ezquiaga" in meta["model"]:
+        from scripts.plotting import plot_ezquiaga_diagnostics
+        plot_ezquiaga_diagnostics(
+            model, result["bg_sol"], result["derived_bg"],
+            result["end_idx"], float(meta["x0"]),
+        )
+
 
 def load_pspectrum(path):
     """Load a cached P_S(k) JSON file into a dict of numpy arrays.
@@ -785,15 +795,20 @@ def load_pspectrum(path):
         record = json.load(f)
     meta = record["metadata"]
     spec = record["spectrum"]
+    def to_array(val):
+        if val is None:
+            return None
+        return np.array([np.nan if x is None else x for x in val], dtype=float)
+
     return {
         "metadata": meta,
-        "k_phys": np.array(spec["k_phys"]),
-        "k_code": np.array(spec["k_code"]),
-        "P_S": np.array(spec["P_S"]),
-        "P_T": np.array(spec["P_T"]),
-        "P_S_raw": np.array(spec["P_S_raw"]),
-        "P_T_raw": np.array(spec["P_T_raw"]),
-        "start_idx": np.array(spec["start_idx"]),
+        "k_phys": to_array(spec.get("k_phys")),
+        "k_code": to_array(spec.get("k_code")),
+        "P_S": to_array(spec.get("P_S")),
+        "P_T": to_array(spec.get("P_T")),
+        "P_S_raw": to_array(spec.get("P_S_raw")),
+        "P_T_raw": to_array(spec.get("P_T_raw")),
+        "start_idx": to_array(spec.get("start_idx")),
     }
 
 
