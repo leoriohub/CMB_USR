@@ -8,6 +8,11 @@ echo "[2/4] Activating..."
 eval "$(conda shell.bash hook)"
 conda activate cmb-anomaly
 
+if [ "${CONDA_DEFAULT_ENV:-}" != "cmb-anomaly" ]; then
+    echo "ERROR: Failed to activate conda environment 'cmb-anomaly'." >&2
+    exit 1
+fi
+
 echo "[3/4] Installing project..."
 pip install -e .
 
