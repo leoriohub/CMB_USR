@@ -55,7 +55,9 @@ def get_derived_quantities(sol_data, model):
         # Slow-roll parameters
         # Exact dynamical parameters
         epsH = y**2 / (2 * z**2)
-        etaH = -(-3*z*y - v0*model.dfdx(x)/S**2)/(y*z)
+        yz = y * z
+        yz_safe = np.where(yz >= 0, np.maximum(yz, 1e-30), np.minimum(yz, -1e-30))
+        etaH = -(-3*z*y - v0*model.dfdx(x)/S**2)/yz_safe
         
         #Slow roll approximations
         # Observables

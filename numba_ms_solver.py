@@ -171,7 +171,7 @@ def make_rhs_scipy(S, v0):
 _INTEGRATOR_CACHE = {}
 
 def _get_integrator(model, S, v0, use_spline=False, method='dp5'):
-    key = (type(model).__name__, use_spline, method)
+    key = (type(model).__name__, S, v0, use_spline, method)
     if key in _INTEGRATOR_CACHE:
         return _INTEGRATOR_CACHE[key]
 
@@ -259,27 +259,23 @@ def _get_integrator(model, S, v0, use_spline=False, method='dp5'):
                       h_init=None, rtol=1e-8, atol=1e-10, max_steps=200000):
             rhs = make_rhs_scipy(S, v0)
             method_name = solvers.get(method, method)
-            try:
-                sol = solve_ivp(
-                    lambda t, y: rhs(t, y, bc, k_rel, ni),
-                    [T_start, T_end], y0, method=method_name,
-                    t_eval=output_t, rtol=rtol, atol=atol,
-                )
-                if sol.success:
-                    return sol.y
-            except Exception:
-                pass
-            out = np.zeros((8, len(output_t)))
-            for i in range(8):
-                out[i] = np.linspace(y0[i], y0[i], len(output_t))
-            return out
+            sol = solve_ivp(
+                lambda t, y: rhs(t, y, bc, k_rel, ni),
+                [T_start, T_end], y0, method=method_name,
+                t_eval=output_t, rtol=rtol, atol=atol,
+            )
+            if not sol.success:
+                raise RuntimeError(f"SciPy solve_ivp failed: {sol.message}")
+            return sol.y
 
     _INTEGRATOR_CACHE[key] = integrate
     return integrate
 
 
-def numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, model, S=5e-5,
+def numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, model, S=None,
                  bg_coefs=None, method='dp5'):
+    if S is None:
+        S = model.S
     f_nb, dfdx_nb, d2fdx2_nb = _get_potential_cached(model)
     use_spline = f_nb is None or method != 'dp5'
     if use_spline:
