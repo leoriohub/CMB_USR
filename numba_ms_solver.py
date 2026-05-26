@@ -6,6 +6,8 @@ inf_dyn_MS_full.run_ms_simulation() with ~2x pipeline speedup.
 """
 import numpy as np
 from scipy.interpolate import CubicSpline
+from scipy.integrate import solve_ivp
+from functools import partial
 
 try:
     from numba import njit
@@ -23,6 +25,14 @@ except ImportError:
 @njit(cache=True)
 def _spline_eval(t, t_grid, a, b, c, d):
     i = np.searchsorted(t_grid, t) - 1
+    i = max(0, min(i, len(t_grid) - 2))
+    dt = t - t_grid[i]
+    return a[i] + dt * (b[i] + dt * (c[i] + dt * d[i]))
+
+
+def _spline_eval_py(t, t_grid, a, b, c, d):
+    """Pure-Python cubic spline eval (no Numba). For scipy.solve_ivp use."""
+    i = int(np.searchsorted(t_grid, t)) - 1
     i = max(0, min(i, len(t_grid) - 2))
     dt = t - t_grid[i]
     return a[i] + dt * (b[i] + dt * (c[i] + dt * d[i]))
@@ -131,6 +141,27 @@ def make_rhs_spline(S, v0):
     return rhs
 
 
+def make_rhs_scipy(S, v0):
+    """Python-callable RHS for scipy.solve_ivp. Uses _spline_eval_py (no Numba)."""
+    Si2 = 1.0 / (S*S)
+    def rhs(t, y, bc, k_rel, ni):
+        v, vt, u, ut, h, ht, g, gt = y
+        y_bg = _spline_eval_py(t, *bc[1])
+        z = _spline_eval_py(t, *bc[2])
+        n_rel = _spline_eval_py(t, *bc[3]) - ni
+        df = _spline_eval_py(t, *bc[5])
+        d2f = _spline_eval_py(t, *bc[6])
+        v0_dfdx = v0 * df * Si2
+        dydt = -3.0*z*y_bg - v0_dfdx
+        k2a2 = k_rel*k_rel * np.exp(-2.0*n_rel)
+        m2 = (2.5*y_bg*y_bg + 2.0*y_bg*dydt/z + 2.0*z*z
+              + 0.5*y_bg*y_bg*y_bg*y_bg/(z*z) - v0*d2f*Si2 - k2a2)
+        return np.array([vt, -z*vt+v*m2, ut, -z*ut+u*m2,
+                         ht, -z*ht-h*(k2a2-2.0*z*z+0.5*y_bg*y_bg),
+                         gt, -z*gt-g*(k2a2-2.0*z*z+0.5*y_bg*y_bg)])
+    return rhs
+
+
 # ── Dormand-Prince 5(4) Butcher tableau ──────────────────────────────
 # Hairer, Norsett, Wanner (1993), Solving ODEs I, Table 5.2
 # Standard DP5(4)7M coefficients. These define a 6-stage embedded
@@ -139,100 +170,125 @@ def make_rhs_spline(S, v0):
 
 _INTEGRATOR_CACHE = {}
 
-def _get_integrator(model, S, v0, use_spline=False):
-    key = (type(model).__name__, use_spline)
+def _get_integrator(model, S, v0, use_spline=False, method='dp5'):
+    key = (type(model).__name__, use_spline, method)
     if key in _INTEGRATOR_CACHE:
         return _INTEGRATOR_CACHE[key]
 
-    if use_spline:
-        rhs = make_rhs_spline(S, v0)
+    if method == 'dp5':
+        if use_spline:
+            rhs = make_rhs_spline(S, v0)
+        else:
+            f, df, d2f = _get_potential_cached(model)
+            rhs = make_rhs(f, df, d2f, S, v0)
+
+        @njit(cache=True)
+        def integrate(y0, T_start, T_end, output_t, bc, k_rel, ni,
+                      h_init=1e-2, rtol=1e-8, atol=1e-10, max_steps=200000):
+            # ── DP5 coefficients (flat, Numba-compatible) ────────────
+            a21=0.2; a31=3/40; a32=9/40
+            a41=44/45; a42=-56/15; a43=32/9
+            a51=19372/6561; a52=-25360/2187; a53=64448/6561; a54=-212/729
+            a61=9017/3168; a62=-355/33; a63=46732/5247; a64=49/176; a65=-5103/18656
+            b1=35/384; b2=0; b3=500/1113; b4=125/192; b5=-2187/6784; b6=11/84
+            c2=0.2; c3=0.3; c4=0.8; c5=8/9
+            d1=5179/57600; d2=0; d3=7571/16695; d4=393/640; d5=-92097/339200; d6=187/2100; d7=1/40
+
+            n_out = len(output_t)
+            out = np.zeros((8, n_out))
+            y = y0.copy()
+            t = T_start
+            h = min(h_init, (T_end - T_start) / 10.0)
+            step = 0
+            err_prev = 0.0
+            oi = 0
+            yp = y.copy()
+            tp = t
+            f0 = rhs(y, t, bc, k_rel, ni)
+
+            while t < T_end and step < max_steps and oi < n_out:
+                if t + h > T_end:
+                    h = T_end - t
+
+                k1 = f0
+                k2 = rhs(y + h*a21*k1, t + h*c2, bc, k_rel, ni)
+                k3 = rhs(y + h*(a31*k1 + a32*k2), t + h*c3, bc, k_rel, ni)
+                k4 = rhs(y + h*(a41*k1 + a42*k2 + a43*k3), t + h*c4, bc, k_rel, ni)
+                k5 = rhs(y + h*(a51*k1 + a52*k2 + a53*k3 + a54*k4), t + h*c5, bc, k_rel, ni)
+                k6 = rhs(y + h*(a61*k1 + a62*k2 + a63*k3 + a64*k4 + a65*k5), t + h, bc, k_rel, ni)
+
+                y_new = y + h*(b1*k1 + b2*k2 + b3*k3 + b4*k4 + b5*k5 + b6*k6)
+                f0 = rhs(y_new, t + h, bc, k_rel, ni)
+                y4 = y + h*(d1*k1 + d2*k2 + d3*k3 + d4*k4 + d5*k5 + d6*k6 + d7*f0)
+
+                ym = np.maximum(np.abs(y_new), np.abs(y))
+                sc = atol + rtol * ym
+                err = np.sqrt(np.mean(((y_new - y4) / sc) ** 2))
+
+                if err <= 1.0:
+                    yp, tp = y, t
+                    y, t = y_new, t + h
+
+                    while oi < n_out and output_t[oi] <= t:
+                        θ = (output_t[oi] - tp) / h
+                        out[:, oi] = yp + θ * (y - yp)
+                        oi += 1
+
+                    if err > 0:
+                        fac = ((1/err)**0.14 * (err_prev/err)**0.08) if err_prev > 0 else (1/err)**0.2
+                        h *= min(5.0, max(0.1, 1.0 * fac))
+                    err_prev = err
+                else:
+                    if err > 0:
+                        h *= max(0.1, 0.8 * (1/err)**0.25)
+
+                h = max(h, 1e-8)
+                step += 1
+
+            while oi < n_out:
+                out[:, oi] = y
+                oi += 1
+            return out
+
     else:
-        f, df, d2f = _get_potential_cached(model)
-        rhs = make_rhs(f, df, d2f, S, v0)
+        # scipy solve_ivp paths — fresh RHS each call, no max_step constraint
+        solvers = {'rk45': 'RK45', 'dop853': 'DOP853', 'radau': 'Radau',
+                   'bdf': 'BDF', 'lsoda': 'LSODA'}
 
-    @njit(cache=True)
-    def integrate(y0, T_start, T_end, output_t, bc, k_rel, ni,
-                  h_init=1e-2, rtol=1e-8, atol=1e-10, max_steps=200000):
-        # ── DP5 coefficients (flat, Numba-compatible) ────────────
-        a21=0.2; a31=3/40; a32=9/40
-        a41=44/45; a42=-56/15; a43=32/9
-        a51=19372/6561; a52=-25360/2187; a53=64448/6561; a54=-212/729
-        a61=9017/3168; a62=-355/33; a63=46732/5247; a64=49/176; a65=-5103/18656
-        b1=35/384; b2=0; b3=500/1113; b4=125/192; b5=-2187/6784; b6=11/84
-        c2=0.2; c3=0.3; c4=0.8; c5=8/9
-        d1=5179/57600; d2=0; d3=7571/16695; d4=393/640; d5=-92097/339200; d6=187/2100; d7=1/40
-
-        n_out = len(output_t)
-        out = np.zeros((8, n_out))
-        y = y0.copy()
-        t = T_start
-        h = min(h_init, (T_end - T_start) / 10.0)
-        step = 0
-        err_prev = 0.0
-        oi = 0
-        yp = y.copy()
-        tp = t
-        f0 = rhs(y, t, bc, k_rel, ni)
-
-        while t < T_end and step < max_steps and oi < n_out:
-            if t + h > T_end:
-                h = T_end - t
-
-            k1 = f0
-            k2 = rhs(y + h*a21*k1, t + h*c2, bc, k_rel, ni)
-            k3 = rhs(y + h*(a31*k1 + a32*k2), t + h*c3, bc, k_rel, ni)
-            k4 = rhs(y + h*(a41*k1 + a42*k2 + a43*k3), t + h*c4, bc, k_rel, ni)
-            k5 = rhs(y + h*(a51*k1 + a52*k2 + a53*k3 + a54*k4), t + h*c5, bc, k_rel, ni)
-            k6 = rhs(y + h*(a61*k1 + a62*k2 + a63*k3 + a64*k4 + a65*k5), t + h, bc, k_rel, ni)
-
-            y_new = y + h*(b1*k1 + b2*k2 + b3*k3 + b4*k4 + b5*k5 + b6*k6)
-            f0 = rhs(y_new, t + h, bc, k_rel, ni)
-            y4 = y + h*(d1*k1 + d2*k2 + d3*k3 + d4*k4 + d5*k5 + d6*k6 + d7*f0)
-
-            # ── Error control ──────────────────────────────────────
-            ym = np.maximum(np.abs(y_new), np.abs(y))
-            sc = atol + rtol * ym
-            err = np.sqrt(np.mean(((y_new - y4) / sc) ** 2))
-
-            if err <= 1.0:
-                yp, tp = y, t
-                y, t = y_new, t + h
-
-                while oi < n_out and output_t[oi] <= t:
-                    θ = (output_t[oi] - tp) / h
-                    out[:, oi] = yp + θ * (y - yp)
-                    oi += 1
-
-                if err > 0:
-                    fac = ((1/err)**0.14 * (err_prev/err)**0.08) if err_prev > 0 else (1/err)**0.2
-                    h *= min(5.0, max(0.1, 1.0 * fac))
-                err_prev = err
-            else:
-                if err > 0:
-                    h *= max(0.1, 0.8 * (1/err)**0.25)
-
-            h = max(h, 1e-8)
-            step += 1
-
-        while oi < n_out:
-            out[:, oi] = y
-            oi += 1
-        return out
+        def integrate(y0, T_start, T_end, output_t, bc, k_rel, ni,
+                      h_init=None, rtol=1e-8, atol=1e-10, max_steps=200000):
+            rhs = make_rhs_scipy(S, v0)
+            method_name = solvers.get(method, method)
+            try:
+                sol = solve_ivp(
+                    lambda t, y: rhs(t, y, bc, k_rel, ni),
+                    [T_start, T_end], y0, method=method_name,
+                    t_eval=output_t, rtol=rtol, atol=atol,
+                )
+                if sol.success:
+                    return sol.y
+            except Exception:
+                pass
+            out = np.zeros((8, len(output_t)))
+            for i in range(8):
+                out[i] = np.linspace(y0[i], y0[i], len(output_t))
+            return out
 
     _INTEGRATOR_CACHE[key] = integrate
     return integrate
 
 
-def numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, model, S=5e-5, bg_coefs=None):
+def numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, model, S=5e-5,
+                 bg_coefs=None, method='dp5'):
     f_nb, dfdx_nb, d2fdx2_nb = _get_potential_cached(model)
-    use_spline = f_nb is None
+    use_spline = f_nb is None or method != 'dp5'
     if use_spline:
         if bg_coefs is None or len(bg_coefs) < 7:
             bg_coefs = build_numba_splines(bg_sol, T_span_bg, model=model)
-        integrate = _get_integrator(model, S, model.v0, use_spline=True)
+        integrate = _get_integrator(model, S, model.v0, use_spline=True, method=method)
     else:
         bg_coefs = bg_coefs if bg_coefs is not None else build_numba_splines(bg_sol, T_span_bg)
-        integrate = _get_integrator(model, S, model.v0)
+        integrate = _get_integrator(model, S, model.v0, use_spline=False, method=method)
     v0 = model.v0; k_rel = k_code * np.exp(-ni)
     bc = bg_coefs
 

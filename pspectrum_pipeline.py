@@ -194,7 +194,7 @@ def _compute_mode_batch(args):
     then processes each mode sequentially. Dispatches to Numba or Python.
     Returns list of (idx, P_S, P_T, start_idx, error).
     """
-    indices, k_codes, bg_sol, T_span_bg, end_idx, k_start_factor, ms_steps, model, use_numba = args
+    indices, k_codes, bg_sol, T_span_bg, end_idx, k_start_factor, ms_steps, model, use_numba, ms_method = args
     try:
         interp = build_bg_interpolators_fast(bg_sol, T_span_bg)
         bg_coefs = build_numba_splines(bg_sol, T_span_bg, model=model)
@@ -210,7 +210,7 @@ def _compute_mode_batch(args):
             T_ms = np.linspace(t_start, t_end, ms_steps)
             if use_numba:
                 ms_sol = numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, model,
-                                      bg_coefs=bg_coefs)
+                                      bg_coefs=bg_coefs, method=ms_method)
             else:
                 ms_sol = ms_solver.run_ms_simulation(interp, ni, T_ms, k_code, model)
             d = ms_solver.get_ms_derived_quantities_with_bg(ms_sol, interp, T_ms, model, k_code, ni)
@@ -247,6 +247,7 @@ def run_pspectrum_pipeline(
     n_workers=1,
     use_numba=True,
     executor=None,
+    ms_method='dp5',
 ):
     """
     Compute P_S(k) for a grid of k-modes for a given inflation model.
@@ -416,7 +417,7 @@ def run_pspectrum_pipeline(
             T_ms = _linspace(t_start, t_end, ms_steps)
             if use_numba:
                 ms_sol = numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code_val, model,
-                                      bg_coefs=bg_coefs)
+                                      bg_coefs=bg_coefs, method=ms_method)
             else:
                 ms_sol = _run_ms(bg_interp, ni, T_ms, k_code_val, model)
             d = _get_derived(ms_sol, bg_interp, T_ms, model, k_code_val, ni)
@@ -455,7 +456,7 @@ def run_pspectrum_pipeline(
             ci = indices[w::n_actual]
             ck = [k_code_grid[i] for i in ci]
             chunks.append((ci, ck, bg_sol, T_span_bg, end_idx,
-                           k_start_factor, ms_steps, model, use_numba))
+                           k_start_factor, ms_steps, model, use_numba, ms_method))
 
         done_count = 0
         pool = executor if executor is not None else ProcessPoolExecutor(max_workers=n_actual)
