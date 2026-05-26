@@ -675,6 +675,8 @@ def parse_args():
     parser.add_argument("--As", type=float, default=None)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--no-save", action="store_true")
+    parser.add_argument("--no-plot", action="store_true", default=None,
+                        help="Skip auto-plotting P_S(k)")
     return parser.parse_args()
 
 
@@ -761,6 +763,17 @@ def main():
     print(f"  Saved: {result['output_file']}")
     meta = result["metadata"]
     print(f"  N_total={meta['N_total']:.1f}, N_pivot={meta['N_pivot']:.1f}, modes={meta['n_completed']}/{meta['num_k']}")
+
+    auto_plot = not _resolve_bool("no_plot", args.no_plot, config)
+    if auto_plot:
+        from scripts.plotting import plot_ps
+        fname = make_filename("ps", float(meta["x0"]), float(meta["y0"]),
+                              float(meta["N_star"]), ext="")
+        plot_ps(result["k_phys"], result["P_S"],
+                label=meta["model"],
+                filename=fname,
+                category="ps_plots",
+                show_lcdm=True)
 
 
 def load_pspectrum(path):
