@@ -209,13 +209,9 @@ class EzquiagaCHIModel(InflationModel):
 
         def _safe(model, T_span):
             bg = _original(model, T_span)
-            out = np.copy(bg)
-            for row in out:
-                mask = np.isfinite(row)
-                if not np.all(mask):
-                    last_valid = np.where(mask)[0][-1] if np.any(mask) else 0
-                    row[~mask] = row[last_valid]
-            return out
+            if not np.all(np.isfinite(bg)):
+                raise RuntimeError("Background integration failed: trajectory contains NaN or Inf values.")
+            return bg
 
         bg_mod.run_background_simulation = _safe
         bg_mod._patched_by_ezquiaga = True
