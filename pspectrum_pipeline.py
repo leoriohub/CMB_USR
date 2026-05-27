@@ -173,7 +173,7 @@ def extract_mode_initial_conditions(bg_sol, T_span_bg, end_idx, k_code, k_start_
     """
     n_bg = bg_sol[3]
     z_bg = bg_sol[2]
-    log_az = n_bg + np.log(z_bg)
+    log_az = n_bg + np.log(np.maximum(z_bg, 1e-300))
     target_start = np.log(k_code) - np.log(k_start_factor)
     start_idx = int(np.argmin(np.abs(log_az[:end_idx] - target_start)))
     start_idx = max(start_idx, 0)
@@ -673,10 +673,7 @@ def parse_args():
                         help="dense sampling in USR zone 1e-4..1e-2")
     parser.add_argument("--n-dense", type=int, default=None, help="k-modes in dense zone")
     parser.add_argument("--n-outer", type=int, default=None, help="k-modes outside dense zone")
-    parser.add_argument("--dense-min", type=float, default=None, help="Dense zone lower bound (Mpc^-1)")
-    parser.add_argument("--dense-max", type=float, default=None, help="Dense zone upper bound (Mpc^-1)")
-    parser.add_argument("--dense-min", type=float, default=None, help="dense zone start (Mpc^-1)")
-    parser.add_argument("--dense-max", type=float, default=None, help="dense zone end (Mpc^-1)")
+
     parser.add_argument("--normalize-to-As", action="store_true", default=None)
     parser.add_argument("--As", type=float, default=None)
     parser.add_argument("--output-dir", default=None)
@@ -717,6 +714,13 @@ def main():
     pipe_cfg = config.get("pipeline", {}) if config else {}
     phi0 = args.phi0 if args.phi0 is not None else (config.get("ics", {}).get("phi0") if config else None)
     y0 = args.y0 if args.y0 is not None else (config.get("ics", {}).get("y0") if config else None)
+
+    # Convert Jordan frame phi0 to chi0 for Ezquiaga model
+    if "Ezquiaga" in model.name and phi0 is not None:
+        x_jordan = phi0 / model.mu
+        chi0 = float(model._chi_spline(x_jordan))
+        print(f"  --phi0={phi0} M_P → x={x_jordan:.4f} → chi0={chi0:.4f}")
+        model.x0 = chi0
     N_star = _resolve("N_star", args.N_star, config) or N_star_default
     k_min = _resolve("k_min", args.k_min, config) or 1e-5
     k_max = _resolve("k_max", args.k_max, config) or 1.0
@@ -724,10 +728,8 @@ def main():
     use_weighted = _resolve_bool("use_weighted", args.use_weighted, config)
     n_dense = _resolve("n_dense", args.n_dense, config) or 120
     n_outer = _resolve("n_outer", args.n_outer, config) or 60
-    dense_min = _resolve("dense_min", args.dense_min, config) or 1e-4
-    dense_max = _resolve("dense_max", args.dense_max, config) or 1e-2
-    dense_min = _resolve("dense_min", args.dense_min, config)
-    dense_max = _resolve("dense_max", args.dense_max, config)
+    dense_min = _resolve("dense_min", None, config) or 1e-4
+    dense_max = _resolve("dense_max", None, config) or 1e-2
     n_cores = _resolve("n_cores", args.n_cores, config)
     n_workers = n_cores if n_cores is not None else 1
     normalize_to_As = _resolve_bool("normalize_to_As", args.normalize_to_As, config)
@@ -740,8 +742,6 @@ def main():
 
     k_grid = None
     if use_weighted:
-        _dm = dense_min or 1e-4
-        _dM = dense_max or 1e-2
         k_grid = build_weighted_kgrid(
             k_min, k_max, k_pivot_phys or k_pivot_phys,
             dense_min=dense_min, dense_max=dense_max,
