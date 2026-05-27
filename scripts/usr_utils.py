@@ -23,7 +23,7 @@ def measure_usr_duration(N, epsH, eps2, threshold=-5.5):
     """
     Number of e-folds where ε₂ < threshold (USR phase).
 
-    Algorithm from USR_Search.ipynb:
+    Algorithm:
       1. Find onset of inflation (first epsH < 1).
       2. Find end of inflation (first epsH >= 1 after onset).
       3. Truncate to inflationary segment.
