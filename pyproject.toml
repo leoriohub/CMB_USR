@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cmb-anomaly"
 version = "0.1.0"
-description = "CMB low-ell anomaly analysis: Higgs USR vs Punctuated Inflation"
+description = "CMB low-ell anomaly analysis: Higgs USR"
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.22,<3.0",
