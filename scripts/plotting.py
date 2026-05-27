@@ -37,6 +37,12 @@ TOL = {
     "grey": "#666666",
     "dark": "#222222",
 }
+# Color convention across all plots:
+#   TOL["red"]   — model/main data line
+#   TOL["blue"]  — secondary/reference data (e.g. CAMB full)
+#   TOL["dark"]  — Planck data points / LCDM baseline
+#   TOL["grey"]  — reference lines, grid, annotations
+#   TOL["green"] — feature markers (pivot, inflection)
 
 COLORS = ["#CC3311", "#EE8866", "#44BB99", "#AA3377",
           "#4477AA", "#228833", "#DDCC77", "#88CCEE"]
@@ -180,7 +186,7 @@ def compute_ps_sr(bg_sol, end_idx):
 
 
 def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
-                               pivot_k=0.002, suffix=""):
+                               pivot_k=0.002, suffix="", N_star=None):
     """
     3-panel Ezquiaga diagnostics: N vs chi, V/V0 vs x, P_S vs N.
 
@@ -193,6 +199,7 @@ def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
     chi0 : float, initial field value
     pivot_k : float, CMB pivot scale in Mpc^-1
     suffix : str, appended to filenames (e.g. "_chi8")
+    N_star : float or None, e-folds before end for pivot exit
     """
     epsH = derived["epsH"]
     N = derived["N"]
@@ -205,7 +212,7 @@ def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
     start_N = N_std[int(np.where(epsH[:end_idx + 1] > 1e-6)[0][0])] if np.any(epsH[:end_idx + 1] > 1e-6) else N_std[0]
 
     fig_n, ax_n = plt.subplots(figsize=(3.35, 2.6))
-    ax_n.plot(chi[:end_idx + 1], N_std[:end_idx + 1], "-", color=TOL["blue"], lw=1.3)
+    ax_n.plot(chi[:end_idx + 1], N_std[:end_idx + 1], "-", color=TOL["red"], lw=1.3)
     ax_n.plot(chi[pivot_idx], N_std[pivot_idx], "o", color=TOL["green"], ms=4)
     ax_n.annotate("pivot", xy=(chi[pivot_idx], N_std[pivot_idx]),
                   fontsize=8, color=TOL["green"])
@@ -214,37 +221,42 @@ def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
     ax_n.set_xlim(0, chi0 + 0.5)
     ax_n.tick_params(labelsize=12)
     fig_n.tight_layout()
-    save_fig(fig_n, f"ezquiaga_Nchi{suffix}", "diagnostics")
+    fname_nchi = make_filename("ezquiaga_Nchi", model.x0, model.y0, N_star, ext="") if N_star is not None else f"ezquiaga_Nchi{suffix}"
+    save_fig(fig_n, fname_nchi, "diagnostics")
 
-    x_end = model._x_of_chi(float(chi[end_idx]))
-    x_pivot = model._x_of_chi(float(chi[pivot_idx]))
-    x_max = model._x_of_chi(float(chi[0]))
-    x_grid = np.linspace(0.05, 15, 3000)
+    x_end = float(model._x_of_chi(float(chi[end_idx])))
+    x_pivot = float(model._x_of_chi(float(chi[pivot_idx])))
+    x_max = float(model._x_of_chi(float(chi[0])))
+    x_plot_max = max(x_max * 1.15, 8.0)
+    x_grid = np.linspace(0.05, x_plot_max, 3000)
     f_vals = np.array([model._V(float(x)) for x in x_grid])
 
     fig_v, ax_v = plt.subplots(figsize=(3.35, 2.6))
-    ax_v.plot(x_grid, f_vals, "-", color=TOL["blue"], lw=1.3)
-    ax_v.axvline(x_end, color=TOL["grey"], ls="--", lw=0.8, alpha=0.5)
-    ax_v.annotate("end", xy=(x_end, ax_v.get_ylim()[1]),
-                  xytext=(5, 5), textcoords="offset points", fontsize=8, color=TOL["grey"])
-    ax_v.axvline(x_pivot, color=TOL["green"], ls="-.", lw=0.8, alpha=0.5)
-    ax_v.annotate("pivot", xy=(x_pivot, ax_v.get_ylim()[1]),
-                  xytext=(5, 5), textcoords="offset points", fontsize=8, color=TOL["green"])
-    ax_v.axvspan(0, x_max, alpha=0.08, color=TOL["blue"])
-    ax_v.set_xlim(0, 12)
-    ax_v.set_xticks([0, 2, 4, 6, 8, 10, 12])
+    ax_v.plot(x_grid, f_vals, "-", color=TOL["red"], lw=1.3)
+    if np.isfinite(x_end):
+        ax_v.axvline(x_end, color=TOL["grey"], ls="--", lw=0.8, alpha=0.5)
+        ax_v.annotate("end", xy=(x_end, ax_v.get_ylim()[1]),
+                      xytext=(5, 5), textcoords="offset points", fontsize=8, color=TOL["grey"])
+    if np.isfinite(x_pivot):
+        ax_v.axvline(x_pivot, color=TOL["green"], ls="-.", lw=0.8, alpha=0.5)
+        ax_v.annotate("pivot", xy=(x_pivot, ax_v.get_ylim()[1]),
+                      xytext=(5, 5), textcoords="offset points", fontsize=8, color=TOL["green"])
+    ax_v.axvspan(0, x_max, alpha=0.08, color=TOL["red"])
+    ax_v.set_xlim(0, x_plot_max)
+    ax_v.set_xticks(np.linspace(0, x_plot_max, 7))
     ax_v.set_xlabel(r"$x = \phi/\mu$", fontsize=14)
     ax_v.set_ylabel(r"$V/V_0$", fontsize=14)
     ax_v.tick_params(labelsize=12)
     fig_v.tight_layout()
-    save_fig(fig_v, f"ezquiaga_Vshape{suffix}", "diagnostics")
+    fname_v = make_filename("ezquiaga_Vshape", model.x0, model.y0, N_star, ext="") if N_star is not None else f"ezquiaga_Vshape{suffix}"
+    save_fig(fig_v, fname_v, "diagnostics")
 
     epsH_clip = np.clip(epsH[:end_idx + 1], 1e-30, None)
     P_S_sr = (S_CODE * z_bg[:end_idx + 1])**2 / (8 * np.pi**2 * epsH_clip)
     mask_ps = N_std <= start_N
 
     fig_ps, ax_ps = plt.subplots(figsize=(3.35, 2.6))
-    ax_ps.semilogy(N_std[:end_idx + 1][mask_ps], P_S_sr[mask_ps], "-", color=TOL["blue"], lw=1.3)
+    ax_ps.semilogy(N_std[:end_idx + 1][mask_ps], P_S_sr[mask_ps], "-", color=TOL["red"], lw=1.3)
     ax_ps.axvline(N_std[pivot_idx], color=TOL["green"], ls="-.", lw=0.8, alpha=0.4)
     ax_ps.annotate("pivot", xy=(N_std[pivot_idx], ax_ps.get_ylim()[0]),
                    xytext=(5, 10), textcoords="offset points", fontsize=8, color=TOL["green"])
@@ -253,7 +265,8 @@ def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
     ax_ps.tick_params(labelsize=12)
     ax_ps.set_xlim(0, max(N_std[0] + 2, 70))
     fig_ps.tight_layout()
-    save_fig(fig_ps, f"ezquiaga_PS_N{suffix}", "diagnostics")
+    fname_ps = make_filename("ezquiaga_PS_N", model.x0, model.y0, N_star, ext="") if N_star is not None else f"ezquiaga_PS_N{suffix}"
+    save_fig(fig_ps, fname_ps, "diagnostics")
 
 
 def plot_ps_sr_ms_comparison(
