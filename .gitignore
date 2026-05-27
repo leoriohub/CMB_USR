@@ -13,7 +13,6 @@ __pycache__/
 .env
 .venv
 venv/
-.envrc
 
 # Environment-specific scripts
 setup_win_env.ps1
