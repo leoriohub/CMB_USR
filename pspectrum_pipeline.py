@@ -731,6 +731,8 @@ def main():
     dense_min = _resolve("dense_min", None, config) or 1e-4
     dense_max = _resolve("dense_max", None, config) or 1e-2
     n_cores = _resolve("n_cores", args.n_cores, config)
+    if n_cores is None:
+        n_cores = _resolve("n_cores", args.n_workers, config)
     n_workers = n_cores if n_cores is not None else 1
     normalize_to_As = _resolve_bool("normalize_to_As", args.normalize_to_As, config)
     As_target = _resolve("As", args.As, config) or As
