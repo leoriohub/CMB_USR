@@ -162,12 +162,10 @@ Every output file goes in its correct subdirectory. **No per-run subdirectories.
 - **NEVER** use random hashes, redundant model names, or inconsistent prefixes
 - **NEVER** hardcode `outputs/` or filenames: use `get_path()` + `make_filename()`
 
-### 4. Notebooks
-- Place in `notebooks/` with descriptive names (e.g. `Golden_Config_Comparison.ipynb`).
-- A `notebooks/outputs/` dir exists for notebook-scoped temp files.
-- Generated plots go to `outputs/plots/` subdirectories, not inside notebooks.
-- Notebooks MUST import `from scripts.plotting import get_path, make_filename` — never hardcode `outputs/` paths.
-- Notebooks MUST use `make_filename()` for output filenames — never manually construct filenames.
+### 4. Notebooks (Deprecated)
+- Notebooks are deprecated and ignored by version control (`notebooks/*.ipynb` is in `.gitignore`).
+- All active development has transitioned to a script-only workflow.
+- Do not add new notebooks to version control.
 
 ### 5. .md Files Are Public
 This repository is public. Do not write into .md files:
@@ -245,7 +243,7 @@ USR suppression at CMB scales requires fine-tuned initial conditions. The mechan
 ### Reference Files
 - `models/punctuated.py` — Punctuated inflaton (validation only) bg_steps=100k
 - `scripts/pspectrum_pipeline.py` — Main CLI for P_S(k) pipelines
-- `notebooks/Golden_Config_Comparison.ipynb` — Higgs vs Punctuated comparison
+- `scripts/test_camb_validation.py` — Higgs vs Punctuated validation comparison
 
 ### 9. CAMB C_ell Computation
 CAMB is the official Python package (`import camb`), available via pip/conda. `scripts/camb_wrapper.py` is a thin convenience layer — not a custom wrapper.
