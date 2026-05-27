@@ -125,17 +125,16 @@ def ensure_k_pivot(k_grid, k_pivot_phys, rtol=1e-6):
     return k_grid, pivot_idx
 
 
-def build_weighted_kgrid(k_min, k_max, k_pivot_phys, dense_zone=(1e-4, 1e-2), n_dense=120, n_outer=60):
+def build_weighted_kgrid(k_min, k_max, k_pivot_phys, dense_min=1e-4, dense_max=1e-2, n_dense=120, n_outer=60):
     """
-    Build a k-grid with dense logarithmic sampling in the USR dip zone.
+    Build a k-grid with dense logarithmic sampling in a specified zone.
 
-    The USR feature typically appears at k ~ 10^-4 to 10^-2 Mpc^-1.
-    Standard uniform log-spacing would undersample this region.
-    This grid concentrates ~2/3 of modes there for adequate resolution.
+    Concentrates ~2/3 of modes in [dense_min, dense_max] for adequate resolution
+    of spectral features (CMB USR dip at 1e-4..1e-2 for Higgs, PBH peak at 1e9..1e14 for Ezquiaga).
     """
-    k_low = np.logspace(np.log10(k_min), np.log10(dense_zone[0]), n_outer // 2)
-    k_dense = np.logspace(np.log10(dense_zone[0]), np.log10(dense_zone[1]), n_dense)
-    k_high = np.logspace(np.log10(dense_zone[1]), np.log10(k_max), n_outer // 2)
+    k_low = np.logspace(np.log10(k_min), np.log10(dense_min), n_outer // 2)
+    k_dense = np.logspace(np.log10(dense_min), np.log10(dense_max), n_dense)
+    k_high = np.logspace(np.log10(dense_max), np.log10(k_max), n_outer // 2)
     k_grid = np.unique(np.concatenate([k_low, k_dense, k_high]))
     if not np.any(np.isclose(k_grid, k_pivot_phys)):
         k_grid = np.sort(np.append(k_grid, k_pivot_phys))
@@ -674,6 +673,10 @@ def parse_args():
                         help="dense sampling in USR zone 1e-4..1e-2")
     parser.add_argument("--n-dense", type=int, default=None, help="k-modes in dense zone")
     parser.add_argument("--n-outer", type=int, default=None, help="k-modes outside dense zone")
+    parser.add_argument("--dense-min", type=float, default=None, help="Dense zone lower bound (Mpc^-1)")
+    parser.add_argument("--dense-max", type=float, default=None, help="Dense zone upper bound (Mpc^-1)")
+    parser.add_argument("--dense-min", type=float, default=None, help="dense zone start (Mpc^-1)")
+    parser.add_argument("--dense-max", type=float, default=None, help="dense zone end (Mpc^-1)")
     parser.add_argument("--normalize-to-As", action="store_true", default=None)
     parser.add_argument("--As", type=float, default=None)
     parser.add_argument("--output-dir", default=None)
@@ -721,6 +724,10 @@ def main():
     use_weighted = _resolve_bool("use_weighted", args.use_weighted, config)
     n_dense = _resolve("n_dense", args.n_dense, config) or 120
     n_outer = _resolve("n_outer", args.n_outer, config) or 60
+    dense_min = _resolve("dense_min", args.dense_min, config) or 1e-4
+    dense_max = _resolve("dense_max", args.dense_max, config) or 1e-2
+    dense_min = _resolve("dense_min", args.dense_min, config)
+    dense_max = _resolve("dense_max", args.dense_max, config)
     n_cores = _resolve("n_cores", args.n_cores, config)
     n_workers = n_cores if n_cores is not None else 1
     normalize_to_As = _resolve_bool("normalize_to_As", args.normalize_to_As, config)
@@ -733,8 +740,11 @@ def main():
 
     k_grid = None
     if use_weighted:
+        _dm = dense_min or 1e-4
+        _dM = dense_max or 1e-2
         k_grid = build_weighted_kgrid(
-            k_min, k_max, k_pivot_phys,
+            k_min, k_max, k_pivot_phys or k_pivot_phys,
+            dense_min=dense_min, dense_max=dense_max,
             n_dense=n_dense, n_outer=n_outer,
         )
 
@@ -783,6 +793,7 @@ def main():
         plot_ezquiaga_diagnostics(
             model, result["bg_sol"], result["derived_bg"],
             result["end_idx"], float(meta["x0"]),
+            N_star=float(meta["N_star"]),
         )
 
 
