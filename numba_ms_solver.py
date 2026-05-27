@@ -30,6 +30,12 @@ def _spline_eval(t, t_grid, a, b, c, d):
     return a[i] + dt * (b[i] + dt * (c[i] + dt * d[i]))
 
 
+@njit(cache=True)
+def _spline_eval_at_index(t, t_grid, i, a, b, c, d):
+    dt = t - t_grid[i]
+    return a[i] + dt * (b[i] + dt * (c[i] + dt * d[i]))
+
+
 def _spline_eval_py(t, t_grid, a, b, c, d):
     """Pure-Python cubic spline eval (no Numba). For scipy.solve_ivp use."""
     i = int(np.searchsorted(t_grid, t)) - 1
@@ -102,10 +108,15 @@ def make_rhs(f, df, d2f, S, v0):
     Si2 = 1.0 / (S*S)
     @njit(cache=True)
     def rhs(vars_8, T, bc, k_rel, ni):
-        x = _spline_eval(T, *bc[0])
-        y = _spline_eval(T, *bc[1])
-        z = _spline_eval(T, *bc[2])
-        n_rel = _spline_eval(T, *bc[3]) - ni
+        t_grid = bc[0][0]
+        i = np.searchsorted(t_grid, T) - 1
+        i = max(0, min(i, len(t_grid) - 2))
+        
+        x = _spline_eval_at_index(T, t_grid, i, bc[0][1], bc[0][2], bc[0][3], bc[0][4])
+        y = _spline_eval_at_index(T, t_grid, i, bc[1][1], bc[1][2], bc[1][3], bc[1][4])
+        z = _spline_eval_at_index(T, t_grid, i, bc[2][1], bc[2][2], bc[2][3], bc[2][4])
+        n_rel = _spline_eval_at_index(T, t_grid, i, bc[3][1], bc[3][2], bc[3][3], bc[3][4]) - ni
+        
         v0_dfdx = v0 * df(x) * Si2
         dydT = -3.0*z*y - v0_dfdx
         k2a2 = k_rel*k_rel * np.exp(-2.0*n_rel)
@@ -123,12 +134,17 @@ def make_rhs_spline(S, v0):
     Si2 = 1.0 / (S*S)
     @njit(cache=True)
     def rhs(vars_8, T, bc, k_rel, ni):
-        x = _spline_eval(T, *bc[0])
-        y = _spline_eval(T, *bc[1])
-        z = _spline_eval(T, *bc[2])
-        n_rel = _spline_eval(T, *bc[3]) - ni
-        df_val = _spline_eval(T, *bc[5])
-        d2f_val = _spline_eval(T, *bc[6])
+        t_grid = bc[0][0]
+        i = np.searchsorted(t_grid, T) - 1
+        i = max(0, min(i, len(t_grid) - 2))
+        
+        x = _spline_eval_at_index(T, t_grid, i, bc[0][1], bc[0][2], bc[0][3], bc[0][4])
+        y = _spline_eval_at_index(T, t_grid, i, bc[1][1], bc[1][2], bc[1][3], bc[1][4])
+        z = _spline_eval_at_index(T, t_grid, i, bc[2][1], bc[2][2], bc[2][3], bc[2][4])
+        n_rel = _spline_eval_at_index(T, t_grid, i, bc[3][1], bc[3][2], bc[3][3], bc[3][4]) - ni
+        df_val = _spline_eval_at_index(T, t_grid, i, bc[5][1], bc[5][2], bc[5][3], bc[5][4])
+        d2f_val = _spline_eval_at_index(T, t_grid, i, bc[6][1], bc[6][2], bc[6][3], bc[6][4])
+        
         v0_dfdx = v0 * df_val * Si2
         dydT = -3.0*z*y - v0_dfdx
         k2a2 = k_rel*k_rel * np.exp(-2.0*n_rel)
