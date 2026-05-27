@@ -23,7 +23,6 @@ Thumbs.db
 
 # Local docs
 docs/
-
 .vscode/
 .opencode/
 .agents/
@@ -31,7 +30,7 @@ paper/
 skills-lock.json
 .worktrees/
 cmb_anomaly.egg-info/
-
+paper.bak/
 # Notebooks with paper-figure exploration code (project-internal, not for version control)
 notebooks/*.ipynb
 
