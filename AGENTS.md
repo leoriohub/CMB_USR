@@ -142,6 +142,7 @@ Every output file goes in its correct subdirectory. **No per-run subdirectories.
 - Use `scripts.plotting.make_filename()` for all output filenames — never manually construct paths
 - Only PNG output (no PDFs)
 - No per-config subdirectories — all files flat within each canonical dir
+- **Never track or commit files in `outputs/` or `notebooks/`.** These directories are gitignored. Do not use `git add -f` to bypass this.
 
 **Naming Convention — ALL scripts and notebooks MUST use `scripts.plotting.make_filename()`:**
 
