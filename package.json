@@ -1,0 +1,27 @@
+{
+  "name": "cmb_anomaly",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leoriohub/CMB_USR.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/leoriohub/CMB_USR/issues"
+  },
+  "homepage": "https://github.com/leoriohub/CMB_USR#readme",
+  "dependencies": {
+    "context-mode": "^1.0.151"
+  }
+}
