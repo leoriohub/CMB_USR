@@ -10,7 +10,7 @@ All functions follow publication-ready conventions:
 - Two-column format (~3.25-3.5in wide single, ~7in full)
 - 300 DPI minimum
 - Colorblind-friendly palette (Tol 2012)
-- Big fonts: axis >= 14pt, ticks >= 12pt, legend >= 11pt
+- Font sizes set by PAPER_RCPARAMS (importable constant)
 - Export PNG only
 """
 import os
@@ -47,6 +47,41 @@ TOL = {
 COLORS = ["#CC3311", "#EE8866", "#44BB99", "#AA3377",
           "#4477AA", "#228833", "#DDCC77", "#88CCEE"]
 
+PAPER_RCPARAMS = {
+    "font.size": 8,
+    "axes.labelsize": 9,
+    "axes.titlesize": 11,
+    "xtick.labelsize": 8,
+    "ytick.labelsize": 8,
+    "legend.fontsize": 7,
+    "figure.dpi": 300,
+    "savefig.dpi": 300,
+    "savefig.bbox": "tight",
+    "font.family": "serif",
+    "axes.grid": False,
+}
+
+MARKER_RCPARAMS = {
+    "marker_size": 2.5,
+    "marker_edge_width": 0.4,
+    "line_width": 0.8,
+    "reference_line_style": "--",
+    "reference_line_width": 0.6,
+}
+
+# COLOR_MAP: standard role-based color assignment for comparison plots.
+# Plot philosophy — data-first, minimal clutter:
+#   No annotation boxes, reference lines, or decorations unless explicitly
+#   requested. Let the data speak. Add elements only when they serve a
+#   specific expository purpose.
+COLOR_MAP = {
+    "primary": TOL["red"],      # main model / SR approximation
+    "secondary": TOL["blue"],   # reference / exact numerical (MS)
+    "derived": TOL["purple"],   # residuals, derived quantities
+    "reference": TOL["grey"],   # reference lines, zero lines
+    "data": TOL["dark"],        # observational data (Planck)
+    "feature": TOL["green"],    # pivot markers, inflection points
+}
 
 # ── Module-level workers (must be top-level for pickle) ─────────────────────
 
@@ -70,6 +105,7 @@ OUTPUT_DIRS = {
     "configs": os.path.join(ROOT_DIR, "outputs/simulations/configs"),
     "logs": os.path.join(ROOT_DIR, "outputs/simulations/logs"),
     "scans": os.path.join(ROOT_DIR, "outputs/simulations/scans"),
+    "pbh": os.path.join(ROOT_DIR, "outputs/plots/pbh"),
 }
 
 
@@ -1076,6 +1112,38 @@ def _cli_compare_configs(phi0_str="", y0_str="", nstar_str="",
     ax.set_xlim(1.5, 31)
     fig.tight_layout()
     save_fig(fig, f"dell_comparison_{suffix}", "diagnostics")
+
+
+# ── PBH abundance plot ────────────────────────────────────────────────────
+
+
+def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
+                       model_label="PBH-CHI", filename="pbh_abundance",
+                       category="pbh"):
+    """
+    Plot Ω_PBH/Ω_DM vs M/M_⊙ (Figure 3 style).
+
+    log-log, solid TOL line, paper-style legend.
+    Observational constraint overlays not included (data file dependent).
+    """
+    mask = np.isfinite(M) & np.isfinite(f_pbh) & (M > 0) & (f_pbh > 0)
+    M, f_pbh = M[mask], f_pbh[mask]
+    if len(M) < 3:
+        print("  WARNING: too few valid points for PBH abundance plot")
+        return
+
+    with plt.rc_context(PAPER_RCPARAMS):
+        fig, ax = plt.subplots(figsize=(3.5, 2.8))
+        ax.loglog(M, f_pbh, "-", color=TOL["red"], lw=1.5,
+                  label=f"{model_label}")
+        ax.set_xlabel(r"$M / M_\odot$")
+        ax.set_ylabel(r"$\Omega_{\mathrm{PBH}} / \Omega_{\mathrm{DM}}$")
+        ax.set_xlim(1e-19, 1e7)
+        ax.set_ylim(1e-4, 1.0)
+        ax.legend(loc="upper left")
+        ax.grid(True, alpha=0.25, which="both")
+        fig.tight_layout()
+        save_fig(fig, filename, category)
 
 
 def main():

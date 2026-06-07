@@ -62,3 +62,12 @@ k_max_default = 1.0         # Mpc^-1
 bg_steps_default = 10000    # background ODE integration steps
 ms_steps_default = 5000     # Mukhanov-Sasaki ODE integration steps
 T_max_default = 5000.0      # max conformal time
+
+# ── PBH parameters (Ezquiaga et al. 1705.04861, Sec. III) ───────────────────
+
+zeta_c_default = 0.052      # critical collapse threshold for PBH formation
+gamma_default = 0.4          # PBH mass efficiency factor
+k_eq_default = 0.0104        # Mpc^-1, comoving wavenumber at matter-radiation equality
+                              # Computed from CAMB_COSMOLOGY: k_eq = a_eq * H_eq
+M_eq_default = 3.0e17        # M_sun, horizon mass at matter-radiation equality
+                              # M_eq = c^3/(2G) * 1/H_eq (approximate from ΛCDM)
