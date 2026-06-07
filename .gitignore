@@ -36,3 +36,11 @@ notebooks/*.ipynb
 
 # Notebooks with paper-figure exploration code
 notebooks/*.ipynb
+node_modules/
+
+# One-off analysis scripts (non-reproducible)
+scripts/fig6_ns_vs_x0.py
+scripts/reproduce_fig1.py
+
+# Ezquiaga inflection parameters manuscript
+ezquiaga/
