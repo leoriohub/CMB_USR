@@ -141,7 +141,7 @@ def build_weighted_kgrid(k_min, k_max, k_pivot_phys, dense_min=1e-4, dense_max=1
     return k_grid
 
 
-def get_k_pivot_code(bg_sol, derived_bg, end_idx, N_star):
+def get_k_pivot_code(bg_sol, derived_bg, end_idx, N_star, N_total=None):
     """
     Find the code-unit wavenumber k_code at pivot exit.
 
@@ -149,17 +149,25 @@ def get_k_pivot_code(bg_sol, derived_bg, end_idx, N_star):
     k_code = a_pivot * z_pivot (dimensionless code units),
     used to scale all physical k-modes into the MS solver.
 
+    If N_total is None, uses derived_bg["N"][end_idx] (integer index).
+    Pass an interpolated N_total for smooth (jump-free) behavior.
+
     Returns (k_pivot_code, pivot_bg_idx, N_total) or (None, None, None)
     if total e-folds are insufficient for N_star.
     """
-    N_total = derived_bg["N"][end_idx]
+    if N_total is None:
+        N_total = derived_bg["N"][end_idx]
     if N_total < N_star:
         return None, None, None
     N_pivot = N_total - N_star
-    pivot_idx = int(np.argmin(np.abs(derived_bg["N"][:end_idx] - N_pivot)))
-    z_pivot = bg_sol[2][pivot_idx]
-    a_pivot = np.exp(bg_sol[3][pivot_idx])
+    # Linear interpolation on full arrays (local, no spline ringing from post-inflation data)
+    N_arr = derived_bg["N"]
+    z_arr = bg_sol[2]
+    n_arr = bg_sol[3]
+    z_pivot = float(np.interp(N_pivot, N_arr, z_arr))
+    a_pivot = float(np.exp(np.interp(N_pivot, N_arr, n_arr)))
     k_pivot_code = a_pivot * z_pivot
+    pivot_idx = int(np.argmin(np.abs(N_arr - N_pivot)))
     return k_pivot_code, pivot_idx, N_total
 
 
@@ -308,7 +316,18 @@ def run_pspectrum_pipeline(
         # Fallback: use last index (field trapped at inflection, USR-only trajectory)
         end_idx = len(derived_bg["epsH"]) - 1
 
-    k_pivot_code, pivot_bg_idx, N_total = get_k_pivot_code(bg_sol, derived_bg, end_idx, N_star)
+    # Interpolate N_total at fractional crossing of eps_H = 1 for smoothness
+    epsH = derived_bg["epsH"]
+    N = derived_bg["N"]
+    N_total_frac = float(N[end_idx])
+    if 0 < end_idx < len(epsH) and epsH[end_idx] > 1.0 >= epsH[end_idx - 1]:
+        f = (1.0 - epsH[end_idx - 1]) / (epsH[end_idx] - epsH[end_idx - 1])
+        if 0 <= f <= 1:
+            N_total_frac = float(N[end_idx - 1] + f * (N[end_idx] - N[end_idx - 1]))
+
+    k_pivot_code, pivot_bg_idx, N_total = get_k_pivot_code(
+        bg_sol, derived_bg, end_idx, N_star, N_total=N_total_frac
+    )
     if k_pivot_code is None:
         return {
             "status": "error",
