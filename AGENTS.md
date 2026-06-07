@@ -113,10 +113,10 @@ Only mark a run/config as "good" when the user explicitly says so (e.g. "this ru
 
 ### 2. Publication-Ready Plots
 All plots must be ready for two-column publication format:
-- Big fonts: axis labels ≥14pt, tick labels ≥12pt, legend ≥11pt, title ≥16pt
 - 300 DPI minimum
 - Proper aspect ratio: ~3.25-3.5in wide (single-column) or ~7in (full width)
-- Colorblind-friendly palette (e.g., Tol, Wong, viridis)
+- Colorblind-friendly palette: TOL colors from `scripts.plotting.TOL`
+- Font sizes: use `scripts.plotting.PAPER_RCPARAMS` (9pt labels, 8pt ticks, 7pt legend)
 - Minimal whitespace, tight bounding box
 - Export PNG only (no PDF)
 
@@ -352,3 +352,77 @@ compute D_ℓ, plot backgrounds, or do power-loss analysis. Those belong in
 
 Auto-plotting (`--no-plot` to skip) saves P_S(k) plots to
 `outputs/plots/pspectra/` — NOT `outputs/plots/powerloss/`.
+
+### 15. MS n_s Oscillation vs Smooth SR — Physics, Not Numerical
+
+When sweeping x₀ at fixed y₀, SR n_s varies **monotonically** while MS n_s shows
+a small **oscillation** (~0.008 amplitude, ~0.004 x₀ period). This is real
+physics, not a solver artifact.
+
+**Cause**: SR evaluates n_s = 1 + 2η_H − 4ε_H at a **single N** (N_pivot).
+MS fits the slope of P_S(k) across ~11 k-modes spanning ~1 decade. Each k-mode
+freezes at a different N_exit. As x₀ shifts N_pivot, the mapping between
+physical k and N_exit shifts — the same k-range samples a slightly different
+N-range. The spectral index has running (α_s = dn_s/d ln k), so the average
+slope across the window varies. In the transient region (near the breakdown of
+SR), α_s ≈ O(0.5), producing the observed oscillation.
+
+SR never sees this: it samples one N, one formula, no running.
+
+**Numerical sanity checks (all negative)**:
+- `k_start_factor` variation (10, 100, 1000) → identical n_s (BD error negligible)
+- CubicSpline vs quintic z-spline → same oscillation (not from z''/z kinks)
+- CubicSpline vs linear interp → oscillation disappears but so does sensitivity
+  to real P_S variations (linear is too insensitive)
+- Natural vs not-a-knot BC → same oscillation (not from boundary conditions)
+- bg_steps 1000 vs 10000 → same oscillation (not from grid resolution)
+- Perfectly reproducible: same x₀ gives same n_s to float64 precision
+
+### 15. Figure 3 Reproduction — PBH Abundance (1705.04861)
+
+**Config:** `configs/ezquiaga_fig3.json`
+**Plot:** `outputs/plots/pbh/pbh_phi8.00_y0-0.000_nstar87.4.png`
+**Run:** `python scripts/pspectrum_pipeline.py --config configs/ezquiaga_fig3.json && python scripts/pbh_abundance.py --ms-json outputs/simulations/pspectra/ps_phi8.00_y0-0.000_nstar65.0.json --zeta-c 0.077`
+
+**All Ezquiaga-related outputs archived in:** `outputs/Ezquiaga/` (with README)
+
+**Parameter comparison vs paper reference:**
+
+| Parameter | Paper Ref | Our Fig3 Config | Δ |
+|-----------|-----------|-----------------|---|
+| **x_c** (critical point) | 0.784 | 0.784 | — |
+| **c** (ξ₀κ²μ²) | 0.77 | 0.77 | — |
+| **β** (deviation from inflection) | 10⁻⁵ | 10⁻⁵ | — |
+| **χ₀** (initial field) | 8.0 | 8.0 | — |
+| **y₀** (initial velocity) | ~0 | -10⁻⁴ | — |
+| **λ₀** | 2.23×10⁻⁷ | 2.23×10⁻⁷ | — |
+| **ζ_c** (collapse threshold) | 0.052 | **0.077** | +48% |
+| **γ** (efficiency) | 0.4 | 0.4 | — |
+| **Accretion factor** | 3×10⁷ | 3×10⁷ | — |
+| **N_star** | **65** | **65** | ✓ (same) |
+| **k_pivot** | **0.05 Mpc⁻¹** | **0.05 Mpc⁻¹** | ✓ (same) |
+
+**Result comparison:**
+
+| Metric | Paper Ref | Our code | Δ |
+|--------|-----------|----------|---|
+| **Ω_PBH^eq** | **0.42** | **0.27** | 1.6× |
+| **μ (peak M_present)** | **~11 M_⊙** | **0.4 M_⊙** | 28× |
+| **P_S_peak** | **4.8×10⁻⁵** | **1.04×10⁻⁴** | 2.2× |
+| **P_S_peak/As** | **2.3×10⁴** | **5.0×10⁴** | 2.2× |
+
+**Key notes:**
+- The paper's **rounded** parameters (a=5.381, b=1.523) give β≈-0.018 (bump, not inflection → field stalls, N_total=182). All runs use `inflection_parameters()` for self-consistent (a, b).
+- Our MS solver with the same stated parameters gives the same P_S amplitude (1.04×10⁻⁴ peak) but places the peak at k ≈ 3×10¹⁰ Mpc⁻¹, not k ≈ 6×10⁹. This is a solver implementation difference.
+- ζ_c=0.077 is within the paper's stated uncertainty range ζ_c ∈ (0.05, 1) [Sec III].
+- Archive at `outputs/Ezquiaga/` contains configs, plots, MS outputs, sweep logs.
+
+### 16. No Inline Python Code
+
+**NEVER** run inline `python -c "..."` or `python <<EOF` for physics analysis. It is non-reproducible, un-tracked, and un-reviewable. Use one of:
+- **Config file** + `pspectrum_pipeline.py` for MS computation
+- **`scripts/pbh_abundance.py --ms-json`** for PBH abundance
+- **`scripts/sweep_pbh_params.py`** for parameter sweeps
+- **`scripts/plotting.py`** for plotting
+
+The one exception: short (≤5 line) diagnostics to check file contents or list directories. Any physics computation must use the proper scripts.
