@@ -1146,6 +1146,106 @@ def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
         save_fig(fig, filename, category)
 
 
+# ── Inflection potential zoom plot (Ezquiaga CHI) ─────────────────────────
+
+
+def _V_shape(x, a, b, c=0.77):
+    x = np.asarray(x, dtype=float)
+    lnx = np.log(np.maximum(x, 1e-30))
+    num = (1 + a * lnx**2) * x**4
+    den = (1 + c * (1 + b * lnx) * x**2)**2
+    return num / den
+
+
+def plot_inflection_zoom(parameter_sets, x_range=(0.7, 0.9),
+                         layout="split", filename="inflection_zoom",
+                         category="pbh"):
+    """
+    Two-panel zoom of V(x) near the inflection point, comparing paper vs exact.
+
+    Parameters
+    ----------
+    parameter_sets : dict of label -> dict
+        Each entry: {"a": float, "b": float, "c": float, "color": str, "ls": str}.
+        Typically two entries: paper params and exact/self-consistent.
+    x_range : (float, float)
+        Linear x range for the zoom.
+    layout : "split" or "separate"
+        "split": single 2-panel figure (paper left, exact right).
+        "separate": two individual figures with _paper, _exact suffixes.
+    filename : str
+        Base filename (no extension).
+    category : str
+        OUTPUT_DIRS key for save_fig.
+    """
+    x_grid = np.linspace(x_range[0], x_range[1], 2000)
+
+    def _filter_params(params):
+        return {k: params[k] for k in ("a", "b", "c") if k in params}
+
+    labels = list(parameter_sets.keys())
+    colors = [parameter_sets[l].get("color", TOL["red"]) for l in labels]
+    lss = [parameter_sets[l].get("ls", "-") for l in labels]
+
+    with plt.rc_context(PAPER_RCPARAMS):
+        if layout == "split":
+            fig, axes = plt.subplots(1, 2, figsize=(7, 2.8))
+            for ax, label, color, ls in zip(axes, labels, colors, lss):
+                fp = _filter_params(parameter_sets[label])
+                ax.plot(x_grid, _V_shape(x_grid, **fp),
+                        color=color, ls=ls, lw=1.2)
+                ax.axvline(0.784, color=TOL["grey"], ls=":", lw=0.8, alpha=0.5)
+                ax.set_xlabel(r"$x = \phi/\mu$")
+                ax.set_ylabel(r"$\hat{V}(x)$")
+                ax.set_xlim(*x_range)
+                ax.grid(True, alpha=0.2)
+            fig.tight_layout()
+            save_fig(fig, filename, category)
+            plt.close(fig)
+
+        elif layout == "separate":
+            for label in labels:
+                fig, ax = plt.subplots(figsize=(3.5, 2.5))
+                fp = _filter_params(parameter_sets[label])
+                color = parameter_sets[label].get("color", TOL["red"])
+                ls = parameter_sets[label].get("ls", "-")
+                ax.plot(x_grid, _V_shape(x_grid, **fp),
+                        color=color, ls=ls, lw=1.2)
+                ax.axvline(0.784, color=TOL["grey"], ls=":", lw=0.8, alpha=0.5)
+                ax.set_xlabel(r"$x = \phi/\mu$")
+                ax.set_ylabel(r"$\hat{V}(x)$")
+                ax.set_xlim(*x_range)
+                ax.grid(True, alpha=0.2)
+                fig.tight_layout()
+                save_fig(fig, f"{filename}_{label.lower().replace(' ', '_')}",
+                         category)
+                plt.close(fig)
+
+
+def plot_full_potential(a, b, c=0.77, x_range=(0.01, 10),
+                        filename="full_potential", category="pbh",
+                        color=None):
+    """
+    Single-curve linear plot of V(x) over a wide x range.
+
+    Shows the overall potential shape from small x to plateau,
+    with a vertical marker at x_c.
+    """
+    x_grid = np.logspace(np.log10(x_range[0]), np.log10(x_range[1]), 5000)
+
+    with plt.rc_context(PAPER_RCPARAMS):
+        fig, ax = plt.subplots(figsize=(3.5, 2.5))
+        ax.plot(x_grid, _V_shape(x_grid, a, b, c),
+                color=color or TOL["blue"], lw=1.2)
+        ax.axvline(0.784, color=TOL["grey"], ls=":", lw=0.8, alpha=0.7)
+        ax.set_xlabel(r"$x = \phi/\mu$")
+        ax.set_ylabel(r"$\hat{V}(x)$")
+        ax.set_xlim(*x_range)
+        fig.tight_layout()
+        save_fig(fig, filename, category)
+        plt.close(fig)
+
+
 def main():
     """CLI entry point: python -m scripts.plotting <subcommand> [args]."""
     import argparse
