@@ -96,9 +96,10 @@ def load_ms_json(path):
 
 def run_from_ms(ms_path, gamma, zeta_c, k_eq, M_eq,
                 save_json=True, plot=True, category="pbh",
-                accretion=ACCRETION_FACTOR):
+                accretion=ACCRETION_FACTOR, use_old_bounds=False,
+                smooth_bounds=False):
     k_phys, P_S, meta = load_ms_json(ms_path)
-    chi0 = meta.get("x0", 0)
+    chi0 = meta.get("x0", meta.get("chi0", 0.0))
     y0 = meta.get("y0", -1e-4)
     N_total = meta.get("N_total", 0)
 
@@ -142,11 +143,18 @@ def run_from_ms(ms_path, gamma, zeta_c, k_eq, M_eq,
         print(f"  Saved: {output_path}")
 
     if plot and len(M) > 0:
-        fname = make_filename("pbh", chi0, y0, n_tr, "")
+        suffix = ""
+        if use_old_bounds:
+            suffix += "_oldbounds"
+        if smooth_bounds:
+            suffix += "_smooth"
+        fname = make_filename("pbh", chi0, y0, n_tr, suffix)
         plot_pbh_abundance(
             M, f_pbh, zeta_c=zeta_c, gamma=gamma,
             model_label=f"Ezquiaga CHI χ₀={chi0}",
             filename=fname, category=category,
+            use_old_bounds=use_old_bounds,
+            smooth_bounds=smooth_bounds,
         )
 
     print(f"  N_total={N_total:.1f}, modes={len(k_phys)}, "
@@ -159,7 +167,8 @@ def run_from_sr(chi0=8.0, y0=-1e-4, bg_steps=5000, T_max=1000.0,
                 gamma=gamma_default, zeta_c=zeta_c_default,
                 k_eq=k_eq_default, M_eq=M_eq_default,
                 save_json=True, plot=True, category="pbh",
-                accretion=ACCRETION_FACTOR):
+                accretion=ACCRETION_FACTOR, use_old_bounds=False,
+                smooth_bounds=False):
     from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
     from inf_dyn_background import run_background_simulation, get_derived_quantities
     from scripts.plotting import compute_ps_sr
@@ -231,11 +240,18 @@ def run_from_sr(chi0=8.0, y0=-1e-4, bg_steps=5000, T_max=1000.0,
         print(f"  Saved: {output_path}")
 
     if plot and len(M) > 0:
-        fname = make_filename("pbh", chi0, y0, n_tr, "")
+        suffix = ""
+        if use_old_bounds:
+            suffix += "_oldbounds"
+        if smooth_bounds:
+            suffix += "_smooth"
+        fname = make_filename("pbh", chi0, y0, n_tr, suffix)
         plot_pbh_abundance(
             M, f_pbh, zeta_c=zeta_c, gamma=gamma,
             model_label=f"Ezquiaga CHI χ₀={chi0}",
             filename=fname, category=category,
+            use_old_bounds=use_old_bounds,
+            smooth_bounds=smooth_bounds,
         )
 
     print(f"  N_total={N_total:.1f}, modes={len(k_phys)}, "
@@ -256,6 +272,10 @@ def main():
                    help="Mass growth from equality to today (default 3e7)")
     p.add_argument("--no-plot", action="store_true")
     p.add_argument("--no-save", action="store_true")
+    p.add_argument("--use-old-bounds", action="store_true",
+                   help="Use old 2017 paper bounds instead of modern ones")
+    p.add_argument("--smooth-bounds", action="store_true",
+                   help="Smooth sparse bounds data using Pchip shape-preserving interpolation")
     args = p.parse_args()
 
     if args.ms_json:
@@ -264,6 +284,8 @@ def main():
             k_eq_default, M_eq_default,
             save_json=not args.no_save, plot=not args.no_plot,
             accretion=args.accretion,
+            use_old_bounds=args.use_old_bounds,
+            smooth_bounds=args.smooth_bounds,
         )
     else:
         run_from_sr(
@@ -271,6 +293,8 @@ def main():
             gamma=args.gamma, zeta_c=args.zeta_c,
             save_json=not args.no_save, plot=not args.no_plot,
             accretion=args.accretion,
+            use_old_bounds=args.use_old_bounds,
+            smooth_bounds=args.smooth_bounds,
         )
 
 

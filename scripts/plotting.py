@@ -1119,12 +1119,12 @@ def _cli_compare_configs(phi0_str="", y0_str="", nstar_str="",
 
 def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
                        model_label="PBH-CHI", filename="pbh_abundance",
-                       category="pbh"):
+                       category="pbh", use_old_bounds=False, smooth_bounds=False):
     """
     Plot Ω_PBH/Ω_DM vs M/M_⊙ (Figure 3 style).
 
     log-log, solid TOL line, paper-style legend.
-    Observational constraint overlays not included (data file dependent).
+    Observational constraint overlays included from bradkav/PBHbounds.
     """
     mask = np.isfinite(M) & np.isfinite(f_pbh) & (M > 0) & (f_pbh > 0)
     M, f_pbh = M[mask], f_pbh[mask]
@@ -1133,15 +1133,129 @@ def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
         return
 
     with plt.rc_context(PAPER_RCPARAMS):
-        fig, ax = plt.subplots(figsize=(3.5, 2.8))
-        ax.loglog(M, f_pbh, "-", color=TOL["red"], lw=1.5,
-                  label=f"{model_label}")
+        fig, ax = plt.subplots(figsize=(4.5, 3.5))
+        
+        bounds_dir = os.path.join(ROOT_DIR, "data", "PBHbounds", "bounds")
+        
+        # Define a unique color for each constraint dataset to avoid repeats (Paul Tol colorblind-safe)
+        colors_dict = {
+            "EGB": "#EE7733",            # Orange
+            "femto-lensing": "#EEDD88",  # Sand/Yellow
+            "GRB-parallax": "#FFAABB",   # Rose
+            "HSC": "#44BB99",            # Teal
+            "Kepler": "#AA3377",         # Purple
+            "MACHO": "#666666",          # Grey
+            "EROS": "#4477AA",           # Blue
+            "LIGO": "#33BBEE",           # Cyan
+            "Eri-II": "#228833",         # Green
+            "Planck": "#222222"          # Dark
+        }
+        
+        if use_old_bounds:
+            datasets = [
+                # (label, filename, color, alpha, (x, y, rotation))
+                ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (2e-18, 2e-2, 65)),
+                ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 2.5e-1, 0)),
+                ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (6e-14, 7e-2, 0)),
+                ("HSC", "old_bounds/HSC_original.txt", TOL["teal"], 0.08, (1e-10, 2e-2, 0)),
+                ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 2e-1, 0)),
+                ("MACHO", "M.txt", TOL["grey"], 0.08, (1e-5, 2e-1, 0)),
+                ("EROS", "EROS.txt", TOL["blue"], 0.08, (1e-2, 5e-2, 0)),
+                ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (3e3, 1.5e-1, -55)),
+                ("Planck", "old_bounds/CMB_withoutDM.txt", TOL["dark"], 0.08, (1e3, 3e-3, -40))
+            ]
+        else:
+            datasets = [
+                # (label, filename, color, alpha, (x, y, rotation))
+                ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (2e-18, 2e-2, 65)),
+                ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 2.5e-1, 0)),
+                ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (6e-14, 7e-2, 0)),
+                ("HSC", "HSC.txt", TOL["teal"], 0.08, (1e-10, 6e-3, 0)),
+                ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 2e-1, 0)),
+                ("MACHO", "M.txt", TOL["grey"], 0.08, (1e-5, 2e-1, 0)),
+                ("EROS", "EROS.txt", TOL["blue"], 0.08, (1e-2, 5e-2, 0)),
+                ("LIGO", "LIGO.txt", TOL["purple"], 0.08, (8.0, 8e-3, -55)),
+                ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (1.5e3, 6e-2, -50)),
+                ("Planck", "CMB.txt", TOL["dark"], 0.08, (4.5e1, 2e-2, -82))
+            ]
+        
+        if os.path.exists(bounds_dir):
+            for label, fname, color_default, alpha, pos in datasets:
+                color = colors_dict.get(label, color_default)
+                path = os.path.join(bounds_dir, fname)
+                if os.path.exists(path):
+                    try:
+                        data = np.loadtxt(path, comments='#')
+                        m_b, f_b = data[:, 0], data[:, 1]
+                        
+                        # Sort to ensure monotonic mass coordinates
+                        sort_idx = np.argsort(m_b)
+                        m_b, f_b = m_b[sort_idx], f_b[sort_idx]
+                        
+                        # Extend boundaries to prevent visual clipping/patchiness
+                        if label == "EGB":
+                            # Discard the first two points which are flat digitization artifacts along the bottom axis
+                            m_b = m_b[2:]
+                            f_b = f_b[2:]
+                            # Extrapolate to the left plot limit (1e-19) following the log-log slope of the first two points
+                            log_m1, log_m2 = np.log10(m_b[0]), np.log10(m_b[1])
+                            log_f1, log_f2 = np.log10(f_b[0]), np.log10(f_b[1])
+                            slope = (log_f2 - log_f1) / (log_m2 - log_m1)
+                            
+                            log_m_left = np.log10(1e-19)
+                            log_f_left = log_f1 + slope * (log_m_left - log_m1)
+                            f_left = 10**log_f_left
+                            
+                            m_b = np.insert(m_b, 0, 1e-19)
+                            f_b = np.insert(f_b, 0, f_left)
+                        elif label == "Eri-II" and m_b[-1] < 1e8:
+                            # Extrapolate to the right plot limit (1e8) following the log-log slope of the last two points
+                            log_m1, log_m2 = np.log10(m_b[-2]), np.log10(m_b[-1])
+                            log_f1, log_f2 = np.log10(f_b[-2]), np.log10(f_b[-1])
+                            slope = (log_f2 - log_f1) / (log_m2 - log_m1)
+                            
+                            log_m_right = np.log10(1e8)
+                            log_f_right = log_f2 + slope * (log_m_right - log_m2)
+                            f_right = 10**log_f_right
+                            
+                            m_b = np.append(m_b, 1e8)
+                            f_b = np.append(f_b, f_right)
+
+                        
+                        # Apply shape-preserving interpolation if smoothing is requested
+                        if smooth_bounds and len(m_b) > 3:
+                            from scipy.interpolate import PchipInterpolator
+                            log_m = np.log10(m_b)
+                            log_f = np.log10(f_b)
+                            log_m, unique_idx = np.unique(log_m, return_index=True)
+                            log_f = log_f[unique_idx]
+                            
+                            if len(log_m) > 3:
+                                interp = PchipInterpolator(log_m, log_f)
+                                m_dense = np.logspace(log_m.min(), log_m.max(), 300)
+                                f_dense = np.clip(10**interp(np.log10(m_dense)), 1e-30, 10.0)
+                                m_b, f_b = m_dense, f_dense
+
+                        ax.plot(m_b, f_b, color=color, lw=0.8)
+                        ax.fill_between(m_b, f_b, 10.0, color=color, alpha=alpha, lw=0)
+                        tx, ty, rot = pos
+                        ax.text(tx, ty, label, color=color, fontsize=6, 
+                                rotation=rot, ha='center', va='center', zorder=10)
+                    except Exception as e:
+                        print(f"  WARNING: Failed to load {fname}: {e}")
+        else:
+            print("  WARNING: PBHbounds data not found at", bounds_dir)
+
+        # Plot our model's PBH abundance curve
+        ax.loglog(M, f_pbh, "-.", color=TOL["red"], lw=1.5, label=model_label)
+        
         ax.set_xlabel(r"$M / M_\odot$")
         ax.set_ylabel(r"$\Omega_{\mathrm{PBH}} / \Omega_{\mathrm{DM}}$")
-        ax.set_xlim(1e-19, 1e7)
+        ax.set_xlim(1e-19, 1e8)
         ax.set_ylim(1e-4, 1.0)
-        ax.legend(loc="upper left")
-        ax.grid(True, alpha=0.25, which="both")
+        ax.legend(loc="lower right", fontsize=7)
+        # Use a gray grid
+        ax.grid(True, alpha=0.2, color='gray', which="both", ls='--')
         fig.tight_layout()
         save_fig(fig, filename, category)
 
