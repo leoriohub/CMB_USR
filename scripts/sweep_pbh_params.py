@@ -1,9 +1,10 @@
-"""Parameter sweep for PBH abundance in the Ezquiaga CHI model.
+"""Parameter sweep for PBH mass-range search in the Ezquiaga CHI model.
 
-Sweeps (x_c, c, β) to find parameter sets matching the paper's Figure 3:
-  μ ≈ 11 M_⊙, Ω_PBH^eq ≈ 0.42, P_S_peak/As ≈ 2.3×10⁴
+Sweeps (x_c, c, β, χ₀) to find parameter sets with P_S(k) peaks in target
+observable mass gaps (sub-solar [10⁻⁶, 10⁻²] M_⊙, asteroid [10⁻¹⁷, 10⁻¹⁵] M_⊙).
 
-Uses the Mukhanov-Sasaki (MS) solver (NOT SR — SR breaks during USR).
+Records n_s at CMB scales for Planck compatibility screening.
+Uses MS solver (NOT SR — SR breaks during USR).
 """
 
 import os
@@ -50,16 +51,76 @@ def model_from_params(x_c, c, beta):
     return m
 
 
-def _pbh_weighted_kgrid():
-    """k-grid focused on PBH peak region, covering k = 10⁶ to 10¹³ Mpc⁻¹.
-    250 modes total for adequate USR peak resolution."""
-    k_cmb = np.array([1e-6, 0.002])
-    k_pbh = np.logspace(6, 13, 250)
-    grid = np.unique(np.concatenate([k_cmb, k_pbh]))
+def _pbh_weighted_kgrid(target="subsolar"):
+    """k-grid targeting a specific PBH mass range, plus CMB-scale n_s fitting.
+
+    Parameters
+    ----------
+    target : str
+        "subsolar" — k ∈ [10⁶, 10¹³] (default, current behavior)
+        "asteroid" — k ∈ [10¹², 10¹⁸]
+        "all"      — k ∈ [10⁶, 10¹⁸]
+    Returns
+    -------
+    grid : ndarray  sorted, unique k-values [Mpc⁻¹]
+    """
+    # CMB-scale points for n_s computation at k=0.05
+    k_cmb_ns = np.logspace(np.log10(0.005), np.log10(0.5), 15)
+
+    if target == "asteroid":
+        k_pbh = np.logspace(12, 18, 250)
+    elif target == "all":
+        k_pbh = np.logspace(6, 18, 300)
+    else:  # "subsolar"
+        k_pbh = np.logspace(6, 13, 250)
+
+    grid = np.unique(np.concatenate([k_cmb_ns, k_pbh]))
     return grid
 
 
-def run_ms(model, chi0=8.0, y0=-1e-4):
+def compute_ns(k_phys, P_S, k_pivot=0.05, window=3.0):
+    """Compute n_s and interpolated A_s at k_pivot from MS P_S(k).
+
+    Fits ln(P_S) vs ln(k) over k ∈ [k_pivot/window, k_pivot*window].
+    Returns (n_s, A_s_at_pivot) or (None, None) if too few points.
+    """
+    lo = k_pivot / window
+    hi = k_pivot * window
+    idx = (k_phys >= lo) & (k_phys <= hi)
+    k_fit = k_phys[idx]
+    ps_fit = P_S[idx]
+    if len(k_fit) < 3:
+        return None, None
+    valid = np.isfinite(ps_fit) & (ps_fit > 1e-30)
+    k_fit, ps_fit = k_fit[valid], ps_fit[valid]
+    if len(k_fit) < 3:
+        return None, None
+    coeffs = np.polyfit(np.log(k_fit), np.log(ps_fit), 1)
+    n_s = float(coeffs[0] + 1)
+    A_s = float(np.exp(np.interp(np.log(k_pivot), np.log(k_fit), np.log(ps_fit))))
+    return n_s, A_s
+
+
+def classify_mass_range(M_peak):
+    """Classify PBH peak present-day mass into an observable range bin."""
+    if np.isnan(M_peak) or M_peak <= 0:
+        return "unknown"
+    if M_peak < 1e-17:
+        return "too_light"
+    if M_peak < 1e-15:
+        return "asteroid_gap"
+    if M_peak < 1e-6:
+        return "intermediate"
+    if M_peak < 1e-2:
+        return "sub_solar_gap"
+    if M_peak < 1:
+        return "sub_stellar"
+    if M_peak < 100:
+        return "stellar_ligo_ruled_out"
+    return "massive"
+
+
+def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar"):
     """Run the MS solver for a given model, return k_phys, P_S, N_total."""
     from pspectrum_pipeline import run_pspectrum_pipeline
 
@@ -67,7 +128,7 @@ def run_ms(model, chi0=8.0, y0=-1e-4):
     model.y0 = y0
     model.patch_background_solver()
 
-    k_grid = _pbh_weighted_kgrid()
+    k_grid = _pbh_weighted_kgrid(target)
 
     result = run_pspectrum_pipeline(
         model=model,
@@ -127,19 +188,17 @@ def compute_pbh_metrics(k_phys, P_S, zeta_c=0.052):
     }
 
 
-def score_config(params, ps_peak, ps_ratio, m_peak, f_total):
-    """Score a config by distance from paper targets. Lower is better."""
-    w_ps = 1.0
-    w_m = 1.0
-    w_f = 1.0
-    s_ps = (ps_ratio / TARGET_PS_RATIO - 1) ** 2 * w_ps if ps_ratio > 0 else 100
-    s_m = (np.log10(max(m_peak, 1e-10) / TARGET_M_PEAK)) ** 2 * w_m
-    s_f = (np.log10(max(f_total, 1e-10) / TARGET_F_TOTAL)) ** 2 * w_f
-    return s_ps + s_m + s_f
+def run_sweep(xc_vals, c_vals, beta_vals, chi0, y0, zeta_c,
+              target="subsolar", N_total_min=65, progress_fn=None):
+    """Run the full sweep over parameter grid.
 
-
-def run_sweep(xc_vals, c_vals, beta_vals, chi0, y0, zeta_c, progress_fn=None):
-    """Run the full sweep over parameter grid."""
+    Parameters
+    ----------
+    target : str
+        k-grid target ("subsolar", "asteroid", "all")
+    N_total_min : float
+        Minimum N_total to accept (configs with fewer e-folds are skipped)
+    """
     results = []
     total = len(xc_vals) * len(c_vals) * len(beta_vals)
     idx = 0
@@ -151,19 +210,16 @@ def run_sweep(xc_vals, c_vals, beta_vals, chi0, y0, zeta_c, progress_fn=None):
                     progress_fn(idx, total, xc, c, beta)
                 try:
                     m = model_from_params(xc, c, beta)
-                    k_m, ps_ms, N_total, pipe_result = run_ms(m, chi0, y0)
-                    if N_total < 65:
+                    k_m, ps_ms, N_total, pipe_result = run_ms(m, chi0, y0, target)
+                    if N_total < N_total_min:
                         continue
                     peak = find_ps_peak(k_m, ps_ms)
                     if peak is None:
                         continue
                     pbh = compute_pbh_metrics(k_m, ps_ms, zeta_c)
+                    n_s, A_s_at_cmb = compute_ns(k_m, ps_ms)
+                    mass_bin = classify_mass_range(pbh["M_peak"])
                     ps_ratio = peak["P_S_peak"] / TARGET_As
-                    sc = score_config(
-                        (xc, c, beta),
-                        peak["P_S_peak"], ps_ratio,
-                        pbh["M_peak"], pbh["f_total"],
-                    )
                     result = {
                         "x_c": xc, "c": c, "beta": beta,
                         "N_total": N_total,
@@ -174,7 +230,9 @@ def run_sweep(xc_vals, c_vals, beta_vals, chi0, y0, zeta_c, progress_fn=None):
                         if peak["k_peak"] > 0 else 0,
                         "M_present": pbh["M_peak"],
                         "f_total": pbh["f_total"],
-                        "score": sc,
+                        "mass_bin": mass_bin,
+                        "n_s": n_s,
+                        "A_s_at_cmb": A_s_at_cmb,
                         "k_phys": k_m.tolist(),
                         "P_S": ps_ms.tolist(),
                     }
@@ -182,7 +240,7 @@ def run_sweep(xc_vals, c_vals, beta_vals, chi0, y0, zeta_c, progress_fn=None):
                 except Exception as e:
                     results.append({
                         "x_c": xc, "c": c, "beta": beta,
-                        "score": 1e6, "error": str(e),
+                        "error": str(e),
                     })
     return results
 
@@ -264,10 +322,15 @@ def plot_heatmap_2d(results, x_param, y_param, z_param,
         yi = y_vals.index(r[y_param])
         z_grid[yi, xi] = r.get(z_param, np.nan)
 
+    # Auto-detect norm: LogNorm only if all values are positive
+    z_flat = z_grid[~np.isnan(z_grid)]
+    use_log = len(z_flat) > 0 and np.all(z_flat > 0)
+    norm = matplotlib.colors.LogNorm() if use_log else None
+
     with plt.rc_context(PAPER_RCPARAMS):
         fig, ax = plt.subplots(figsize=(4.5, 3.5))
         im = ax.pcolormesh(x_vals, y_vals, z_grid, shading="auto",
-                           cmap="viridis", norm=matplotlib.colors.LogNorm())
+                           cmap="viridis", norm=norm)
         cbar = fig.colorbar(im, ax=ax)
         cbar.set_label(z_label)
         ax.set_xlabel(x_label)
@@ -277,11 +340,14 @@ def plot_heatmap_2d(results, x_param, y_param, z_param,
 
 
 def plot_best_configs(results, n_best=3, filename="pbh_best_configs", category="pbh"):
-    """Plot f_PBH(M) for the top-N scoring configs."""
-    scored = [r for r in results if r.get("score", 1e6) < 1e5]
-    scored.sort(key=lambda r: r["score"])
-    best = scored[:n_best]
+    """Plot f_PBH(M) for the top-N configs in target mass bins."""
+    target_bins = {"asteroid_gap", "sub_solar_gap"}
+    filtered = [r for r in results
+                if r.get("mass_bin") in target_bins and not r.get("error")]
+    filtered.sort(key=lambda r: r.get("f_total", 0), reverse=True)
+    best = filtered[:n_best]
     if len(best) < 1:
+        print("  No configs in target mass bins to plot")
         return
 
     with plt.rc_context(PAPER_RCPARAMS):
@@ -294,7 +360,7 @@ def plot_best_configs(results, n_best=3, filename="pbh_best_configs", category="
                 continue
             pbh = compute_pbh_metrics(k, ps, zeta_c=0.052)
             lbl = (f"x_c={r['x_c']:.4f}, c={r['c']:.3f}, "
-                   f"β={r['beta']:.1e}")
+                   f"β={r['beta']:.1e}, {r['mass_bin']}")
             if len(pbh["M"]) > 5:
                 ax.loglog(pbh["M"], pbh["f_pbh"], "-", color=colors[i % 3],
                           lw=1.5, label=lbl)
@@ -302,33 +368,40 @@ def plot_best_configs(results, n_best=3, filename="pbh_best_configs", category="
         ax.axhline(1.0, color=TOL["grey"], ls=":", lw=0.8)
         ax.set_xlabel(r"$M / M_\odot$")
         ax.set_ylabel(r"$\Omega_{\mathrm{PBH}} / \Omega_{\mathrm{DM}}$")
-        ax.set_xlim(1e-4, 1e4)
-        ax.set_ylim(1e-4, 1.0)
         ax.legend(fontsize=6, loc="upper left")
         ax.grid(True, alpha=0.2, which="both")
         fig.tight_layout()
         save_fig(fig, filename, category)
 
 
-def print_summary(results, n_show=15):
-    """Print a formatted summary table."""
-    scored = [r for r in results if r.get("score", 1e6) < 1e5]
-    scored.sort(key=lambda r: r["score"])
+def print_summary(results, n_show=20):
+    """Print a formatted summary table, grouped by target mass bins."""
+    target_bins = {"asteroid_gap", "sub_solar_gap"}
+    # Target bins first, sorted by f_total descending
+    target = [r for r in results
+              if r.get("mass_bin") in target_bins and not r.get("error")]
+    target.sort(key=lambda r: r.get("f_total", 0), reverse=True)
+    # Other bins (for reference)
+    other = [r for r in results
+             if r.get("mass_bin") not in target_bins and not r.get("error")]
+    other.sort(key=lambda r: r.get("f_total", 0), reverse=True)
+    combined = target[:n_show] + other[:max(0, n_show - len(target))]
 
     print(f"\n{'Rank':<5} {'x_c':<8} {'c':<8} {'beta':<9} "
           f"{'N_total':<8} {'k_peak':<10} {'P_S_peak':<10} "
-          f"{'PS_ratio':<10} {'M_pres':<8} {'f_total':<9} {'score':<8}")
-    print("-" * 100)
-    for i, r in enumerate(scored[:n_show]):
+          f"{'M_pres':<10} {'f_total':<9} {'mass_bin':<22} {'n_s':<8}")
+    print("-" * 110)
+    for i, r in enumerate(combined[:n_show]):
+        ns_str = f"{r.get('n_s', 'N/A'):.4f}" if r.get('n_s') is not None else "N/A"
         print(f"{i + 1:<5} {r['x_c']:<8.4f} {r['c']:<8.4f} {r['beta']:<9.1e} "
               f"{r['N_total']:<8.1f} {r['k_peak']:<10.3e} {r['P_S_peak']:<10.4e} "
-              f"{r['P_S_peak_ratio']:<10.2e} {r['M_present']:<8.2f} "
-              f"{r['f_total']:<9.4e} {r['score']:<8.2f}")
+              f"{r['M_present']:<10.4e} {r['f_total']:<9.4e} "
+              f"{r['mass_bin']:<22} {ns_str:<8}")
 
 
 def main():
     p = argparse.ArgumentParser(
-        description="PBH parameter sweep for Ezquiaga CHI")
+        description="PBH mass-range sweep for Ezquiaga CHI")
     p.add_argument("--x_c-lo", type=float, default=0.776)
     p.add_argument("--x_c-hi", type=float, default=0.792)
     p.add_argument("--n-xc", type=int, default=9)
@@ -340,6 +413,11 @@ def main():
     p.add_argument("--chi0", type=float, default=8.0)
     p.add_argument("--y0", type=float, default=-1e-4)
     p.add_argument("--zeta-c", type=float, default=0.052)
+    p.add_argument("--target", choices=["subsolar", "asteroid", "all"],
+                   default="subsolar",
+                   help="k-grid target mass range")
+    p.add_argument("--N-total-min", type=float, default=65.0,
+                   help="Minimum N_total to accept a config")
     p.add_argument("--output-dir", default="outputs/plots/pbh")
     p.add_argument("--log", default="outputs/simulations/logs/pbh_sweep.jsonl")
     p.add_argument("--no-plot", action="store_true")
@@ -351,7 +429,8 @@ def main():
 
     total = len(xc_vals) * len(c_vals) * len(beta_vals)
     print(f"Sweep: {len(xc_vals)} x_c × {len(c_vals)} c × "
-          f"{len(beta_vals)} β = {total} configs")
+          f"{len(beta_vals)} β = {total} configs  "
+          f"target={args.target}  N_total_min={args.N_total_min}")
 
     t0 = time.time()
 
@@ -366,6 +445,8 @@ def main():
 
     results = run_sweep(xc_vals, c_vals, beta_vals,
                         args.chi0, args.y0, args.zeta_c,
+                        target=args.target,
+                        N_total_min=args.N_total_min,
                         progress_fn=progress)
     print(f"\n  Done in {time.time() - t0:.1f}s")
 
@@ -394,16 +475,11 @@ def main():
         plot_heatmap_2d(results, "x_c", "c", "P_S_peak_ratio",
                         r"$x_c$", r"$c$", r"$P_{\mathcal{R}}^{\mathrm{peak}} / A_s$",
                         "sweep_xc_vs_c_PSratio", "pbh")
+        plot_heatmap_2d(results, "x_c", "c", "n_s",
+                        r"$x_c$", r"$c$", r"$n_s (k=0.05)$",
+                        "sweep_xc_vs_c_ns", "pbh")
 
         plot_best_configs(results, n_best=3)
-
-    # Print top-3 for MS validation
-    scored = [r for r in results if r.get("score", 1e6) < 1e5]
-    scored.sort(key=lambda r: r["score"])
-    print("\nTop-3 configs for MS validation:")
-    for i, r in enumerate(scored[:3]):
-        print(f"  {i + 1}. pbh_run --x_c {r['x_c']} --c {r['c']} "
-              f"--beta {r['beta']:.1e}  (score={r['score']:.2f})")
 
 
 if __name__ == "__main__":
