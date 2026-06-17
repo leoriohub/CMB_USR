@@ -44,3 +44,10 @@ scripts/reproduce_fig1.py
 
 # Ezquiaga inflection parameters manuscript
 ezquiaga/
+
+# Data files (Planck spectra, PBH bounds — large, tracked accidentally)
+data/
+
+# Node.js dependencies (MCP tooling — not part of physics project)
+package.json
+package-lock.json
