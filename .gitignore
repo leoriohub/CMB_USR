@@ -48,6 +48,9 @@ ezquiaga/
 # Data files (Planck spectra, PBH bounds — large, tracked accidentally)
 data/
 
+# Project-level AI assistant config (local workflow preferences)
+opencode.json
+
 # Node.js dependencies (MCP tooling — not part of physics project)
 package.json
 package-lock.json
