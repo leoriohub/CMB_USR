@@ -120,7 +120,7 @@ def classify_mass_range(M_peak):
     return "massive"
 
 
-def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar"):
+def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar", pivot_k=0.002):
     """Run the MS solver for a given model, return k_phys, P_S, N_total."""
     from pspectrum_pipeline import run_pspectrum_pipeline
 
@@ -135,7 +135,7 @@ def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar"):
         phi0=None,
         y0=None,
         k_phys_grid=k_grid,
-        k_pivot_phys=0.002,
+        k_pivot_phys=pivot_k,
         N_star=65,
         k_start_factor=100.0,
         ms_steps=5000,
@@ -151,10 +151,9 @@ def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar"):
     return k, ps, N_total, result
 
 
-def find_ps_peak(k_phys, P_S):
-    """Find the USR peak in P_S(k). The MS grid starts at k ≥ 1e5 Mpc⁻¹,
-    so the only peak in this range is the USR peak."""
-    valid = np.isfinite(P_S) & (P_S > 1e-10) & np.isfinite(k_phys) & (k_phys > 0)
+def find_pbh_peak(k_phys, P_S):
+    """Find the USR peak in P_S(k), ignoring CMB-scale k < 1 Mpc⁻¹."""
+    valid = np.isfinite(P_S) & (P_S > 1e-10) & np.isfinite(k_phys) & (k_phys > 1.0)
     k, ps = k_phys[valid], P_S[valid]
     if len(k) < 5:
         return None
@@ -189,7 +188,8 @@ def compute_pbh_metrics(k_phys, P_S, zeta_c=0.052):
 
 
 def run_sweep(xc_vals, c_vals, beta_vals, chi0, y0, zeta_c,
-              target="subsolar", N_total_min=65, progress_fn=None):
+              target="subsolar", N_total_min=65, pivot_k=0.002,
+              progress_fn=None):
     """Run the full sweep over parameter grid.
 
     Parameters
@@ -210,15 +210,17 @@ def run_sweep(xc_vals, c_vals, beta_vals, chi0, y0, zeta_c,
                     progress_fn(idx, total, xc, c, beta)
                 try:
                     m = model_from_params(xc, c, beta)
-                    k_m, ps_ms, N_total, pipe_result = run_ms(m, chi0, y0, target)
+                    k_m, ps_ms, N_total, pipe_result = run_ms(m, chi0, y0, target, pivot_k)
                     if N_total < N_total_min:
                         continue
-                    peak = find_ps_peak(k_m, ps_ms)
+                    peak = find_pbh_peak(k_m, ps_ms)
                     if peak is None:
                         continue
                     pbh = compute_pbh_metrics(k_m, ps_ms, zeta_c)
                     n_s, A_s_at_cmb = compute_ns(k_m, ps_ms)
-                    mass_bin = classify_mass_range(pbh["M_peak"])
+                    # Use k_peak-derived mass for classification (NOT abundance-weighted)
+                    M_kpeak = GAMMA * M_EQ * (K_EQ / peak["k_peak"])**2 * ACCRETION
+                    mass_bin = classify_mass_range(M_kpeak)
                     ps_ratio = peak["P_S_peak"] / TARGET_As
                     result = {
                         "x_c": xc, "c": c, "beta": beta,
@@ -229,6 +231,7 @@ def run_sweep(xc_vals, c_vals, beta_vals, chi0, y0, zeta_c,
                         "M_form": GAMMA * M_EQ * (K_EQ / peak["k_peak"]) ** 2
                         if peak["k_peak"] > 0 else 0,
                         "M_present": pbh["M_peak"],
+                        "M_kpeak": M_kpeak,
                         "f_total": pbh["f_total"],
                         "mass_bin": mass_bin,
                         "n_s": n_s,
@@ -389,13 +392,14 @@ def print_summary(results, n_show=20):
 
     print(f"\n{'Rank':<5} {'x_c':<8} {'c':<8} {'beta':<9} "
           f"{'N_total':<8} {'k_peak':<10} {'P_S_peak':<10} "
-          f"{'M_pres':<10} {'f_total':<9} {'mass_bin':<22} {'n_s':<8}")
+          f"{'M_kpeak':<10} {'f_total':<9} {'mass_bin':<22} {'n_s':<8}")
     print("-" * 110)
     for i, r in enumerate(combined[:n_show]):
         ns_str = f"{r.get('n_s', 'N/A'):.4f}" if r.get('n_s') is not None else "N/A"
+        mk = r.get('M_kpeak', r.get('M_present', 0))
         print(f"{i + 1:<5} {r['x_c']:<8.4f} {r['c']:<8.4f} {r['beta']:<9.1e} "
               f"{r['N_total']:<8.1f} {r['k_peak']:<10.3e} {r['P_S_peak']:<10.4e} "
-              f"{r['M_present']:<10.4e} {r['f_total']:<9.4e} "
+              f"{mk:<10.4e} {r['f_total']:<9.4e} "
               f"{r['mass_bin']:<22} {ns_str:<8}")
 
 
@@ -418,6 +422,8 @@ def main():
                    help="k-grid target mass range")
     p.add_argument("--N-total-min", type=float, default=65.0,
                    help="Minimum N_total to accept a config")
+    p.add_argument("--pivot-k", type=float, default=0.002,
+                   help="MS solver pivot scale (default 0.002 for Higgs, 0.05 for Planck)")
     p.add_argument("--workers", type=int, default=8,
                    help="MS solver parallel workers per config")
     p.add_argument("--output-dir", default="outputs/plots/pbh")
@@ -435,8 +441,8 @@ def main():
     total = len(xc_vals) * len(c_vals) * len(beta_vals)
     print(f"Sweep: {len(xc_vals)} x_c × {len(c_vals)} c × "
           f"{len(beta_vals)} β = {total} configs  "
-          f"target={args.target}  N_total_min={args.N_total_min}  "
-          f"workers={args.workers}")
+          f"target={args.target}  pivot_k={args.pivot_k}  "
+          f"N_total_min={args.N_total_min}  workers={args.workers}")
 
     t0 = time.time()
 
@@ -453,6 +459,7 @@ def main():
                         args.chi0, args.y0, args.zeta_c,
                         target=args.target,
                         N_total_min=args.N_total_min,
+                        pivot_k=args.pivot_k,
                         progress_fn=progress)
     print(f"\n  Done in {time.time() - t0:.1f}s")
 
