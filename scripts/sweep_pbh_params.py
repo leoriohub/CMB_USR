@@ -38,7 +38,7 @@ K_EQ = 0.0104
 M_EQ = 3.0e17
 GAMMA = 0.4
 
-MS_N_WORKERS = 8
+MS_N_WORKERS = 8  # overridden by --workers CLI arg
 
 
 def model_from_params(x_c, c, beta):
@@ -418,10 +418,15 @@ def main():
                    help="k-grid target mass range")
     p.add_argument("--N-total-min", type=float, default=65.0,
                    help="Minimum N_total to accept a config")
+    p.add_argument("--workers", type=int, default=8,
+                   help="MS solver parallel workers per config")
     p.add_argument("--output-dir", default="outputs/plots/pbh")
     p.add_argument("--log", default="outputs/simulations/logs/pbh_sweep.jsonl")
     p.add_argument("--no-plot", action="store_true")
     args = p.parse_args()
+
+    global MS_N_WORKERS
+    MS_N_WORKERS = args.workers
 
     xc_vals = np.linspace(args.x_c_lo, args.x_c_hi, args.n_xc)
     c_vals = np.linspace(args.c_lo, args.c_hi, args.n_c)
@@ -430,7 +435,8 @@ def main():
     total = len(xc_vals) * len(c_vals) * len(beta_vals)
     print(f"Sweep: {len(xc_vals)} x_c × {len(c_vals)} c × "
           f"{len(beta_vals)} β = {total} configs  "
-          f"target={args.target}  N_total_min={args.N_total_min}")
+          f"target={args.target}  N_total_min={args.N_total_min}  "
+          f"workers={args.workers}")
 
     t0 = time.time()
 
