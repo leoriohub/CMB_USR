@@ -187,7 +187,7 @@ def compute_pbh_metrics(k_phys, P_S, zeta_c=0.052):
     }
 
 
-def run_sweep(xc_vals, c_vals, beta_vals, chi0, y0, zeta_c,
+def run_sweep(xc_vals, c_vals, beta_vals, chi0_vals, y0, zeta_c,
               target="subsolar", N_total_min=65, pivot_k=0.002,
               progress_fn=None):
     """Run the full sweep over parameter grid.
@@ -198,53 +198,56 @@ def run_sweep(xc_vals, c_vals, beta_vals, chi0, y0, zeta_c,
         k-grid target ("subsolar", "asteroid", "all")
     N_total_min : float
         Minimum N_total to accept (configs with fewer e-folds are skipped)
+    chi0_vals : array-like
+        Initial field values to sweep
     """
     results = []
-    total = len(xc_vals) * len(c_vals) * len(beta_vals)
+    total = len(xc_vals) * len(c_vals) * len(beta_vals) * len(chi0_vals)
     idx = 0
     for xc in xc_vals:
         for c in c_vals:
             for beta in beta_vals:
-                idx += 1
-                if progress_fn:
-                    progress_fn(idx, total, xc, c, beta)
-                try:
-                    m = model_from_params(xc, c, beta)
-                    k_m, ps_ms, N_total, pipe_result = run_ms(m, chi0, y0, target, pivot_k)
-                    if N_total < N_total_min:
-                        continue
-                    peak = find_pbh_peak(k_m, ps_ms)
-                    if peak is None:
-                        continue
-                    pbh = compute_pbh_metrics(k_m, ps_ms, zeta_c)
-                    n_s, A_s_at_cmb = compute_ns(k_m, ps_ms)
-                    # Use k_peak-derived mass for classification (NOT abundance-weighted)
-                    M_kpeak = GAMMA * M_EQ * (K_EQ / peak["k_peak"])**2 * ACCRETION
-                    mass_bin = classify_mass_range(M_kpeak)
-                    ps_ratio = peak["P_S_peak"] / TARGET_As
-                    result = {
-                        "x_c": xc, "c": c, "beta": beta,
-                        "N_total": N_total,
-                        "k_peak": peak["k_peak"],
-                        "P_S_peak": peak["P_S_peak"],
-                        "P_S_peak_ratio": ps_ratio,
-                        "M_form": GAMMA * M_EQ * (K_EQ / peak["k_peak"]) ** 2
-                        if peak["k_peak"] > 0 else 0,
-                        "M_present": pbh["M_peak"],
-                        "M_kpeak": M_kpeak,
-                        "f_total": pbh["f_total"],
-                        "mass_bin": mass_bin,
-                        "n_s": n_s,
-                        "A_s_at_cmb": A_s_at_cmb,
-                        "k_phys": k_m.tolist(),
-                        "P_S": ps_ms.tolist(),
-                    }
-                    results.append(result)
-                except Exception as e:
-                    results.append({
-                        "x_c": xc, "c": c, "beta": beta,
-                        "error": str(e),
-                    })
+                for chi0 in chi0_vals:
+                    idx += 1
+                    if progress_fn:
+                        progress_fn(idx, total, xc, c, beta, chi0)
+                    try:
+                        m = model_from_params(xc, c, beta)
+                        k_m, ps_ms, N_total, pipe_result = run_ms(m, chi0, y0, target, pivot_k)
+                        if N_total < N_total_min:
+                            continue
+                        peak = find_pbh_peak(k_m, ps_ms)
+                        if peak is None:
+                            continue
+                        pbh = compute_pbh_metrics(k_m, ps_ms, zeta_c)
+                        n_s, A_s_at_cmb = compute_ns(k_m, ps_ms)
+                        # Use k_peak-derived mass for classification (NOT abundance-weighted)
+                        M_kpeak = GAMMA * M_EQ * (K_EQ / peak["k_peak"])**2 * ACCRETION
+                        mass_bin = classify_mass_range(M_kpeak)
+                        ps_ratio = peak["P_S_peak"] / TARGET_As
+                        result = {
+                            "x_c": xc, "c": c, "beta": beta, "chi0": chi0,
+                            "N_total": N_total,
+                            "k_peak": peak["k_peak"],
+                            "P_S_peak": peak["P_S_peak"],
+                            "P_S_peak_ratio": ps_ratio,
+                            "M_form": GAMMA * M_EQ * (K_EQ / peak["k_peak"]) ** 2
+                            if peak["k_peak"] > 0 else 0,
+                            "M_present": pbh["M_peak"],
+                            "M_kpeak": M_kpeak,
+                            "f_total": pbh["f_total"],
+                            "mass_bin": mass_bin,
+                            "n_s": n_s,
+                            "A_s_at_cmb": A_s_at_cmb,
+                            "k_phys": k_m.tolist(),
+                            "P_S": ps_ms.tolist(),
+                        }
+                        results.append(result)
+                    except Exception as e:
+                        results.append({
+                            "x_c": xc, "c": c, "beta": beta, "chi0": chi0,
+                            "error": str(e),
+                        })
     return results
 
 
@@ -414,7 +417,9 @@ def main():
     p.add_argument("--n-c", type=int, default=1)
     p.add_argument("--beta-vals", type=float, nargs="+",
                    default=[1e-5, 3e-5, 1e-4])
-    p.add_argument("--chi0", type=float, default=8.0)
+    p.add_argument("--chi0-vals", type=float, nargs="+",
+                   default=[8.0],
+                   help="Initial field values to sweep (e.g., 4.0 5.0 6.0)")
     p.add_argument("--y0", type=float, default=-1e-4)
     p.add_argument("--zeta-c", type=float, default=0.052)
     p.add_argument("--target", choices=["subsolar", "asteroid", "all"],
@@ -437,26 +442,27 @@ def main():
     xc_vals = np.linspace(args.x_c_lo, args.x_c_hi, args.n_xc)
     c_vals = np.linspace(args.c_lo, args.c_hi, args.n_c)
     beta_vals = args.beta_vals
+    chi0_vals = args.chi0_vals
 
-    total = len(xc_vals) * len(c_vals) * len(beta_vals)
+    total = len(xc_vals) * len(c_vals) * len(beta_vals) * len(chi0_vals)
     print(f"Sweep: {len(xc_vals)} x_c × {len(c_vals)} c × "
-          f"{len(beta_vals)} β = {total} configs  "
+          f"{len(beta_vals)} β × {len(chi0_vals)} χ₀ = {total} configs  "
           f"target={args.target}  pivot_k={args.pivot_k}  "
           f"N_total_min={args.N_total_min}  workers={args.workers}")
 
     t0 = time.time()
 
-    def progress(i, n, xc, c, beta):
+    def progress(i, n, xc, c, beta, chi0):
         elapsed = time.time() - t0
         rate = i / max(elapsed, 0.01)
         eta = (n - i) / rate
         sys.stdout.write(
-            f"\r  [{i}/{n}] x_c={xc:.4f} c={c:.3f} β={beta:.1e}  "
+            f"\r  [{i}/{n}] x_c={xc:.4f} c={c:.3f} β={beta:.1e} χ₀={chi0:.1f}  "
             f"[{elapsed:.0f}s<{eta:.0f}s, {rate:.1f}cfg/s]  ")
         sys.stdout.flush()
 
-    results = run_sweep(xc_vals, c_vals, beta_vals,
-                        args.chi0, args.y0, args.zeta_c,
+    results = run_sweep(xc_vals, c_vals, beta_vals, chi0_vals,
+                        args.y0, args.zeta_c,
                         target=args.target,
                         N_total_min=args.N_total_min,
                         pivot_k=args.pivot_k,
