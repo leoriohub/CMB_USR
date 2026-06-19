@@ -166,7 +166,10 @@ def find_pbh_peak(k_phys, P_S):
 
 
 def compute_pbh_metrics(k_phys, P_S, zeta_c=0.052):
-    """Compute PBH abundance for a given P_S(k) spectrum."""
+    """Compute PBH abundance for a given P_S(k) spectrum.
+
+    f_total = Ω_PBH/Ω_DM can exceed 1 if zeta_c is too low for the P_S amplitude.
+    """
     bf = erfc(zeta_c / np.sqrt(2 * np.clip(P_S, 1e-300, None)))
     beq = np.clip(bf * k_phys / K_EQ, 0.0, 1.0)
     M = GAMMA * M_EQ * (K_EQ / k_phys) ** 2 * ACCRETION
@@ -176,7 +179,7 @@ def compute_pbh_metrics(k_phys, P_S, zeta_c=0.052):
     order = np.argsort(M)
     M, beq = M[order], beq[order]
 
-    f_total = np.trapezoid(beq, np.log(np.maximum(M, 1e-300)))
+    f_total = float(np.trapezoid(beq, np.log(np.maximum(M, 1e-300))))
     peak_i = int(np.argmax(beq))
     M_peak = float(M[peak_i]) if len(M) > 0 else np.nan
 
