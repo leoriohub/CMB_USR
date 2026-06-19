@@ -426,3 +426,104 @@ SR never sees this: it samples one N, one formula, no running.
 - **`scripts/plotting.py`** for plotting
 
 The one exception: short (≤5 line) diagnostics to check file contents or list directories. Any physics computation must use the proper scripts.
+
+### 17. Ezquiaga PBH Mass Shift — LIGO Constraint
+
+The Ezquiaga CHI paper's reference configuration (x_c=0.784, c=0.77, β=10⁻⁵) produces PBHs with present-day mass ~0.4-11 M_⊙ (stellar range), which is **ruled out by LIGO** bounds on PBH dark matter in the 1-100 M_⊙ range.
+
+**Primary project goal for Ezquiaga:** Find parameters that shift the PBH mass distribution to **lower masses** (higher k_peak), targeting the sub-solar gap [10⁻⁶, 10⁻²] M_⊙ or the asteroid gap [10⁻¹⁷, 10⁻¹⁵] M_⊙. These mass ranges are not ruled out by current observations.
+
+**n_s compatibility with Planck is secondary.** The priority is mass range placement, not spectral index fitting.
+
+**Mass ↔ k_peak mapping** (with accretion factor 3×10⁷):
+
+| Target | M_present [M_⊙] | k_peak [Mpc⁻¹] |
+|--------|-----------------|----------------|
+| LIGO range (ruled out) | 0.1-100 | 2×10⁹–6×10¹⁰ |
+| Sub-solar gap | 10⁻⁶–10⁻² | 2×10¹¹–2×10¹³ |
+| Asteroid gap | 10⁻¹⁷–10⁻¹⁵ | 6×10¹⁷–6×10¹⁸ |
+
+### 18. Empirical Results from Systematic Sweeps
+
+#### Parameter trends
+
+| Trend | Effect on k_peak | Effect on n_s |
+|-------|-----------------|---------------|
+| ↑ xc | ↑ higher k (lower M, left) | ↑ bluer |
+| ↓ xc | ↓ lower k (higher M, right) | ↓ redder (fails near b<0 bound) |
+| ↑ c | ↑ higher k (lower M, left) | ↓ redder (asymptotes ~1.018) |
+| ↑ β | ↓ lower k (higher M, right) or kills peak | ↓ redder |
+| ↑ N_star | ↑ higher k (lower M, left) | ↑ bluer |
+| ↑ χ₀ | saturates for N_total > 165 | tiny effect |
+
+#### Note on x_c effect
+
+At first glance, higher x_c should mean the inflection is reached **sooner** (fewer e-folds from start), so the scales exiting at the inflection should be **larger** (higher mass). However, our sweeps show higher x_c → **higher k (lower mass)**. This is because changing x_c also changes `a` and `b` via `inflection_parameters(x_c, c, beta)`, which redesigns the entire potential — not just shifts the inflection position. The plateau gets qualitatively longer/steeper at higher x_c, which dominates over the simple field-position argument. Two competing effects:
+
+1. *Naive effect:* Higher x_c → inflection reached sooner → larger scales (higher M)
+2. *Potential reshaping effect:* Higher x_c → (a, b) change → plateau stretches → more e-folds → smaller scales (lower M)
+
+Effect 2 dominates in our model.
+
+#### USR peak existence criterion
+
+A real USR peak (k_peak > 1e6) appears when **BOTH** conditions hold:
+1. N_total > 165 (sufficient e-folds)
+2. β < β_critical ≈ 4×10⁻⁴ (at c=1.86, xc=0.79), where β_critical depends on (xc, c)
+
+The physical threshold is the residual slope V'(x_c) at the inflection:
+- V'(xc) < ~5×10⁻⁵ → USR peak forms
+- V'(xc) > ~7×10⁻⁵ → no USR peak
+
+β controls this slope linearly: V'(xc) ≈ 1.4 × 10⁻⁴ × (β/9×10⁻⁴) at (xc=0.79, c=1.86).
+
+#### High-c, high-β regime
+
+At c=1.86, the plateau is very stretched and the inflection is at a different position in field space. This gave the first **resolved** (non-grid-boundary) peak at k=9.12×10¹⁷ with:
+- β=3e-4 → n_s=1.012, asteroid peak at k=9.1e17, M=4.7e-16 M_⊙
+- β=5e-4 → n_s=1.000, no USR peak
+- β=9e-4 → n_s=0.966, no USR peak
+
+#### What β actually does
+
+β creates a **positive slope** at the inflection point x_c in the potential V(x):
+- β=0: V'(xc) ≈ 0 (exact inflection, field stalls → strong USR → asteroid peak)
+- β=3e-4: V'(xc) ≈ +4.2×10⁻⁵ (weak USR → weak peak at k=9e17)
+- β=9e-4: V'(xc) ≈ +1.25×10⁻⁴ (no USR → no peak, field rolls through)
+
+The potential value V(x_c) changes by only 0.02% across the full β range. The slope at x_c is the key parameter.
+
+### 19. Ezquiaga SM-Allowed Parameter Ranges (from 1705.04861)
+
+From paper lines 302-303 (ΔN ∈ (30,35) for viable PBH production):
+
+| Parameter | Paper Ref | SM-Allowed Range | Derived |
+|-----------|-----------|------------------|---------|
+| λ₀ | 2.23×10⁻⁷ | (0.01–8)×10⁻⁷ | Higgs quartic at critical scale |
+| ξ₀ | 7.55 | **0.5–15** | Non-minimal coupling |
+| κ²μ² | 0.102 | **0.05–1.2** | Critical scale squared |
+| b_λ | 1.2×10⁻⁶ | (0.008–4)×10⁻⁶ | β_λ running coefficient |
+| b_ξ | 11.5 | **1–18** | β_ξ running coefficient |
+| **c = ξ₀·κ²μ²** | **0.77** | **[0.025, 18]** | Combined: 0.5×0.05 ≤ c ≤ 15×1.2 |
+| β | 10⁻⁵ | **(0.1–9)×10⁻⁴** | From Fig 2 (n_s, r plane) |
+| ΔN | 33.5 | **10–45** | From Fig 2 right panel |
+
+**Note:** The paper constrains these to ΔN ∈ (30,35) for "large PBH production." Our solver shows viable USR peaks at lower ΔN as well, so this range is a guide, not a hard limit.
+
+**Sweep coverage of allowed parameter space:**
+
+| Parameter | Allowed | Swept | Fraction |
+|-----------|---------|-------|----------|
+| c | [0.025, 18] | [0.5, 10] | ~50% |
+| β | [10⁻⁶, 9×10⁻⁴] | [10⁻⁶, 9×10⁻⁴] | **100%** |
+| x_c | ~[0.75, 0.85] | [0.75, 0.85] | **100%** |
+| χ₀ | > x_c | [4.0, 8.0] | partial |
+| N_star | [50, 70] | [50, 70] | **100%** |
+
+**Empirical from our sweeps (updated):**
+- USR peak appears only when N_total > 165 AND β < β_critical (depends on xc, c)
+- n_s asymptotes toward ~1.018 for very high c (5.0+), never crossing below 1
+- n_s can cross below 1 only when USR peak is absent (β > β_critical)
+- k_peak = 1e18 (asteroid) is stable across c ∈ [0.77, 5.0] at xc≥0.79 (grid boundary)
+- First resolved (non-grid-boundary) peak at k=9.1×10¹⁷ at c=1.86, β=3e-4, xc=0.79
+- The search plan is documented in `docs/pbh_search_plan.md`
