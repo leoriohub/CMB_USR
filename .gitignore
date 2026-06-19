@@ -45,9 +45,6 @@ scripts/reproduce_fig1.py
 # Ezquiaga inflection parameters manuscript
 ezquiaga/
 
-# Data files (Planck spectra, PBH bounds — large, tracked accidentally)
-data/
-
 # Project-level AI assistant config (local workflow preferences)
 opencode.json
 
