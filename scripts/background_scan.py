@@ -89,11 +89,16 @@ def analyze_background(model, chi0, y0, N_star, pivot_k=0.05):
 
 
 def run_scan(xc_vals, c_vals, beta_vals, chi0_vals, N_star_vals,
-             y0=-1e-4, pivot_k=0.05, progress_fn=None):
+             y0=-1e-4, pivot_k=0.05, log_path=None, progress_fn=None):
     results = []
     total = (len(xc_vals) * len(c_vals) * len(beta_vals)
              * len(chi0_vals) * len(N_star_vals))
+    fh = None
+    if log_path:
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        fh = open(log_path, "w")
     idx = 0
+    last_flush = 0
     for xc in xc_vals:
         for c in c_vals:
             for beta in beta_vals:
@@ -116,12 +121,25 @@ def run_scan(xc_vals, c_vals, beta_vals, chi0_vals, N_star_vals,
                             }
                             result.update(analysis)
                             results.append(result)
+                            if fh:
+                                json.dump(result, fh)
+                                fh.write("\n")
+                                if idx - last_flush >= 100:
+                                    fh.flush()
+                                    last_flush = idx
                         except Exception as e:
-                            results.append({
-                                "x_c": xc, "c": c, "beta": beta,
-                                "chi0": chi0, "N_star": N_star,
-                                "error": str(e),
-                            })
+                            err = {"x_c": xc, "c": c, "beta": beta,
+                                   "chi0": chi0, "N_star": N_star,
+                                   "error": str(e)}
+                            results.append(err)
+                            if fh:
+                                json.dump(err, fh)
+                                fh.write("\n")
+                        # Always flush at x_c changes
+                        if fh and idx % 1000 == 0:
+                            fh.flush()
+    if fh:
+        fh.close()
     return results
 
 
@@ -204,11 +222,11 @@ def main():
 
     results = run_scan(xc_vals, c_vals, beta_vals, chi0_vals, N_star_vals,
                        y0=args.y0, pivot_k=args.pivot_k,
+                       log_path=args.log,
                        progress_fn=progress)
     print(f"\n  Done in {time.time() - t0:.1f}s  "
           f"({len(results)} of {total})")
 
-    write_log(results, args.log)
     print(f"  Log: {args.log}")
     print_summary(results)
 
