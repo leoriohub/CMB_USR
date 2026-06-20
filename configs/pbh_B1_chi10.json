@@ -1,0 +1,26 @@
+{
+  "model": "EzquiagaCHIModel",
+  "model_params": {
+    "c": 1.86
+  },
+  "inflection": {
+    "x_c": 0.79,
+    "beta": 3.4e-4
+  },
+  "ics": {
+    "x0": 10.0,
+    "y0": -1e-4
+  },
+  "pipeline": {
+    "N_star": 55,
+    "k_min": 1e-5,
+    "k_max": 1e18,
+    "num_k": 400,
+    "k_pivot_phys": 0.05,
+    "k_start_factor": 100.0,
+    "ms_steps": 5000,
+    "n_cores": 4,
+    "no_plot": true,
+    "normalize_to_As": false
+  }
+}
