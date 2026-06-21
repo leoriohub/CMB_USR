@@ -16,19 +16,22 @@ import numpy as np
 from scipy.special import erfc
 
 from scripts.plotting import (
-    save_fig, TOL, PAPER_RCPARAMS,
+    save_fig,
+    TOL,
+    PAPER_RCPARAMS,
 )
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 ACCRETION = 3e7
 
 # Paper targets
-TARGET_PS_RATIO = 2.3e4   # P_S_peak / As
+TARGET_PS_RATIO = 2.3e4  # P_S_peak / As
 TARGET_As = 2.1e-9
-TARGET_M_PEAK = 11.0       # Msun (present-day)
-TARGET_F_TOTAL = 0.42      # Omega_PBH / Omega_DM
+TARGET_M_PEAK = 11.0  # Msun (present-day)
+TARGET_F_TOTAL = 0.42  # Omega_PBH / Omega_DM
 
 # Fixed cosmology
 K_EQ = 0.0104
@@ -40,6 +43,7 @@ MS_N_WORKERS = 8  # overridden by --workers CLI arg
 
 def model_from_params(x_c, c, beta):
     from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
+
     m = EzquiagaCHIModel(c=c)
     a, b = inflection_parameters(x_c, c, beta=beta)
     m.a = a
@@ -117,8 +121,7 @@ def classify_mass_range(M_peak):
     return "massive"
 
 
-def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar", pivot_k=0.002,
-           N_star=65):
+def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar", pivot_k=0.002, N_star=65):
     """Run the MS solver for a given model, return k_phys, P_S, N_total."""
     from pspectrum_pipeline import run_pspectrum_pipeline
 
@@ -188,9 +191,19 @@ def compute_pbh_metrics(k_phys, P_S, zeta_c=0.052):
     }
 
 
-def run_sweep(xc_vals, c_vals, beta_vals, chi0_vals, y0, zeta_c,
-              target="subsolar", N_total_min=65, pivot_k=0.002,
-              N_star_vals=None, progress_fn=None):
+def run_sweep(
+    xc_vals,
+    c_vals,
+    beta_vals,
+    chi0_vals,
+    y0,
+    zeta_c,
+    target="subsolar",
+    N_total_min=65,
+    pivot_k=0.002,
+    N_star_vals=None,
+    progress_fn=None,
+):
     """Run the full sweep over parameter grid.
 
     Parameters
@@ -207,7 +220,9 @@ def run_sweep(xc_vals, c_vals, beta_vals, chi0_vals, y0, zeta_c,
     if N_star_vals is None:
         N_star_vals = [65]
     results = []
-    total = len(xc_vals) * len(c_vals) * len(beta_vals) * len(chi0_vals) * len(N_star_vals)
+    total = (
+        len(xc_vals) * len(c_vals) * len(beta_vals) * len(chi0_vals) * len(N_star_vals)
+    )
     idx = 0
     for xc in xc_vals:
         for c in c_vals:
@@ -220,7 +235,8 @@ def run_sweep(xc_vals, c_vals, beta_vals, chi0_vals, y0, zeta_c,
                         try:
                             m = model_from_params(xc, c, beta)
                             k_m, ps_ms, N_total, pipe_result = run_ms(
-                                m, chi0, y0, target, pivot_k, N_star)
+                                m, chi0, y0, target, pivot_k, N_star
+                            )
                             if N_total < N_total_min:
                                 continue
                             peak = find_pbh_peak(k_m, ps_ms)
@@ -229,18 +245,24 @@ def run_sweep(xc_vals, c_vals, beta_vals, chi0_vals, y0, zeta_c,
                             pbh = compute_pbh_metrics(k_m, ps_ms, zeta_c)
                             n_s, A_s_at_cmb = compute_ns(k_m, ps_ms)
                             # Use k_peak-derived mass for classification (NOT abundance-weighted)
-                            M_kpeak = GAMMA * M_EQ * (K_EQ / peak["k_peak"])**2 * ACCRETION
+                            M_kpeak = (
+                                GAMMA * M_EQ * (K_EQ / peak["k_peak"]) ** 2 * ACCRETION
+                            )
                             mass_bin = classify_mass_range(M_kpeak)
                             ps_ratio = peak["P_S_peak"] / TARGET_As
                             result = {
-                                "x_c": xc, "c": c, "beta": beta,
-                                "chi0": chi0, "N_star": N_star,
+                                "x_c": xc,
+                                "c": c,
+                                "beta": beta,
+                                "chi0": chi0,
+                                "N_star": N_star,
                                 "N_total": N_total,
                                 "k_peak": peak["k_peak"],
                                 "P_S_peak": peak["P_S_peak"],
                                 "P_S_peak_ratio": ps_ratio,
                                 "M_form": GAMMA * M_EQ * (K_EQ / peak["k_peak"]) ** 2
-                                if peak["k_peak"] > 0 else 0,
+                                if peak["k_peak"] > 0
+                                else 0,
                                 "M_present": pbh["M_peak"],
                                 "M_kpeak": M_kpeak,
                                 "f_total": pbh["f_total"],
@@ -252,11 +274,16 @@ def run_sweep(xc_vals, c_vals, beta_vals, chi0_vals, y0, zeta_c,
                             }
                             results.append(result)
                         except Exception as e:
-                            results.append({
-                                "x_c": xc, "c": c, "beta": beta,
-                                "chi0": chi0, "N_star": N_star,
-                                "error": str(e),
-                            })
+                            results.append(
+                                {
+                                    "x_c": xc,
+                                    "c": c,
+                                    "beta": beta,
+                                    "chi0": chi0,
+                                    "N_star": N_star,
+                                    "error": str(e),
+                                }
+                            )
     return results
 
 
@@ -266,8 +293,7 @@ def write_log(results, log_path):
     with open(log_path, "w") as f:
         for r in results:
             # Strip large arrays for log
-            entry = {k: v for k, v in r.items()
-                     if k not in ("k_phys", "P_S")}
+            entry = {k: v for k, v in r.items() if k not in ("k_phys", "P_S")}
             json.dump(entry, f)
             f.write("\n")
 
@@ -305,8 +331,13 @@ def plot_sweep_1d(results, param, fixed, param_label, filename, category):
             label_str = f"{param}={val:.4f}"
             ax1.loglog(k, ps, "-", color=colors[i], lw=1.2, label=label_str)
 
-        ax1.axhline(TARGET_As * TARGET_PS_RATIO, color=TOL["grey"], ls="--", lw=0.8,
-                    label=f"paper peak ({TARGET_PS_RATIO:.1e})")
+        ax1.axhline(
+            TARGET_As * TARGET_PS_RATIO,
+            color=TOL["grey"],
+            ls="--",
+            lw=0.8,
+            label=f"paper peak ({TARGET_PS_RATIO:.1e})",
+        )
         ax1.set_xlabel(r"$k$ [Mpc$^{-1}$]")
         ax1.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$")
         ax1.legend(fontsize=6, loc="upper left")
@@ -316,8 +347,14 @@ def plot_sweep_1d(results, param, fixed, param_label, filename, category):
 
         # Legend for fixed params
         fixed_str = ", ".join(f"{k}={v}" for k, v in fixed.items())
-        ax1.text(0.02, 0.02, f"Fixed: {fixed_str}",
-                 transform=ax1.transAxes, fontsize=7, alpha=0.7)
+        ax1.text(
+            0.02,
+            0.02,
+            f"Fixed: {fixed_str}",
+            transform=ax1.transAxes,
+            fontsize=7,
+            alpha=0.7,
+        )
 
         ax2.axis("off")
 
@@ -325,8 +362,9 @@ def plot_sweep_1d(results, param, fixed, param_label, filename, category):
         save_fig(fig, filename, category)
 
 
-def plot_heatmap_2d(results, x_param, y_param, z_param,
-                    x_label, y_label, z_label, filename, category):
+def plot_heatmap_2d(
+    results, x_param, y_param, z_param, x_label, y_label, z_label, filename, category
+):
     """2D heatmap of a metric over two parameters."""
     x_vals = sorted(set(r[x_param] for r in results))
     y_vals = sorted(set(r[y_param] for r in results))
@@ -344,8 +382,9 @@ def plot_heatmap_2d(results, x_param, y_param, z_param,
 
     with plt.rc_context(PAPER_RCPARAMS):
         fig, ax = plt.subplots(figsize=(4.5, 3.5))
-        im = ax.pcolormesh(x_vals, y_vals, z_grid, shading="auto",
-                           cmap="viridis", norm=norm)
+        im = ax.pcolormesh(
+            x_vals, y_vals, z_grid, shading="auto", cmap="viridis", norm=norm
+        )
         cbar = fig.colorbar(im, ax=ax)
         cbar.set_label(z_label)
         ax.set_xlabel(x_label)
@@ -357,8 +396,9 @@ def plot_heatmap_2d(results, x_param, y_param, z_param,
 def plot_best_configs(results, n_best=3, filename="pbh_best_configs", category="pbh"):
     """Plot f_PBH(M) for the top-N configs in target mass bins."""
     target_bins = {"asteroid_gap", "sub_solar_gap"}
-    filtered = [r for r in results
-                if r.get("mass_bin") in target_bins and not r.get("error")]
+    filtered = [
+        r for r in results if r.get("mass_bin") in target_bins and not r.get("error")
+    ]
     filtered.sort(key=lambda r: r.get("f_total", 0), reverse=True)
     best = filtered[:n_best]
     if len(best) < 1:
@@ -374,11 +414,14 @@ def plot_best_configs(results, n_best=3, filename="pbh_best_configs", category="
             if len(k) < 5 or len(ps) < 5:
                 continue
             pbh = compute_pbh_metrics(k, ps, zeta_c=0.052)
-            lbl = (f"x_c={r['x_c']:.4f}, c={r['c']:.3f}, "
-                   f"β={r['beta']:.1e}, {r['mass_bin']}")
+            lbl = (
+                f"x_c={r['x_c']:.4f}, c={r['c']:.3f}, "
+                f"β={r['beta']:.1e}, {r['mass_bin']}"
+            )
             if len(pbh["M"]) > 5:
-                ax.loglog(pbh["M"], pbh["f_pbh"], "-", color=colors[i % 3],
-                          lw=1.5, label=lbl)
+                ax.loglog(
+                    pbh["M"], pbh["f_pbh"], "-", color=colors[i % 3], lw=1.5, label=lbl
+                )
 
         ax.axhline(1.0, color=TOL["grey"], ls=":", lw=0.8)
         ax.set_xlabel(r"$M / M_\odot$")
@@ -393,56 +436,82 @@ def print_summary(results, n_show=20):
     """Print a formatted summary table, grouped by target mass bins."""
     target_bins = {"asteroid_gap", "sub_solar_gap"}
     # Target bins first, sorted by f_total descending
-    target = [r for r in results
-              if r.get("mass_bin") in target_bins and not r.get("error")]
+    target = [
+        r for r in results if r.get("mass_bin") in target_bins and not r.get("error")
+    ]
     target.sort(key=lambda r: r.get("f_total", 0), reverse=True)
     # Other bins (for reference)
-    other = [r for r in results
-             if r.get("mass_bin") not in target_bins and not r.get("error")]
+    other = [
+        r
+        for r in results
+        if r.get("mass_bin") not in target_bins and not r.get("error")
+    ]
     other.sort(key=lambda r: r.get("f_total", 0), reverse=True)
-    combined = target[:n_show] + other[:max(0, n_show - len(target))]
+    combined = target[:n_show] + other[: max(0, n_show - len(target))]
 
-    print(f"\n{'Rank':<5} {'x_c':<8} {'c':<8} {'beta':<9} "
-          f"{'N_total':<8} {'k_peak':<10} {'P_S_peak':<10} "
-          f"{'M_kpeak':<10} {'f_total':<9} {'mass_bin':<22} {'n_s':<8}")
+    print(
+        f"\n{'Rank':<5} {'x_c':<8} {'c':<8} {'beta':<9} "
+        f"{'N_total':<8} {'k_peak':<10} {'P_S_peak':<10} "
+        f"{'M_kpeak':<10} {'f_total':<9} {'mass_bin':<22} {'n_s':<8}"
+    )
     print("-" * 110)
     for i, r in enumerate(combined[:n_show]):
-        ns_str = f"{r.get('n_s', 'N/A'):.4f}" if r.get('n_s') is not None else "N/A"
-        mk = r.get('M_kpeak', r.get('M_present', 0))
-        print(f"{i + 1:<5} {r['x_c']:<8.4f} {r['c']:<8.4f} {r['beta']:<9.1e} "
-              f"{r['N_total']:<8.1f} {r['k_peak']:<10.3e} {r['P_S_peak']:<10.4e} "
-              f"{mk:<10.4e} {r['f_total']:<9.4e} "
-              f"{r['mass_bin']:<22} {ns_str:<8}")
+        ns_str = f"{r.get('n_s', 'N/A'):.4f}" if r.get("n_s") is not None else "N/A"
+        mk = r.get("M_kpeak", r.get("M_present", 0))
+        print(
+            f"{i + 1:<5} {r['x_c']:<8.4f} {r['c']:<8.4f} {r['beta']:<9.1e} "
+            f"{r['N_total']:<8.1f} {r['k_peak']:<10.3e} {r['P_S_peak']:<10.4e} "
+            f"{mk:<10.4e} {r['f_total']:<9.4e} "
+            f"{r['mass_bin']:<22} {ns_str:<8}"
+        )
 
 
 def main():
-    p = argparse.ArgumentParser(
-        description="PBH mass-range sweep for Ezquiaga CHI")
+    p = argparse.ArgumentParser(description="PBH mass-range sweep for Ezquiaga CHI")
     p.add_argument("--x_c-lo", type=float, default=0.776)
     p.add_argument("--x_c-hi", type=float, default=0.792)
     p.add_argument("--n-xc", type=int, default=9)
     p.add_argument("--c-lo", type=float, default=0.77)
     p.add_argument("--c-hi", type=float, default=0.77)
     p.add_argument("--n-c", type=int, default=1)
-    p.add_argument("--beta-vals", type=float, nargs="+",
-                   default=[1e-5, 3e-5, 1e-4])
-    p.add_argument("--chi0-vals", type=float, nargs="+",
-                   default=[8.0],
-                   help="Initial field values to sweep (e.g., 4.0 5.0 6.0)")
-    p.add_argument("--N-star-vals", type=float, nargs="+",
-                   default=[65.0],
-                   help="N_star values to sweep (e.g., 50 60 70)")
+    p.add_argument("--beta-vals", type=float, nargs="+", default=[1e-5, 3e-5, 1e-4])
+    p.add_argument(
+        "--chi0-vals",
+        type=float,
+        nargs="+",
+        default=[8.0],
+        help="Initial field values to sweep (e.g., 4.0 5.0 6.0)",
+    )
+    p.add_argument(
+        "--N-star-vals",
+        type=float,
+        nargs="+",
+        default=[65.0],
+        help="N_star values to sweep (e.g., 50 60 70)",
+    )
     p.add_argument("--y0", type=float, default=-1e-4)
     p.add_argument("--zeta-c", type=float, default=0.052)
-    p.add_argument("--target", choices=["subsolar", "asteroid", "all"],
-                   default="subsolar",
-                   help="k-grid target mass range")
-    p.add_argument("--N-total-min", type=float, default=65.0,
-                   help="Minimum N_total to accept a config")
-    p.add_argument("--pivot-k", type=float, default=0.002,
-                   help="MS solver pivot scale (default 0.002 for Higgs, 0.05 for Planck)")
-    p.add_argument("--workers", type=int, default=8,
-                   help="MS solver parallel workers per config")
+    p.add_argument(
+        "--target",
+        choices=["subsolar", "asteroid", "all"],
+        default="subsolar",
+        help="k-grid target mass range",
+    )
+    p.add_argument(
+        "--N-total-min",
+        type=float,
+        default=65.0,
+        help="Minimum N_total to accept a config",
+    )
+    p.add_argument(
+        "--pivot-k",
+        type=float,
+        default=0.002,
+        help="MS solver pivot scale (default 0.002 for Higgs, 0.05 for Planck)",
+    )
+    p.add_argument(
+        "--workers", type=int, default=8, help="MS solver parallel workers per config"
+    )
     p.add_argument("--output-dir", default="outputs/plots/pbh")
     p.add_argument("--log", default="outputs/simulations/logs/pbh_sweep.jsonl")
     p.add_argument("--no-plot", action="store_true")
@@ -457,13 +526,16 @@ def main():
     chi0_vals = args.chi0_vals
     N_star_vals = args.N_star_vals
 
-    total = (len(xc_vals) * len(c_vals) * len(beta_vals)
-             * len(chi0_vals) * len(N_star_vals))
-    print(f"Sweep: {len(xc_vals)} x_c × {len(c_vals)} c × "
-          f"{len(beta_vals)} β × {len(chi0_vals)} χ₀ × "
-          f"{len(N_star_vals)} N* = {total} configs  "
-          f"target={args.target}  pivot_k={args.pivot_k}  "
-          f"N_total_min={args.N_total_min}  workers={args.workers}")
+    total = (
+        len(xc_vals) * len(c_vals) * len(beta_vals) * len(chi0_vals) * len(N_star_vals)
+    )
+    print(
+        f"Sweep: {len(xc_vals)} x_c × {len(c_vals)} c × "
+        f"{len(beta_vals)} β × {len(chi0_vals)} χ₀ × "
+        f"{len(N_star_vals)} N* = {total} configs  "
+        f"target={args.target}  pivot_k={args.pivot_k}  "
+        f"N_total_min={args.N_total_min}  workers={args.workers}"
+    )
 
     t0 = time.time()
 
@@ -473,16 +545,23 @@ def main():
         eta = (n - i) / rate
         sys.stdout.write(
             f"\r  [{i}/{n}] x_c={xc:.4f} c={c:.3f} β={beta:.1e} χ₀={chi0:.1f} N*={N_star:.0f}  "
-            f"[{elapsed:.0f}s<{eta:.0f}s, {rate:.1f}cfg/s]  ")
+            f"[{elapsed:.0f}s<{eta:.0f}s, {rate:.1f}cfg/s]  "
+        )
         sys.stdout.flush()
 
-    results = run_sweep(xc_vals, c_vals, beta_vals, chi0_vals,
-                        args.y0, args.zeta_c,
-                        target=args.target,
-                        N_total_min=args.N_total_min,
-                        pivot_k=args.pivot_k,
-                        N_star_vals=N_star_vals,
-                        progress_fn=progress)
+    results = run_sweep(
+        xc_vals,
+        c_vals,
+        beta_vals,
+        chi0_vals,
+        args.y0,
+        args.zeta_c,
+        target=args.target,
+        N_total_min=args.N_total_min,
+        pivot_k=args.pivot_k,
+        N_star_vals=N_star_vals,
+        progress_fn=progress,
+    )
     print(f"\n  Done in {time.time() - t0:.1f}s")
 
     # Write log
@@ -497,22 +576,49 @@ def main():
         out_dir = args.output_dir
         os.makedirs(out_dir, exist_ok=True)
 
-        plot_sweep_1d(results, "x_c", {"c": 0.77, "beta": 1e-5},
-                       "x_c", "sweep_xc_PS", "pbh")
-        plot_sweep_1d(results, "c", {"x_c": 0.784, "beta": 1e-5},
-                       "c", "sweep_c_PS", "pbh")
-        plot_sweep_1d(results, "beta", {"x_c": 0.784, "c": 0.77},
-                       "β", "sweep_beta_PS", "pbh")
+        plot_sweep_1d(
+            results, "x_c", {"c": 0.77, "beta": 1e-5}, "x_c", "sweep_xc_PS", "pbh"
+        )
+        plot_sweep_1d(
+            results, "c", {"x_c": 0.784, "beta": 1e-5}, "c", "sweep_c_PS", "pbh"
+        )
+        plot_sweep_1d(
+            results, "beta", {"x_c": 0.784, "c": 0.77}, "β", "sweep_beta_PS", "pbh"
+        )
 
-        plot_heatmap_2d(results, "x_c", "c", "M_present",
-                        r"$x_c$", r"$c$", r"$M_{\mathrm{peak}} [M_\odot]$",
-                        "sweep_xc_vs_c_peakM", "pbh")
-        plot_heatmap_2d(results, "x_c", "c", "P_S_peak_ratio",
-                        r"$x_c$", r"$c$", r"$P_{\mathcal{R}}^{\mathrm{peak}} / A_s$",
-                        "sweep_xc_vs_c_PSratio", "pbh")
-        plot_heatmap_2d(results, "x_c", "c", "n_s",
-                        r"$x_c$", r"$c$", r"$n_s (k=0.05)$",
-                        "sweep_xc_vs_c_ns", "pbh")
+        plot_heatmap_2d(
+            results,
+            "x_c",
+            "c",
+            "M_present",
+            r"$x_c$",
+            r"$c$",
+            r"$M_{\mathrm{peak}} [M_\odot]$",
+            "sweep_xc_vs_c_peakM",
+            "pbh",
+        )
+        plot_heatmap_2d(
+            results,
+            "x_c",
+            "c",
+            "P_S_peak_ratio",
+            r"$x_c$",
+            r"$c$",
+            r"$P_{\mathcal{R}}^{\mathrm{peak}} / A_s$",
+            "sweep_xc_vs_c_PSratio",
+            "pbh",
+        )
+        plot_heatmap_2d(
+            results,
+            "x_c",
+            "c",
+            "n_s",
+            r"$x_c$",
+            r"$c$",
+            r"$n_s (k=0.05)$",
+            "sweep_xc_vs_c_ns",
+            "pbh",
+        )
 
         plot_best_configs(results, n_best=3)
 
