@@ -20,8 +20,10 @@ def get_current_pid():
     try:
         out = subprocess.check_output(
             ["pgrep", "-f", "sweep_pbh_params.*pbh_sweep_full"],
-            stderr=subprocess.DEVNULL, timeout=10)
-        pids = [int(p) for p in out.decode().strip().split('\n') if p.strip()]
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+        pids = [int(p) for p in out.decode().strip().split("\n") if p.strip()]
         return pids[-1] if pids else None  # parent is highest PID
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return None
@@ -51,8 +53,8 @@ def analyze_results(log_path):
 
     # Track counts
     total = len(lines)
-    errors = [e for e in lines if 'error' in e and e.get('error')]
-    ok = [o for o in lines if 'error' not in o]
+    errors = [e for e in lines if "error" in e and e.get("error")]
+    ok = [o for o in lines if "error" not in o]
 
     if not ok:
         print(f"  {total} entries, ALL ERRORS")
@@ -65,8 +67,11 @@ def analyze_results(log_path):
 
     # Range of covered params
     k_peaks = [r.get("k_peak", 0) for r in ok if r.get("k_peak", 0) > 0]
-    masses = [r.get("M_kpeak", r.get("M_present", 0)) for r in ok
-              if (r.get("M_kpeak", r.get("M_present", 0)) or 0) > 0]
+    masses = [
+        r.get("M_kpeak", r.get("M_present", 0))
+        for r in ok
+        if (r.get("M_kpeak", r.get("M_present", 0)) or 0) > 0
+    ]
     xc_range = (min(r["x_c"] for r in ok), max(r["x_c"] for r in ok))
     c_range = (min(r["c"] for r in ok), max(r["c"] for r in ok))
 
@@ -126,10 +131,12 @@ def design_next_sweep(analysis, current_log):
 
     highest_k = with_peaks[:5] if with_peaks else []
     for r in highest_k:
-        print(f"    x_c={r['x_c']:.4f} c={r['c']:.4f} beta={r['beta']:.1e} "
-              f"chi0={r['chi0']} N*={r['N_star']:.0f} "
-              f"k_peak={r['k_peak']:.2e} M={r.get('M_kpeak',0):.2e} "
-              f"n_s={r.get('n_s','?'):.4f}")
+        print(
+            f"    x_c={r['x_c']:.4f} c={r['c']:.4f} beta={r['beta']:.1e} "
+            f"chi0={r['chi0']} N*={r['N_star']:.0f} "
+            f"k_peak={r['k_peak']:.2e} M={r.get('M_kpeak', 0):.2e} "
+            f"n_s={r.get('n_s', '?'):.4f}"
+        )
 
     # Check if best configs hit the boundary → need to extend
     extend_xc = xc_max >= 0.795
@@ -180,30 +187,34 @@ def design_next_sweep(analysis, current_log):
 
 def submit_sweep(params, log_name="pbh_sweep_v2.jsonl"):
     """Build and submit the next sweep command."""
-    base = ("cd ~/Documentos/CMB_USR && "
-            "git pull && "
-            "source ~/miniconda3/etc/profile.d/conda.sh && "
-            "conda activate cmb-anomaly && "
-            "nohup python scripts/sweep_pbh_params.py "
-            f"--x_c-lo {params['x_c_lo']} "
-            f"--x_c-hi {params['x_c_hi']} "
-            f"--n-xc {params['n_xc']} "
-            f"--c-lo {params['c_lo']} "
-            f"--c-hi {params['c_hi']} "
-            f"--n-c {params['n_c']} "
-            f"--beta-vals " + " ".join(f"{b:.1e}" for b in params['beta_vals']) + " "
-            "--chi0-vals " + " ".join(f"{c:.1f}" for c in params['chi0_vals']) + " "
-            "--N-star-vals " + " ".join(f"{n:.0f}" for n in params['N_star_vals']) + " "
-            f"--target all "
-            f"--pivot-k 0.05 "
-            f"--N-total-min 65.0 "
-            f"--workers 4 "
-            f"--log outputs/simulations/logs/{log_name} "
-            f"> ~/{log_name.replace('.jsonl', '.log')} 2>&1 & echo PID=\\$!")
+    base = (
+        "cd ~/Documentos/CMB_USR && "
+        "git pull && "
+        "source ~/miniconda3/etc/profile.d/conda.sh && "
+        "conda activate cmb-anomaly && "
+        "nohup python scripts/sweep_pbh_params.py "
+        f"--x_c-lo {params['x_c_lo']} "
+        f"--x_c-hi {params['x_c_hi']} "
+        f"--n-xc {params['n_xc']} "
+        f"--c-lo {params['c_lo']} "
+        f"--c-hi {params['c_hi']} "
+        f"--n-c {params['n_c']} "
+        f"--beta-vals " + " ".join(f"{b:.1e}" for b in params["beta_vals"]) + " "
+        "--chi0-vals " + " ".join(f"{c:.1f}" for c in params["chi0_vals"]) + " "
+        "--N-star-vals " + " ".join(f"{n:.0f}" for n in params["N_star_vals"]) + " "
+        f"--target all "
+        f"--pivot-k 0.05 "
+        f"--N-total-min 65.0 "
+        f"--workers 4 "
+        f"--log outputs/simulations/logs/{log_name} "
+        f"> ~/{log_name.replace('.jsonl', '.log')} 2>&1 & echo PID=\\$!"
+    )
 
-    ssh_cmd = f"ssh uni -o ConnectTimeout=15 \"{base}\""
+    ssh_cmd = f'ssh uni -o ConnectTimeout=15 "{base}"'
     print("\n=== SUBMITTING NEXT SWEEP ===")
-    print(f"  x_c ∈ [{params['x_c_lo']:.4f}, {params['x_c_hi']:.4f}] × {params['n_xc']}")
+    print(
+        f"  x_c ∈ [{params['x_c_lo']:.4f}, {params['x_c_hi']:.4f}] × {params['n_xc']}"
+    )
     print(f"  c   ∈ [{params['c_lo']:.3f}, {params['c_hi']:.3f}] × {params['n_c']}")
     print(f"  β   ∈ {params['beta_vals']}")
     print(f"  χ₀  ∈ {params['chi0_vals']}")
@@ -219,7 +230,9 @@ def submit_sweep(params, log_name="pbh_sweep_v2.jsonl"):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--log", default="outputs/simulations/logs/pbh_sweep_full.jsonl")
-    p.add_argument("--poll-interval", type=int, default=180, help="Poll interval in seconds")
+    p.add_argument(
+        "--poll-interval", type=int, default=180, help="Poll interval in seconds"
+    )
     p.add_argument("--pid-file", default=None, help="File with initial PID to monitor")
     args = p.parse_args()
 
@@ -249,8 +262,10 @@ def main():
     while True:
         pid = get_current_pid()
         if pid is not None:
-            print(f"[{datetime.datetime.now().isoformat()}] PID {pid} still running. "
-                  f"Next check in {args.poll_interval}s")
+            print(
+                f"[{datetime.datetime.now().isoformat()}] PID {pid} still running. "
+                f"Next check in {args.poll_interval}s"
+            )
             sys.stdout.flush()
             time.sleep(args.poll_interval)
             continue
@@ -259,13 +274,17 @@ def main():
         if os.path.exists(log_path):
             n_done, _ = count_configs_in_log(log_path)
             if n_done > 0:
-                print(f"\n[{datetime.datetime.now().isoformat()}] "
-                      f"Job finished! {n_done} configs in log.")
+                print(
+                    f"\n[{datetime.datetime.now().isoformat()}] "
+                    f"Job finished! {n_done} configs in log."
+                )
                 sys.stdout.flush()
                 break
 
-        print(f"[{datetime.datetime.now().isoformat()}] No PID found and no log. "
-              f"Next check in {args.poll_interval}s")
+        print(
+            f"[{datetime.datetime.now().isoformat()}] No PID found and no log. "
+            f"Next check in {args.poll_interval}s"
+        )
         sys.stdout.flush()
         time.sleep(args.poll_interval)
 
@@ -284,17 +303,23 @@ def main():
     print(f"  OK configs: {analysis['ok']}")
     print(f"  Errors: {len(analysis['errors'])}")
     print(f"  Configs in target mass bins: {analysis['targets_in_bins']}")
-    print(f"  k_peak range: [{analysis['k_peak_range'][0]:.2e}, {analysis['k_peak_range'][1]:.2e}]")
-    print(f"  Mass range: [{analysis['mass_range'][0]:.2e}, {analysis['mass_range'][1]:.2e}] M_sun")
+    print(
+        f"  k_peak range: [{analysis['k_peak_range'][0]:.2e}, {analysis['k_peak_range'][1]:.2e}]"
+    )
+    print(
+        f"  Mass range: [{analysis['mass_range'][0]:.2e}, {analysis['mass_range'][1]:.2e}] M_sun"
+    )
 
-    if analysis['targets_in_bins'] > 0:
+    if analysis["targets_in_bins"] > 0:
         print("\n  Top target-binned configs:")
-        for i, r in enumerate(analysis['best_targets'][:5]):
-            print(f"  #{i+1}: x_c={r['x_c']:.4f} c={r['c']:.4f} β={r['beta']:.1e} "
-                  f"χ₀={r['chi0']} N*={r['N_star']:.0f} "
-                  f"k_peak={r['k_peak']:.2e} M={r.get('M_kpeak',0):.2e} "
-                  f"f_total={r.get('f_total',0):.2e} "
-                  f"n_s={r.get('n_s','?'):.4f}")
+        for i, r in enumerate(analysis["best_targets"][:5]):
+            print(
+                f"  #{i + 1}: x_c={r['x_c']:.4f} c={r['c']:.4f} β={r['beta']:.1e} "
+                f"χ₀={r['chi0']} N*={r['N_star']:.0f} "
+                f"k_peak={r['k_peak']:.2e} M={r.get('M_kpeak', 0):.2e} "
+                f"f_total={r.get('f_total', 0):.2e} "
+                f"n_s={r.get('n_s', '?'):.4f}"
+            )
 
     # Design next sweep
     print("\n=== DESIGNING NEXT SWEEP ===")

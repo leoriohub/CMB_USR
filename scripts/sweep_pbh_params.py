@@ -15,11 +15,8 @@ import argparse
 import numpy as np
 from scipy.special import erfc
 
-from scripts.constants import (
-    k_pivot_phys, S, ROOT_DIR,
-)
 from scripts.plotting import (
-    make_filename, save_fig, get_path, TOL, PAPER_RCPARAMS,
+    save_fig, TOL, PAPER_RCPARAMS,
 )
 import matplotlib
 matplotlib.use("Agg")
@@ -68,9 +65,9 @@ def _pbh_weighted_kgrid(target="subsolar"):
     k_cmb_ns = np.logspace(np.log10(0.005), np.log10(0.5), 15)
 
     if target == "asteroid":
-        k_pbh = np.logspace(12, 18, 250)
+        k_pbh = np.logspace(12, 22, 350)
     elif target == "all":
-        k_pbh = np.logspace(6, 18, 300)
+        k_pbh = np.logspace(6, 22, 400)
     else:  # "subsolar"
         k_pbh = np.logspace(6, 13, 250)
 
