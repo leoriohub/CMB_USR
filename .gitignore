@@ -42,8 +42,8 @@ node_modules/
 scripts/fig6_ns_vs_x0.py
 scripts/reproduce_fig1.py
 
-# Ezquiaga inflection parameters manuscript
-ezquiaga/
+# Ezquiaga inflection parameters manuscript (output archive only)
+outputs/Ezquiaga/
 
 # Project-level AI assistant config (local workflow preferences)
 opencode.json
