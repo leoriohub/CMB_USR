@@ -15,15 +15,13 @@ import argparse
 import numpy as np
 from scipy.special import erfc
 
-from scripts.plotting import (
-    save_fig,
-    TOL,
-    PAPER_RCPARAMS,
-)
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+
+from scripts.plotting import save_fig, TOL, PAPER_RCPARAMS
 
 ACCRETION = 3e7
 
@@ -79,7 +77,7 @@ def _pbh_weighted_kgrid(target="subsolar"):
     return grid
 
 
-def compute_ns(k_phys, P_S, k_pivot=0.05, window=3.0):
+def compute_ns(k_phys, P_S, k_pivot=0.05, window=3.0):  # always 0.05 (Planck) for Ezquiaga
     """Compute n_s and interpolated A_s at k_pivot from MS P_S(k).
 
     Fits ln(P_S) vs ln(k) over k ∈ [k_pivot/window, k_pivot*window].
@@ -121,7 +119,7 @@ def classify_mass_range(M_peak):
     return "massive"
 
 
-def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar", pivot_k=0.002, N_star=65):
+def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar", pivot_k=0.05, N_star=65):
     """Run the MS solver for a given model, return k_phys, P_S, N_total."""
     from pspectrum_pipeline import run_pspectrum_pipeline
 
@@ -321,7 +319,7 @@ def plot_sweep_1d(results, param, fixed, param_label, filename, category):
     with plt.rc_context(PAPER_RCPARAMS):
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7, 2.8))
 
-        colors = plt.cm.viridis(np.linspace(0.2, 0.9, len(filtered)))
+        colors = plt.colormaps["viridis"](np.linspace(0.2, 0.9, len(filtered)))
         for i, r in enumerate(filtered):
             if "k_phys" not in r or "P_S" not in r:
                 continue
@@ -366,8 +364,8 @@ def plot_heatmap_2d(
     results, x_param, y_param, z_param, x_label, y_label, z_label, filename, category
 ):
     """2D heatmap of a metric over two parameters."""
-    x_vals = sorted(set(r[x_param] for r in results))
-    y_vals = sorted(set(r[y_param] for r in results))
+    x_vals = sorted({r[x_param] for r in results})
+    y_vals = sorted({r[y_param] for r in results})
     z_grid = np.full((len(y_vals), len(x_vals)), np.nan)
 
     for r in results:
@@ -378,7 +376,7 @@ def plot_heatmap_2d(
     # Auto-detect norm: LogNorm only if all values are positive
     z_flat = z_grid[~np.isnan(z_grid)]
     use_log = len(z_flat) > 0 and np.all(z_flat > 0)
-    norm = matplotlib.colors.LogNorm() if use_log else None
+    norm = LogNorm() if use_log else None
 
     with plt.rc_context(PAPER_RCPARAMS):
         fig, ax = plt.subplots(figsize=(4.5, 3.5))
@@ -506,8 +504,8 @@ def main():
     p.add_argument(
         "--pivot-k",
         type=float,
-        default=0.002,
-        help="MS solver pivot scale (default 0.002 for Higgs, 0.05 for Planck)",
+        default=0.05,
+        help="MS solver pivot k_pivot_phys (Planck default 0.05; Higgs low-ell 0.002)",
     )
     p.add_argument(
         "--workers", type=int, default=8, help="MS solver parallel workers per config"
