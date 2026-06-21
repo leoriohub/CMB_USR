@@ -73,11 +73,15 @@ def _pbh_weighted_kgrid(target="subsolar"):
     else:  # "subsolar"
         k_pbh = np.logspace(6, 13, 250)
 
+    k_min_val = k_pbh[0] if len(k_pbh) > 0 else 1e6
+    k_max_val = k_pbh[-1] if len(k_pbh) > 0 else 1e13
     grid = np.unique(np.concatenate([k_cmb_ns, k_pbh]))
-    return grid
+    return grid, k_min_val, k_max_val
 
 
-def compute_ns(k_phys, P_S, k_pivot=0.05, window=3.0):  # always 0.05 (Planck) for Ezquiaga
+def compute_ns(
+    k_phys, P_S, k_pivot=0.05, window=3.0
+):  # always 0.05 (Planck) for Ezquiaga
     """Compute n_s and interpolated A_s at k_pivot from MS P_S(k).
 
     Fits ln(P_S) vs ln(k) over k ∈ [k_pivot/window, k_pivot*window].
@@ -127,7 +131,7 @@ def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar", pivot_k=0.05, N_star=65
     model.y0 = y0
     model.patch_background_solver()
 
-    k_grid = _pbh_weighted_kgrid(target)
+    k_grid, k_min_val, k_max_val = _pbh_weighted_kgrid(target)
 
     result = run_pspectrum_pipeline(
         model=model,
@@ -147,19 +151,31 @@ def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar", pivot_k=0.05, N_star=65
     ps = np.array(result["P_S"])
     N_total = float(result["metadata"]["N_total"])
 
-    return k, ps, N_total, result
+    return k, ps, N_total, result, k_min_val, k_max_val
 
 
-def find_pbh_peak(k_phys, P_S):
-    """Find the USR peak in P_S(k), ignoring CMB-scale k < 1 Mpc⁻¹."""
+def find_pbh_peak(k_phys, P_S, k_min=None, k_max=None):
+    """Find the USR peak in P_S(k), ignoring CMB-scale k < 1 Mpc⁻¹.
+
+    Parameters
+    ----------
+    k_min, k_max : float or None
+        Grid bounds for flagging peaks at the grid edge.
+        Sets on_grid_boundary=True if k_peak is within 1% of a bound.
+    """
     valid = np.isfinite(P_S) & (P_S > 1e-10) & np.isfinite(k_phys) & (k_phys > 1.0)
     k, ps = k_phys[valid], P_S[valid]
     if len(k) < 5:
         return None
     peak_i = int(np.argmax(ps))
+    k_peak = float(k[peak_i])
+    on_boundary = False
+    if k_min is not None and k_max is not None:
+        on_boundary = bool(k_peak <= k_min * 1.01 or k_peak >= k_max * 0.99)
     return {
-        "k_peak": float(k[peak_i]),
+        "k_peak": k_peak,
         "P_S_peak": float(ps[peak_i]),
+        "on_grid_boundary": on_boundary,
     }
 
 
@@ -195,12 +211,15 @@ def run_sweep(
     beta_vals,
     chi0_vals,
     y0,
-    zeta_c,
+    zeta_c_vals,
     target="subsolar",
     N_total_min=65,
     pivot_k=0.002,
     N_star_vals=None,
     progress_fn=None,
+    log_path=None,
+    resume=False,
+    f_max=1.0,
 ):
     """Run the full sweep over parameter grid.
 
@@ -217,83 +236,157 @@ def run_sweep(
     """
     if N_star_vals is None:
         N_star_vals = [65]
+
+    # Resume: load already-computed configs from existing log
+    done_set = set()
+    if resume and log_path and os.path.exists(log_path):
+        with open(log_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    k = (
+                        entry["x_c"],
+                        entry["c"],
+                        entry["beta"],
+                        entry["chi0"],
+                        entry["N_star"],
+                        entry.get("zeta_c", None),
+                    )
+                    done_set.add(k)
+                except (json.JSONDecodeError, KeyError):
+                    pass
+        print(f"  Resuming: {len(done_set)} configs already in {log_path}")
+
     results = []
     total = (
-        len(xc_vals) * len(c_vals) * len(beta_vals) * len(chi0_vals) * len(N_star_vals)
+        len(xc_vals)
+        * len(c_vals)
+        * len(beta_vals)
+        * len(chi0_vals)
+        * len(N_star_vals)
+        * len(zeta_c_vals)
     )
+
+    def _write_log_entry(entry):
+        """Write stripped entry to incremental JSONL log (opens/closes per write)."""
+        if not log_path:
+            return
+        log_entry = {k: v for k, v in entry.items() if k not in ("k_phys", "P_S")}
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "a") as f:
+            json.dump(log_entry, f)
+            f.write("\n")
+            f.flush()
+
     idx = 0
+    skipped = 0
     for xc in xc_vals:
         for c in c_vals:
             for beta in beta_vals:
                 for chi0 in chi0_vals:
                     for N_star in N_star_vals:
-                        idx += 1
-                        if progress_fn:
-                            progress_fn(idx, total, xc, c, beta, chi0, N_star)
-                        try:
-                            m = model_from_params(xc, c, beta)
-                            k_m, ps_ms, N_total, pipe_result = run_ms(
-                                m, chi0, y0, target, pivot_k, N_star
-                            )
-                            if N_total < N_total_min:
+                        for zeta_c in zeta_c_vals:
+                            idx += 1
+                            key = (xc, c, beta, chi0, N_star, zeta_c)
+                            if key in done_set:
+                                skipped += 1
                                 continue
-                            peak = find_pbh_peak(k_m, ps_ms)
-                            if peak is None:
-                                continue
-                            pbh = compute_pbh_metrics(k_m, ps_ms, zeta_c)
-                            n_s, A_s_at_cmb = compute_ns(k_m, ps_ms)
-                            # Use k_peak-derived mass for classification (NOT abundance-weighted)
-                            M_kpeak = (
-                                GAMMA * M_EQ * (K_EQ / peak["k_peak"]) ** 2 * ACCRETION
-                            )
-                            mass_bin = classify_mass_range(M_kpeak)
-                            ps_ratio = peak["P_S_peak"] / TARGET_As
-                            result = {
-                                "x_c": xc,
-                                "c": c,
-                                "beta": beta,
-                                "chi0": chi0,
-                                "N_star": N_star,
-                                "N_total": N_total,
-                                "k_peak": peak["k_peak"],
-                                "P_S_peak": peak["P_S_peak"],
-                                "P_S_peak_ratio": ps_ratio,
-                                "M_form": GAMMA * M_EQ * (K_EQ / peak["k_peak"]) ** 2
-                                if peak["k_peak"] > 0
-                                else 0,
-                                "M_present": pbh["M_peak"],
-                                "M_kpeak": M_kpeak,
-                                "f_total": pbh["f_total"],
-                                "mass_bin": mass_bin,
-                                "n_s": n_s,
-                                "A_s_at_cmb": A_s_at_cmb,
-                                "k_phys": k_m.tolist(),
-                                "P_S": ps_ms.tolist(),
-                            }
-                            results.append(result)
-                        except Exception as e:
-                            results.append(
-                                {
+                            n_remaining = total - len(done_set)
+                            n_done = idx - skipped
+                            if progress_fn:
+                                progress_fn(
+                                    n_done,
+                                    n_remaining,
+                                    xc,
+                                    c,
+                                    beta,
+                                    chi0,
+                                    N_star,
+                                    zeta_c,
+                                )
+                            try:
+                                m = model_from_params(xc, c, beta)
+                                (
+                                    k_m,
+                                    ps_ms,
+                                    N_total,
+                                    pipe_result,
+                                    k_min_val,
+                                    k_max_val,
+                                ) = run_ms(m, chi0, y0, target, pivot_k, N_star)
+                                if N_total < N_total_min:
+                                    continue
+                                peak = find_pbh_peak(k_m, ps_ms, k_min_val, k_max_val)
+                                if peak is None:
+                                    continue
+                                pbh = compute_pbh_metrics(k_m, ps_ms, zeta_c)
+                                n_s, A_s_at_cmb = compute_ns(k_m, ps_ms)
+                                # Use k_peak-derived mass for classification (NOT abundance-weighted)
+                                M_kpeak = (
+                                    GAMMA
+                                    * M_EQ
+                                    * (K_EQ / peak["k_peak"]) ** 2
+                                    * ACCRETION
+                                )
+                                mass_bin = classify_mass_range(M_kpeak)
+                                ps_ratio = peak["P_S_peak"] / TARGET_As
+                                result = {
                                     "x_c": xc,
                                     "c": c,
                                     "beta": beta,
                                     "chi0": chi0,
                                     "N_star": N_star,
+                                    "N_total": N_total,
+                                    "zeta_c": zeta_c,
+                                    "k_peak": peak["k_peak"],
+                                    "P_S_peak": peak["P_S_peak"],
+                                    "P_S_peak_ratio": ps_ratio,
+                                    "M_form": GAMMA
+                                    * M_EQ
+                                    * (K_EQ / peak["k_peak"]) ** 2
+                                    if peak["k_peak"] > 0
+                                    else 0,
+                                    "M_present": pbh["M_peak"],
+                                    "M_kpeak": M_kpeak,
+                                    "f_total": pbh["f_total"],
+                                    "on_grid_boundary": peak.get(
+                                        "on_grid_boundary", False
+                                    ),
+                                    "mass_bin": mass_bin,
+                                    "n_s": n_s,
+                                    "A_s_at_cmb": A_s_at_cmb,
+                                    "k_phys": k_m.tolist(),
+                                    "P_S": ps_ms.tolist(),
+                                }
+                                results.append(result)
+                                _write_log_entry(result)
+                            except Exception as e:
+                                error_entry = {
+                                    "x_c": xc,
+                                    "c": c,
+                                    "beta": beta,
+                                    "chi0": chi0,
+                                    "N_star": N_star,
+                                    "zeta_c": zeta_c,
                                     "error": str(e),
                                 }
-                            )
+                                results.append(error_entry)
+                                _write_log_entry(error_entry)
+
+    if skipped > 0:
+        print(f"  Skipped {skipped} already-computed configs")
+
+    # Filter by f_max (but keep error entries)
+    n_before = len(results)
+    results = [r for r in results if "error" in r or r.get("f_total", 0) <= f_max]
+    n_filtered = n_before - len(results)
+    if n_filtered > 0:
+        print(f"  Filtered {n_filtered} configs with f_total > {f_max}")
+
     return results
-
-
-def write_log(results, log_path):
-    """Write results to a JSONL log."""
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    with open(log_path, "w") as f:
-        for r in results:
-            # Strip large arrays for log
-            entry = {k: v for k, v in r.items() if k not in ("k_phys", "P_S")}
-            json.dump(entry, f)
-            f.write("\n")
 
 
 def plot_sweep_1d(results, param, fixed, param_label, filename, category):
@@ -450,17 +543,20 @@ def print_summary(results, n_show=20):
     print(
         f"\n{'Rank':<5} {'x_c':<8} {'c':<8} {'beta':<9} "
         f"{'N_total':<8} {'k_peak':<10} {'P_S_peak':<10} "
-        f"{'M_kpeak':<10} {'f_total':<9} {'mass_bin':<22} {'n_s':<8}"
+        f"{'M_kpeak':<10} {'f_total':<9} {'flg':<4} {'mass_bin':<22} {'n_s':<8}"
     )
-    print("-" * 110)
+    print("-" * 115)
     for i, r in enumerate(combined[:n_show]):
         ns_str = f"{r.get('n_s', 'N/A'):.4f}" if r.get("n_s") is not None else "N/A"
         mk = r.get("M_kpeak", r.get("M_present", 0))
+        flag = ""
+        if r.get("on_grid_boundary"):
+            flag = "B"
         print(
             f"{i + 1:<5} {r['x_c']:<8.4f} {r['c']:<8.4f} {r['beta']:<9.1e} "
             f"{r['N_total']:<8.1f} {r['k_peak']:<10.3e} {r['P_S_peak']:<10.4e} "
             f"{mk:<10.4e} {r['f_total']:<9.4e} "
-            f"{r['mass_bin']:<22} {ns_str:<8}"
+            f"{flag:<4} {r['mass_bin']:<22} {ns_str:<8}"
         )
 
 
@@ -488,7 +584,13 @@ def main():
         help="N_star values to sweep (e.g., 50 60 70)",
     )
     p.add_argument("--y0", type=float, default=-1e-4)
-    p.add_argument("--zeta-c", type=float, default=0.052)
+    p.add_argument(
+        "--zeta-c-vals",
+        type=float,
+        nargs="+",
+        default=[0.077],
+        help="Collapse threshold values to sweep (default: 0.077)",
+    )
     p.add_argument(
         "--target",
         choices=["subsolar", "asteroid", "all"],
@@ -513,6 +615,29 @@ def main():
     p.add_argument("--output-dir", default="outputs/plots/pbh")
     p.add_argument("--log", default="outputs/simulations/logs/pbh_sweep.jsonl")
     p.add_argument("--no-plot", action="store_true")
+    p.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="JSON config file (CLI args override file values)",
+    )
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip configs already in the log file",
+    )
+    p.add_argument(
+        "--f-max",
+        type=float,
+        default=1.0,
+        help="Exclude configs with f_total > this threshold (default: 1.0)",
+    )
+    # Pre-parse to check for --config (needed before full parse)
+    pre_args, _ = p.parse_known_args()
+    if pre_args.config:
+        with open(pre_args.config) as f:
+            p.set_defaults(**json.load(f))
+
     args = p.parse_args()
 
     global MS_N_WORKERS
@@ -524,25 +649,33 @@ def main():
     chi0_vals = args.chi0_vals
     N_star_vals = args.N_star_vals
 
+    zeta_c_vals = args.zeta_c_vals
     total = (
-        len(xc_vals) * len(c_vals) * len(beta_vals) * len(chi0_vals) * len(N_star_vals)
+        len(xc_vals)
+        * len(c_vals)
+        * len(beta_vals)
+        * len(chi0_vals)
+        * len(N_star_vals)
+        * len(zeta_c_vals)
     )
     print(
         f"Sweep: {len(xc_vals)} x_c × {len(c_vals)} c × "
         f"{len(beta_vals)} β × {len(chi0_vals)} χ₀ × "
-        f"{len(N_star_vals)} N* = {total} configs  "
+        f"{len(N_star_vals)} N* × {len(zeta_c_vals)} ζ_c = "
+        f"{total} configs  "
         f"target={args.target}  pivot_k={args.pivot_k}  "
         f"N_total_min={args.N_total_min}  workers={args.workers}"
     )
 
     t0 = time.time()
 
-    def progress(i, n, xc, c, beta, chi0, N_star):
+    def progress(i, n, xc, c, beta, chi0, N_star, zeta_c=None):
         elapsed = time.time() - t0
         rate = i / max(elapsed, 0.01)
         eta = (n - i) / rate
         sys.stdout.write(
-            f"\r  [{i}/{n}] x_c={xc:.4f} c={c:.3f} β={beta:.1e} χ₀={chi0:.1f} N*={N_star:.0f}  "
+            f"\r  [{i}/{n}] x_c={xc:.4f} c={c:.3f} β={beta:.1e} χ₀={chi0:.1f} "
+            f"N*={N_star:.0f} ζ_c={zeta_c or 0.077:.4f}  "
             f"[{elapsed:.0f}s<{eta:.0f}s, {rate:.1f}cfg/s]  "
         )
         sys.stdout.flush()
@@ -553,17 +686,17 @@ def main():
         beta_vals,
         chi0_vals,
         args.y0,
-        args.zeta_c,
+        zeta_c_vals=args.zeta_c_vals,
         target=args.target,
         N_total_min=args.N_total_min,
         pivot_k=args.pivot_k,
         N_star_vals=N_star_vals,
         progress_fn=progress,
+        log_path=args.log,
+        resume=args.resume,
+        f_max=args.f_max,
     )
     print(f"\n  Done in {time.time() - t0:.1f}s")
-
-    # Write log
-    write_log(results, args.log)
     print(f"  Log: {args.log}")
 
     # Print summary
