@@ -302,7 +302,7 @@ def run_sweep(
                             continue
 
                         idx += 1
-                        n_remaining = total - len(done_set)
+                        n_remaining = n_unique - idx + skipped
                         n_done = idx - skipped
                         if progress_fn:
                             progress_fn(
