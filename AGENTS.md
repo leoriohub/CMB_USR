@@ -527,3 +527,19 @@ From paper lines 302-303 (ΔN ∈ (30,35) for viable PBH production):
 - k_peak = 1e18 (asteroid) is stable across c ∈ [0.77, 5.0] at xc≥0.79 (grid boundary)
 - First resolved (non-grid-boundary) peak at k=9.1×10¹⁷ at c=1.86, β=3e-4, xc=0.79
 - The search plan is documented in `docs/pbh_search_plan.md`
+
+### 20. Best PBH Configs — Sub-solar & Asteroid
+
+Two independently-verified configs producing real (non-boundary) USR peaks with
+clean observational-constraint fits, companion JSONs auto-generated on plot output:
+
+| Region | Config | M_peak [M⊙] | f_total | ζ_c | n_s | File |
+|--------|--------|-------------|---------|-----|-----|------|
+| **Sub-solar** | β=2e-5, N*=66 | 1.97e-05 | 0.183 | 0.0765 | 0.9501 | `configs/subsolar_pbh.json` |
+| **Asteroid** | β=1.8e-4, N*=72 | 1.29e-16 | 0.128 | 0.0488 | 0.9663 | `configs/asteroid_pbh.json` |
+
+Both at χ₀=8.0, x_c=0.784, c=0.77. Reproduce with:
+```bash
+python scripts/full_pbh_pipeline.py --config configs/subsolar_pbh.json --tag rank02
+python scripts/full_pbh_pipeline.py --config configs/asteroid_pbh.json --tag rank07
+```
