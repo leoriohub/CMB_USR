@@ -385,3 +385,84 @@ def run_full_pbh_pipeline(
         "M_peak_best": M_peak_best,
         "all_results": all_results,
     }
+
+
+if __name__ == "__main__":
+    import argparse
+    p = argparse.ArgumentParser(description="PBH abundance pipeline CLI")
+    p.add_argument("--config", type=str, default=None,
+                    help="JSON config file (CLI overrides file values)")
+    p.add_argument("--chi0", type=float, default=8.0)
+    p.add_argument("--y0", type=float, default=-1e-4)
+    p.add_argument("--N-star", type=float, default=65.0)
+    p.add_argument("--beta", type=float, default=1e-5)
+    p.add_argument("--xc", type=float, default=0.784)
+    p.add_argument("--c", type=float, default=0.77)
+    p.add_argument("--workers", type=int, default=8)
+    p.add_argument("--zeta-c", type=float, nargs="+",
+                    default=[0.05, 0.055, 0.06, 0.065, 0.068, 0.07, 0.072,
+                             0.075, 0.077, 0.078, 0.08, 0.083, 0.085, 0.1])
+    p.add_argument("--output-dir", type=str,
+                    default="outputs/plots/pbh/top_configs")
+    p.add_argument("--no-force", action="store_false", dest="force")
+    p.set_defaults(force=True)
+    p.add_argument("--no-plot", action="store_true")
+
+    pre, _ = p.parse_known_args()
+    if pre.config:
+        with open(pre.config) as f:
+            p.set_defaults(**json.load(f))
+    args = p.parse_args()
+
+    from scripts.constants import ROOT_DIR
+    import os, json, shutil
+    from datetime import datetime
+
+    result = run_full_pbh_pipeline(
+        chi0=args.chi0, y0=args.y0, N_star=args.N_star,
+        beta=args.beta, xc=args.xc, c=args.c,
+        workers=args.workers, zeta_c_vals=args.zeta_c,
+        plot=not args.no_plot, force=args.force,
+    )
+
+    target_dir = os.path.join(ROOT_DIR, args.output_dir)
+    os.makedirs(target_dir, exist_ok=True)
+
+    ns = result["n_s"]
+    ntot = result["N_total"]
+
+    for zc_data in result["all_results"]:
+        zc = zc_data["zeta_c"]
+        ft = zc_data["f_total"]
+        M = zc_data["M_peak"]
+
+        print(f"ζ_c={zc:.4f}  f_total={ft:.4e}  M_peak={M:.4e}")
+
+        if not args.no_plot and ft > 0:
+            from scripts.plotting import plot_pbh_abundance
+            pid = f"fit_xc{args.xc}_beta{args.beta:.1e}_Nstar{args.N_star:.0f}_zcz{zc:.4f}"
+            plot_pbh_abundance(
+                zc_data["M"], zc_data["f_pbh"],
+                zeta_c=zc, gamma=0.4,
+                model_label=f"β={args.beta:.1e}, N*={args.N_star:.0f}, ζ_c={zc:.4f} (f={ft:.3e})",
+                filename=pid, category="pbh",
+            )
+            src = os.path.join(ROOT_DIR, "outputs/plots/pbh", pid + ".png")
+            dst = os.path.join(target_dir, pid + ".png")
+            if os.path.exists(src):
+                shutil.move(src, dst)
+                comp = {
+                    "plot_file": pid + ".png",
+                    "generated": datetime.now().isoformat(),
+                    "pipeline": "full_pbh_pipeline CLI",
+                    "config": {
+                        "model": "EzquiagaCHIModel",
+                        "x_c": args.xc, "c": args.c, "beta": args.beta,
+                        "chi0": args.chi0, "y0": args.y0, "N_star": args.N_star,
+                    },
+                    "background": {"N_total": ntot, "n_s": ns},
+                    "pbh": {"zeta_c": zc, "f_total": ft, "M_present_Msun": M},
+                }
+                with open(dst.replace(".png", ".json"), "w") as f:
+                    json.dump(comp, f, indent=2, default=str)
+                print(f"  → {dst}")
