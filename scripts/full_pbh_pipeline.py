@@ -406,6 +406,8 @@ if __name__ == "__main__":
                     default="outputs/plots/pbh/top_configs")
     p.add_argument("--no-force", action="store_false", dest="force")
     p.set_defaults(force=True)
+    p.add_argument("--tag", type=str, default=None,
+                    help="Prefix for output filenames (e.g. 'rank07')")
     p.add_argument("--no-plot", action="store_true")
 
     pre, _ = p.parse_known_args()
@@ -440,7 +442,8 @@ if __name__ == "__main__":
 
         if not args.no_plot and ft > 0:
             from scripts.plotting import plot_pbh_abundance
-            pid = f"beta{args.beta:.1e}_Nstar{args.N_star:.0f}_zcz{zc:.4f}"
+            tag = f"{args.tag}_" if args.tag else ""
+            pid = f"{tag}beta{args.beta:.1e}_Nstar{args.N_star:.0f}_zcz{zc:.4f}"
             plot_pbh_abundance(
                 zc_data["M"], zc_data["f_pbh"],
                 zeta_c=zc, gamma=0.4,
