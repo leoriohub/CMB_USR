@@ -13,7 +13,7 @@ import json
 import time
 import argparse
 import numpy as np
-from scipy.special import erfc
+from scripts.full_pbh_pipeline import compute_pbh_abundance
 
 import matplotlib
 
@@ -23,7 +23,7 @@ from matplotlib.colors import LogNorm
 
 from scripts.plotting import save_fig, TOL, PAPER_RCPARAMS
 
-ACCRETION = 3e7
+from scripts.constants import gamma_default, k_eq_default, M_eq_default, ACCRETION
 
 # Paper targets
 TARGET_PS_RATIO = 2.3e4  # P_S_peak / As
@@ -31,10 +31,6 @@ TARGET_As = 2.1e-9
 TARGET_M_PEAK = 11.0  # Msun (present-day)
 TARGET_F_TOTAL = 0.42  # Omega_PBH / Omega_DM
 
-# Fixed cosmology
-K_EQ = 0.0104
-M_EQ = 3.0e17
-GAMMA = 0.4
 
 MS_N_WORKERS = 8  # overridden by --workers CLI arg
 
@@ -180,28 +176,25 @@ def find_pbh_peak(k_phys, P_S, k_min=None, k_max=None):
 
 
 def compute_pbh_metrics(k_phys, P_S, zeta_c=0.052):
-    """Compute PBH abundance for a given P_S(k) spectrum.
+    """PBH abundance (present-day masses) from P_S(k).
 
-    f_total = Ω_PBH/Ω_DM can exceed 1 if zeta_c is too low for the P_S amplitude.
+    Thin wrapper around full_pbh_pipeline.compute_pbh_abundance.
     """
-    bf = erfc(zeta_c / np.sqrt(2 * np.clip(P_S, 1e-300, None)))
-    beq = np.clip(bf * k_phys / K_EQ, 0.0, 1.0)
-    M = GAMMA * M_EQ * (K_EQ / k_phys) ** 2 * ACCRETION
+    pbh = compute_pbh_abundance(
+        k_phys, P_S, gamma_default, zeta_c, k_eq_default, M_eq_default
+    )
+    M_present = pbh["M"] * ACCRETION
+    f_pbh = pbh["f_pbh"]
 
-    ok = np.isfinite(M) & np.isfinite(beq) & (M > 0)
-    M, beq = M[ok], beq[ok]
-    order = np.argsort(M)
-    M, beq = M[order], beq[order]
-
-    f_total = float(np.trapezoid(beq, np.log(np.maximum(M, 1e-300))))
-    peak_i = int(np.argmax(beq))
-    M_peak = float(M[peak_i]) if len(M) > 0 else np.nan
+    f_total = float(np.trapezoid(f_pbh, np.log(np.maximum(M_present, 1e-300))))
+    peak_i = int(np.argmax(f_pbh))
+    M_peak = float(M_present[peak_i]) if len(M_present) > 0 else np.nan
 
     return {
-        "f_total": float(f_total),
+        "f_total": f_total,
         "M_peak": M_peak,
-        "M": M,
-        "f_pbh": beq,
+        "M": M_present,
+        "f_pbh": f_pbh,
     }
 
 
@@ -262,11 +255,7 @@ def run_sweep(
 
     results = []
     n_unique = (
-        len(xc_vals)
-        * len(c_vals)
-        * len(beta_vals)
-        * len(chi0_vals)
-        * len(N_star_vals)
+        len(xc_vals) * len(c_vals) * len(beta_vals) * len(chi0_vals) * len(N_star_vals)
     )
     total = n_unique * len(zeta_c_vals)
 
@@ -290,9 +279,7 @@ def run_sweep(
                     for N_star in N_star_vals:
                         # MS solver runs ONCE per (xc, c, beta, chi0, N_star)
                         ms_done_key = (xc, c, beta, chi0, N_star)
-                        ms_completed = any(
-                            k[:5] == ms_done_key for k in done_set
-                        )
+                        ms_completed = any(k[:5] == ms_done_key for k in done_set)
                         if ms_completed:
                             # All zeta_c variants already done for this config
                             zeta_in_done = sum(
@@ -326,9 +313,9 @@ def run_sweep(
                                 continue
                             n_s, A_s_at_cmb = compute_ns(k_m, ps_ms)
                             M_kpeak = (
-                                GAMMA
-                                * M_EQ
-                                * (K_EQ / peak["k_peak"]) ** 2
+                                gamma_default
+                                * M_eq_default
+                                * (k_eq_default / peak["k_peak"]) ** 2
                                 * ACCRETION
                             )
                             mass_bin = classify_mass_range(M_kpeak)
@@ -343,15 +330,13 @@ def run_sweep(
                                 "k_peak": peak["k_peak"],
                                 "P_S_peak": peak["P_S_peak"],
                                 "P_S_peak_ratio": ps_ratio,
-                                "M_form": GAMMA
-                                * M_EQ
-                                * (K_EQ / peak["k_peak"]) ** 2
+                                "M_form": gamma_default
+                                * M_eq_default
+                                * (k_eq_default / peak["k_peak"]) ** 2
                                 if peak["k_peak"] > 0
                                 else 0,
                                 "M_kpeak": M_kpeak,
-                                "on_grid_boundary": peak.get(
-                                    "on_grid_boundary", False
-                                ),
+                                "on_grid_boundary": peak.get("on_grid_boundary", False),
                                 "mass_bin": mass_bin,
                                 "n_s": n_s,
                                 "A_s_at_cmb": A_s_at_cmb,
@@ -672,11 +657,7 @@ def main():
         * len(zeta_c_vals)
     )
     n_unique = (
-        len(xc_vals)
-        * len(c_vals)
-        * len(beta_vals)
-        * len(chi0_vals)
-        * len(N_star_vals)
+        len(xc_vals) * len(c_vals) * len(beta_vals) * len(chi0_vals) * len(N_star_vals)
     )
     total_entries = n_unique * len(zeta_c_vals)
     print(
