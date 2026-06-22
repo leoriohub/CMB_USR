@@ -633,8 +633,8 @@ def main():
     # Pre-parse to check for --config (needed before full parse)
     pre_args, _ = p.parse_known_args()
     if pre_args.config:
-        with open(pre_args.config) as f:
-            p.set_defaults(**json.load(f))
+        from scripts.config_loader import load_config
+        p.set_defaults(**load_config(pre_args.config))
 
     args = p.parse_args()
 

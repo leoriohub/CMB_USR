@@ -493,6 +493,8 @@ At c=1.86, the plateau is very stretched and the inflection is at a different po
 
 The potential value V(x_c) changes by only 0.02% across the full β range. The slope at x_c is the key parameter.
 
+**N_star is the dominant knob for PBH mass targeting.** β controls USR strength (peak amplitude), but N* shifts the entire P_S(k) along the k-axis via the k↔N pivot mapping. δ(N*) = +1 shifts k_peak by ×e ≈ ×2.7. The difference between sub-solar (k~10¹¹) and asteroid (k~10¹⁸) masses is δ(N*) ≈ +6 at fixed β. β fine-tunes which specific mass bin within the target regime — N* selects the regime.
+
 ### 19. Ezquiaga SM-Allowed Parameter Ranges (from 1705.04861)
 
 From paper lines 302-303 (ΔN ∈ (30,35) for viable PBH production):
@@ -543,3 +545,36 @@ Both at χ₀=8.0, x_c=0.784, c=0.77. Reproduce with:
 python scripts/full_pbh_pipeline.py --config configs/subsolar_pbh.json --tag rank02
 python scripts/full_pbh_pipeline.py --config configs/asteroid_pbh.json --tag rank07
 ```
+
+### 21. Ezquiaga Parameter Relationships & Config Structure
+
+**Fundamental potential parameters:**
+- `a = b_λ / λ₀`, `b = b_ξ / ξ₀` — dimensionless RG ratios. These define the potential shape.
+- `λ₀`, `ξ₀` — absolute scale. `λ₀=2.23e-7, ξ₀=7.55` are fixed from SM RG running (paper values).
+- `c = ξ₀·κ²μ²` — plateau width. This is the tunable scale parameter.
+- `V₀ = λ₀·μ⁴/4` — overall potential energy scale.
+
+**Two ways to specify a config:**
+
+1. **Raw RG coefficients** (`paper.json`): store `b_λ, b_ξ, λ₀, ξ₀, c` directly. Constructor computes `a=b_λ/λ₀`, `b=b_ξ/ξ₀`. No inflection block. This is what the paper literally published — the numbers produce a local minimum (β≈−0.018), not an inflection. Field stalls at N≈182.
+
+2. **Inflection parametrization** (all other configs): store `x_c, c, β`. Pipeline calls `inflection_parameters(x_c, c, β)` which computes the exact `a, b` that satisfy V'(x_c)=V''(x_c)=0 (for β=0) or a controlled deviation (β>0). These override whatever the constructor computed from `b_λ`/`b_ξ`. The `b_λ`/`b_ξ` defaults are irrelevant in this path.
+
+**Key consequence:** The `inflection` parametrization assumes `a = a_exact(x_c,c)`. It ONLY varies `b` via `b = (1-β)·b_exact`. If both `a` and `b` are wrong (as in the paper's published numbers), this parametrization cannot represent them — you need the raw RG path instead.
+
+**Config directory structure:**
+- `configs/ezquiaga/` — single-run configs, all in canonical nested format.
+  - `paper.json` — raw RG path (NO inflection block). Stalls. Documents the paper's literal published numbers.
+  - All others — inflection path (HAS inflection block). Produce USR. Differ only in `c` and `β`.
+- `configs/sweeps/pbh/` — grid sweep configs for `sweep_pbh_params.py` (different flat schema).
+
+**What actually varies across working configs:**
+| Config | c | β | a_eff | b_eff | b_λ_eff | b_ξ_eff |
+|--------|---|---|---|---|---|---|
+| beta1e-5 | 0.77 | 1e-5 | 5.335304 | 1.519325 | 1.190e-6 | 11.471 |
+| perfect | 0.77 | 0 | 5.335304 | 1.519340 | 1.190e-6 | 11.471 |
+| tweaked | 0.771 | 4e-5 | 5.330933 | 1.517840 | 1.189e-6 | 11.460 |
+| subsolar | 0.77 | 2e-5 | 5.335304 | 1.519339 | 1.190e-6 | 11.471 |
+| asteroid | 0.77 | 1.8e-4 | 5.335304 | 1.519334 | 1.190e-6 | 11.471 |
+
+`λ₀=2.23e-7, ξ₀=7.55` are universal across all. `a_eff` barely varies (only via `c`). The radical physics differences come from `b_eff` at the 6th decimal (controlled by `β`).

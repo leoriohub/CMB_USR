@@ -412,8 +412,8 @@ if __name__ == "__main__":
 
     pre, _ = p.parse_known_args()
     if pre.config:
-        with open(pre.config) as f:
-            p.set_defaults(**json.load(f))
+        from scripts.config_loader import load_config
+        p.set_defaults(**load_config(pre.config))
     args = p.parse_args()
 
     from scripts.constants import ROOT_DIR

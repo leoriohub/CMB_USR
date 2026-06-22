@@ -1,0 +1,29 @@
+{
+  "model": "EzquiagaCHIModel",
+  "description": "Sub-solar PBH: β=2e-5, N*=66, best balance of n_s and abundance",
+  "model_params": {
+    "lambda_0": 2.23e-7,
+    "xi_0": 7.55,
+    "c": 0.77
+  },
+  "inflection": {
+    "x_c": 0.784,
+    "beta": 2e-5
+  },
+  "ics": {
+    "x0": 8.0,
+    "y0": -1e-4
+  },
+  "pipeline": {
+    "N_star": 66,
+    "k_min": 1e-10,
+    "k_max": 1e28,
+    "num_k": 500,
+    "k_pivot_phys": 0.05,
+    "n_cores": 8,
+    "no_plot": false,
+    "normalize_to_As": false,
+    "zeta_c": [0.076, 0.0765],
+    "output_dir": "outputs/plots/pbh/top_configs"
+  }
+}
