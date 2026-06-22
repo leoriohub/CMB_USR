@@ -440,7 +440,7 @@ if __name__ == "__main__":
 
         if not args.no_plot and ft > 0:
             from scripts.plotting import plot_pbh_abundance
-            pid = f"fit_xc{args.xc}_beta{args.beta:.1e}_Nstar{args.N_star:.0f}_zcz{zc:.4f}"
+            pid = f"beta{args.beta:.1e}_Nstar{args.N_star:.0f}_zcz{zc:.4f}"
             plot_pbh_abundance(
                 zc_data["M"], zc_data["f_pbh"],
                 zeta_c=zc, gamma=0.4,
