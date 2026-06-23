@@ -79,12 +79,12 @@ def C_ell_to_d_ell(ells, C_ell, Tcmb=T_cmb):
 
 
 def load_planck_unbinned():
-    """Load Planck 2018 unbinned TT spectrum (ℓ=2-2508), returns (ells, D_ell)."""
+    """Load Planck 2018 unbinned TT spectrum (ℓ=2-2508), returns (ells, D_ell, D_err_lower, D_err_upper)."""
     data = np.loadtxt(_PLIK_UNBINNED, skiprows=1)
-    return data[:, 0].astype(int), data[:, 1]
+    return data[:, 0].astype(int), data[:, 1], data[:, 2], data[:, 3]
 
 
 def load_planck_binned():
-    """Load Planck 2018 binned TT spectrum (ℓ≈47-2500), returns (ells, D_ell, D_err_sym)."""
+    """Load Planck 2018 binned TT spectrum (ℓ≈47-2500), returns (ells, D_ell, D_err_lower, D_err_upper)."""
     data = np.loadtxt(_PLIK_BINNED, skiprows=1)
-    return data[:, 0].astype(int), data[:, 1], data[:, 2]
+    return data[:, 0].astype(int), data[:, 1], data[:, 2], data[:, 3]
