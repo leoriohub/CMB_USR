@@ -48,3 +48,6 @@ opencode.json
 # Node.js dependencies (MCP tooling — not part of physics project)
 package.json
 package-lock.json
+
+# Stray log files at project root (one-off run outputs)
+/*.log
