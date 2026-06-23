@@ -69,9 +69,9 @@ def test_powerlaw_consistency():
 
     ells = np.arange(2, ell_max + 1)
     # Compare D_ell (not C_ell) — more physically meaningful
-    factor = ells * (ells + 1) / (2 * np.pi) * (T_cmb * 1e6) ** 2
-    D_t = total_t[ells, 0] * factor  # CAMB default already has ell factor
-    D_p = total_p[ells, 0] * factor
+    ell_factor = ells * (ells + 1) / (2 * np.pi)
+    D_t = C_ell_to_d_ell(ells, total_t[ells, 0] / ell_factor)
+    D_p = C_ell_to_d_ell(ells, total_p[ells, 0] / ell_factor)
 
     rel_diff = np.abs(D_t - D_p) / np.abs(D_p) * 100
     max_diff = float(np.nanmax(rel_diff))
@@ -235,6 +235,7 @@ def test_chi2_sanity():
     """
     from scripts.camb_wrapper import compute_chi2_camb, compute_cl_camb_powerlaw
     from scripts.planck_data import get_planck_data_asymmetric
+    from scripts.chi2_analysis import chi2_model_lcdm
 
     # Use golden config (same as test_feature_propagation)
     data = find_ps_file("phi6.60_y0-0.736")
@@ -251,16 +252,12 @@ def test_chi2_sanity():
     D_l = C_ell_to_d_ell(ells, C)
     p_ells, D_p, D_lo, D_hi = get_planck_data_asymmetric()
 
-    def chi2_fn(D_model):
-        chi2 = 0.0
-        for i, ell_val in enumerate(p_ells):
-            idx = int(np.argmin(np.abs(ells - ell_val)))
-            residual = D_model[idx] - D_p[i]
-            sigma = D_hi[i] if residual > 0 else D_lo[i]
-            chi2 += (residual / sigma) ** 2
-        return chi2
-
-    chi2_lcdm = chi2_fn(D_l)
+    chi2_lcdm, _ = chi2_model_lcdm(
+        D_l, ells,
+        planck_ells=p_ells, D_planck=D_p,
+        D_err_lower=D_lo, D_err_upper=D_hi,
+        ell_max=29
+    )
     if not (15 < chi2_lcdm < 30):
         passed = False
         details.append(f"LCDM chi2={chi2_lcdm:.2f} (expected 15-30)")

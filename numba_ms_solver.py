@@ -76,29 +76,8 @@ def build_numba_splines(bg_sol, T_span_bg, model=None):
 
 
 def _extract_potential(model):
-    from models.higgs import HiggsModel, FullHiggsModel
-    from models.punctuated import PunctuatedInflationModel
-
-    if isinstance(model, HiggsModel):
-        alpha = model.alpha
-        @njit
-        def _f(x): return (1.0 - np.exp(-alpha * x)) ** 2
-        @njit
-        def _dfdx(x): return 2.0 * alpha * np.exp(-alpha * x) * (1.0 - np.exp(-alpha * x))
-        @njit
-        def _d2fdx2(x): return 2.0 * alpha**2 * np.exp(-alpha * x) * (2.0 * np.exp(-alpha * x) - 1.0)
-        return _f, _dfdx, _d2fdx2
-
-    if isinstance(model, PunctuatedInflationModel):
-        m2 = model.m**2; a = model._alpha; l = model.lam; v0 = model.v0
-        @njit
-        def _f(x): return (0.5*m2*x**2 - a/3.0*x**3 + 0.25*l*x**4) / v0
-        @njit
-        def _dfdx(x): return (m2*x - a*x**2 + l*x**3) / v0
-        @njit
-        def _d2fdx2(x): return (m2 - 2.0*a*x + 3.0*l*x**2) / v0
-        return _f, _dfdx, _d2fdx2
-
+    if hasattr(model, "get_jit_funcs"):
+        return model.get_jit_funcs()
     return None, None, None
 
 

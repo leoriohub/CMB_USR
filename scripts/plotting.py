@@ -23,7 +23,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from scipy.interpolate import interp1d
+from scipy.interpolate import CubicSpline
 
 from scripts.constants import As, k_pivot_phys, T_cmb, ROOT_DIR
 
@@ -405,12 +405,14 @@ def plot_ps_sr_ms_comparison(
     interp_ms_vals = None
     if ms_enabled and np.any(ok_ms):
         ps_ok = Ps_ms[ok_ms]
-        order = min(3, len(k_ok) - 1)
-        spl = interp1d(np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
-                       kind="cubic" if order >= 3 else "linear",
-                       bounds_error=False, fill_value=np.nan)
         k_line = np.logspace(np.log10(k_ok[0]), np.log10(k_ok[-1]), 500)
-        ps_line = np.exp(spl(np.log(k_line)))
+        if len(k_ok) >= 4:
+            spl = CubicSpline(np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
+                              bc_type='not-a-knot', extrapolate=False)
+            ps_line = np.exp(spl(np.log(k_line)))
+        else:
+            ps_line = np.exp(np.interp(np.log(k_line), np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
+                                       left=np.nan, right=np.nan))
         ax1.loglog(k_line, ps_line, "-", color=TOL["red"], lw=1.2,
                    alpha=0.7, label=f"MS solver ({len(ps_ok)}/{len(Ps_ms)})")
         ax1.loglog(k_ok, ps_ok, "o", color=TOL["red"], ms=2, alpha=0.4)
@@ -539,8 +541,8 @@ def plot_ps(k_phys, P_S, label="Higgs USR", filename="ps", category="powerloss",
     """
     mask = np.isfinite(P_S)
     if np.sum(mask) > 5:
-        logk_interp = interp1d(np.log(k_phys[mask]), P_S[mask], kind="cubic",
-                               bounds_error=False, fill_value="extrapolate")
+        logk_interp = CubicSpline(np.log(k_phys[mask]), P_S[mask],
+                                  bc_type='not-a-knot', extrapolate=True)
         k_dense = np.logspace(np.log10(k_phys[mask].min()), np.log10(k_phys[mask].max()), 1000)
         ps_dense = np.clip(logk_interp(np.log(k_dense)), 0, None)
     else:
@@ -601,12 +603,20 @@ def plot_dell(ells, D_ell_model, planck_ells=None, D_planck=None,
                     label=r"Planck 2018 low-$\ell$ TT")
 
     ell_dense = np.linspace(ells.min(), min(ells.max(), ell_max), 200)
-    D_interp = interp1d(ells, D_ell_model, kind="cubic")(ell_dense)
+    if len(ells) >= 4:
+        D_interp = CubicSpline(ells, D_ell_model, bc_type='not-a-knot', extrapolate=True)(ell_dense)
+    else:
+        D_interp = np.interp(ell_dense, ells, D_ell_model)
     ax.plot(ell_dense, D_interp, "-", color=TOL["red"], lw=1.5, label=model_label)
 
     if ells_lcdm is not None and D_ell_lcdm is not None:
         mask = ells_lcdm <= ell_max
-        D_lcdm_interp = interp1d(ells_lcdm[mask], D_ell_lcdm[mask], kind="cubic")(ell_dense)
+        ells_l_mask = ells_lcdm[mask]
+        D_l_mask = D_ell_lcdm[mask]
+        if len(ells_l_mask) >= 4:
+            D_lcdm_interp = CubicSpline(ells_l_mask, D_l_mask, bc_type='not-a-knot', extrapolate=True)(ell_dense)
+        else:
+            D_lcdm_interp = np.interp(ell_dense, ells_l_mask, D_l_mask)
     ax.plot(ell_dense, D_lcdm_interp, "--", color=TOL["grey"], lw=1.2,
             alpha=0.6, label=r"$\Lambda$CDM")
 

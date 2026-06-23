@@ -33,6 +33,17 @@ class HiggsModel(InflationModel):
     def d2fdx2(self, x):
         return 2 * self.alpha**2 * np.exp(-self.alpha * x) * (2 * np.exp(-self.alpha * x) - 1)
 
+    def get_jit_funcs(self):
+        from numba import njit
+        alpha = self.alpha
+        @njit(cache=True)
+        def _f(x): return (1.0 - np.exp(-alpha * x)) ** 2
+        @njit(cache=True)
+        def _dfdx(x): return 2.0 * alpha * np.exp(-alpha * x) * (1.0 - np.exp(-alpha * x))
+        @njit(cache=True)
+        def _d2fdx2(x): return 2.0 * alpha**2 * np.exp(-alpha * x) * (2.0 * np.exp(-alpha * x) - 1.0)
+        return _f, _dfdx, _d2fdx2
+
 
 class FullHiggsModel(InflationModel):
     """
