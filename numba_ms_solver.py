@@ -37,6 +37,18 @@ def _spline_eval_at_index(t, t_grid, i, a, b, c, d):
     return a[i] + dt * (b[i] + dt * (c[i] + dt * d[i]))
 
 
+@njit(cache=True)
+def _find_crossing_index(log_az, target_start, end_idx):
+    min_val = 1e300
+    start_idx = 0
+    for idx in range(end_idx):
+        val = abs(log_az[idx] - target_start)
+        if val < min_val:
+            min_val = val
+            start_idx = idx
+    return start_idx
+
+
 def _spline_eval_py(t, t_grid, a, b, c, d):
     """Pure-Python cubic spline eval (no Numba). For scipy.solve_ivp use."""
     i = int(np.searchsorted(t_grid, t)) - 1
@@ -382,15 +394,8 @@ def _solve_grid_parallel_numba(
 
     for i in prange(n_modes):
         k_code = k_codes[i]
-
         target_start = np.log(k_code) - np.log(k_start_factor)
-        min_val = 1e300
-        start_idx = 0
-        for idx in range(end_idx):
-            val = abs(log_az[idx] - target_start)
-            if val < min_val:
-                min_val = val
-                start_idx = idx
+        start_idx = _find_crossing_index(log_az, target_start, end_idx)
 
         ni = bg_sol_3[start_idx]
         t_start = T_span_bg[start_idx]

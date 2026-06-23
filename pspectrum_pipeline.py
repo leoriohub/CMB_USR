@@ -35,7 +35,7 @@ from scripts.plotting import make_filename
 import inf_dyn_background as bg_solver
 import inf_dyn_MS_full as ms_solver
 from models import HiggsModel, FullHiggsModel, PunctuatedInflationModel, EzquiagaCHIModel, inflection_parameters
-from numba_ms_solver import numba_run_ms, build_numba_splines, numba_run_ms_grid
+from numba_ms_solver import numba_run_ms, build_numba_splines, numba_run_ms_grid, _find_crossing_index
 
 # Fast CubicSpline-based interpolator (avoids interp1d overhead for per-step calls)
 from scipy.interpolate import CubicSpline
@@ -183,8 +183,7 @@ def extract_mode_initial_conditions(bg_sol, T_span_bg, end_idx, k_code, k_start_
     z_bg = bg_sol[2]
     log_az = n_bg + np.log(np.maximum(z_bg, 1e-300))
     target_start = np.log(k_code) - np.log(k_start_factor)
-    start_idx = int(np.argmin(np.abs(log_az[:end_idx] - target_start)))
-    start_idx = max(start_idx, 0)
+    start_idx = _find_crossing_index(log_az, target_start, end_idx)
     xi = bg_sol[0][start_idx]
     y0 = bg_sol[1][start_idx]
     zi = bg_sol[2][start_idx]
