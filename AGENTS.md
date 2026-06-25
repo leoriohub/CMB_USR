@@ -275,6 +275,51 @@ the sign of the residual: use `D_err_upper` if model > data, `D_err_lower`
 if model < data. This is already correct in `camb_wrapper.py` and
 `check_full_dell.py`.
 
+### 10.5 Pivot Convention — Single k_pivot for As and n_s
+
+The project has **one pivot** — `k_pivot_phys` — that drives BOTH the A_s
+normalization (`P_S(k_pivot) = A_s`) AND the n_s extraction (least-squares
+fit of ln P_S vs ln k over `[k_pivot/ns_window, k_pivot*ns_window]`). The
+fit half-width `ns_window` is the only separate knob.
+
+**Two workflows, two defaults, both user-selectable:**
+
+| Workflow | Default k_pivot | Default ns_window | Fit window |
+|----------|---------------|------------------|------------|
+| Higgs / power suppression | 0.002 Mpc⁻¹ | 4.0 | [5×10⁻⁴, 8×10⁻³] |
+| Ezquiaga / PBH | 0.05 Mpc⁻¹ | 3.0 | [0.017, 0.15] |
+
+**CLI flags (on every script that uses the pivot):**
+```
+--k-pivot FLOAT      # drives BOTH As normalization and n_s extraction
+--ns-window FLOAT    # n_s fit half-width [k_pivot/w, k_pivot*w]
+```
+`sweep_pbh_params.py` also keeps `--pivot-k` as a deprecated back-compat
+alias for `--k-pivot`.
+
+**Config JSON** (optional, in the `pipeline` block):
+```json
+"pipeline": { "k_pivot_phys": 0.05, "ns_window": 3.0, ... }
+```
+
+**Precedence:** `--k-pivot` CLI > config `pipeline.k_pivot_phys` > script default.
+
+**Single-pivot invariant:** the SAME `k_pivot` value feeds both the pipeline
+call (`k_pivot_phys=...`) and `extract_ns(k_pivot=...)`. Never normalize A_s
+at one k and extract n_s at another in the same run.
+
+**n_s extraction lives in `scripts/observables.py`:**
+- `extract_ns(k_phys, P_S, k_pivot, ns_window)` — the MS-based n_s (uses P_S)
+- `extract_pbh_peak(k_phys, P_S)` — PBH peak (small scales, NOT an n_s)
+- SR algebraic n_s (`1 + 2η_H − 4ε_H` at N_pivot, in `background_scan.py` as
+  `n_s_sr_formula`) is a DIFFERENT observable — it does not use P_S(k)
+
+**Output JSON records the pivot:** every n_s-bearing output carries
+`{k_pivot, ns_window, n_modes, k_range, method}` in metadata. JSONL scan
+logs include `k_pivot` and `ns_window` per record.
+
+**Refactor design doc:** `docs/ns_extraction_refactor.md`
+
 ### 11. Core Solver Architecture — DO NOT MODIFY
 The root-level solver files (`inf_dyn_background.py`, `inf_dyn_MS_full.py`, `pspectrum_pipeline.py`) are the physics core of the project. Do NOT move, rename, refactor, or modify these files unless explicitly asked by the user. They contain the ODE integration, Mukhanov-Sasaki solver, and pipeline orchestration that every downstream script depends on. Changes to these files can silently break every consumer without visible errors in the modified file itself.
 

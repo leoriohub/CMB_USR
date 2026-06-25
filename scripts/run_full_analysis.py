@@ -35,6 +35,7 @@ from pspectrum_pipeline import (
 from scripts.camb_wrapper import compute_cl_full_camb, compute_cl_camb_powerlaw
 from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
 from scripts.plotting import OUTPUT_DIRS, get_path
+from scripts.observables import extract_ns, interpolate_As
 
 
 def save_background(model, T_span_bg, output_dir, phi0, y0, nstar):
@@ -181,6 +182,12 @@ def print_summary(result, bg_sol, derived, chi2_model_val, chi2_camb_model, camb
     print(f"  k_dip:          {k_dip:.2e} Mpc^-1")
     print(f"  P_S(k_dip):     {p_dip:.4e}")
     print(f"  Suppression:    {suppression:.1f}%")
+    n_s_block = result.get("n_s") or {}
+    n_s_val = n_s_block.get("value")
+    if n_s_val is not None:
+        print(f"  n_s:            {n_s_val:.4f}  (k_pivot={n_s_block.get('k_pivot')}, "
+              f"method={n_s_block.get('method')}, "
+              f"n_modes={n_s_block.get('n_modes')})")
     print(f"  chi2 CAMB (ℓ≤29):  {chi2_camb_model:.2f}")
     print(f"  CAMB ℓ_max:     {camb_ell_max}")
     print(f"  k-modes:        {n_modes_ok}/{n_modes_total} completed")
@@ -207,12 +214,33 @@ def parse_args():
                    help="Disable plot interpolation (raw data points)")
     p.add_argument("--camb-ell-max", type=int, default=2500,
                    help="ell_max for CAMB computation (default: 2500)")
+    p.add_argument(
+        "--k-pivot", type=float, default=0.002,
+        help="Pivot k_pivot_phys (Mpc^-1) — drives BOTH As normalization and "
+             "n_s extraction (single-pivot invariant). Higgs default 0.002; "
+             "Planck 0.05.",
+    )
+    p.add_argument(
+        "--ns-window", type=float, default=None,
+        help="Deprecated — n_s is now the logarithmic derivative at k_pivot. "
+             "Only used when method='lsq' for cross-check.",
+    )
     return p.parse_args()
 
 
 def main():
     args = parse_args()
     phi0, y0, nstar = args.phi0, args.y0, args.nstar
+
+    # Re-derive A_s for the configured pivot. The module-level `As` import
+    # is pinned to k_pivot_phys=0.002; power-law extrapolate from Planck
+    # 0.05 when a different pivot is requested.
+    from scripts.constants import As_planck, ns_sr_default
+    if abs(args.k_pivot - k_pivot_phys) > 1e-12:
+        As_eff = As_planck * (args.k_pivot / 0.05) ** (ns_sr_default - 1.0)
+        print(f"  Note: re-derived A_s = {As_eff:.3e} for k_pivot = {args.k_pivot}")
+    else:
+        As_eff = As  # use the imported constant (already extrapolated to 0.002)
 
     configs_dir = get_path("configs", "")
     pspectra_dir = get_path("pspectra", "")
@@ -243,7 +271,7 @@ def main():
     print("\n  2. P_S(k) pipeline (high-resolution weighted grid)...")
     t0 = time.time()
     k_grid = build_weighted_kgrid(
-        k_min=1e-5, k_max=1.0, k_pivot_phys=k_pivot_phys,
+        k_min=1e-5, k_max=1.0, k_pivot_phys=args.k_pivot,
         n_dense=200, n_outer=100,
     )
     result = run_pspectrum_pipeline(
@@ -255,7 +283,8 @@ def main():
         ms_steps=args.ms_steps,
         T_span_bg=T_span_bg,
         normalize_to_As=True,
-        As=As,
+        As=As_eff,
+        k_pivot_phys=args.k_pivot,
         save_outputs=True,
         output_dir=pspectra_dir,
         n_workers=args.workers,
@@ -264,6 +293,16 @@ def main():
         print(f"  FAILED: {result['message']}")
         sys.exit(1)
     print(f"     Done in {time.time() - t0:.1f}s")
+
+    # ── 2.5. Extract n_s from P_S(k) at the configured pivot ─────────
+    n_s_val, n_s_meta = extract_ns(
+        result["k_phys"], result["P_S"],
+        k_pivot=args.k_pivot,
+    )
+    result["n_s"] = {"value": n_s_val, **n_s_meta}
+    A_s_interp = interpolate_As(result["k_phys"], result["P_S"], args.k_pivot)
+    print(f"  n_s(k={args.k_pivot}) = {n_s_val}  "
+          f"[A_s interp = {A_s_interp}]")
 
     print(f"\n  3. Full CAMB C_ell computation (ell_max={args.camb_ell_max})...")
     t0 = time.time()

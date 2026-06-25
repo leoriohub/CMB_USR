@@ -71,13 +71,13 @@ def analyze_background(model, chi0, y0, N_star, pivot_k=0.05):
     N_pivot = N_total - N_star
     eps_pivot = float(np.interp(N_pivot, N_arr, epsH[: end_idx + 1]))
     eta_pivot = float(np.interp(N_pivot, N_arr, derived["etaH"][: end_idx + 1]))
-    n_s_sr = 1 + 2 * eta_pivot - 4 * eps_pivot
+    n_s_sr_formula = 1 + 2 * eta_pivot - 4 * eps_pivot
     usr_type = infer_usr_type(N_total)
 
     return {
         "N_total": N_total,
         "N_pivot": N_pivot,
-        "n_s_sr": n_s_sr,
+        "n_s_sr_formula": n_s_sr_formula,
         "eps_pivot": eps_pivot,
         "eta_pivot": eta_pivot,
         "usr_type": usr_type,
@@ -170,7 +170,7 @@ def print_summary(results, n_show=20):
     for r in results:
         if "error" in r:
             continue
-        ns = r.get("n_s_sr", 1) or 1
+        ns = r.get("n_s_sr_formula", 1) or 1
         ut = r.get("usr_type", "weak")
         score = 0.0
         if ut == "strong":
@@ -187,7 +187,7 @@ def print_summary(results, n_show=20):
     )
     print("-" * 85)
     for i, (s, r) in enumerate(scored[:n_show]):
-        ns = r.get("n_s_sr", "N/A")
+        ns = r.get("n_s_sr_formula", "N/A")
         print(
             f"{i + 1:<5} {r['x_c']:<7.4f} {r['c']:<7.4f} {r['beta']:<9.1e} "
             f"{r['chi0']:<5.1f} {r['N_star']:<4.0f} {r['N_total']:<7.1f} "
@@ -211,9 +211,21 @@ def main():
     p.add_argument("--chi0-vals", type=float, nargs="+", default=[7.0])
     p.add_argument("--N-star-vals", type=float, nargs="+", default=[50, 60, 70])
     p.add_argument("--y0", type=float, default=-1e-4)
-    p.add_argument("--pivot-k", type=float, default=0.05)
+    p.add_argument(
+        "--k-pivot", type=float, default=0.05,
+        help="Pivot k_pivot_phys (Mpc^-1). Default 0.05 for Ezquiaga; "
+             "Higgs low-ell 0.002.",
+    )
+    p.add_argument(
+        "--pivot-k", type=float, default=None,
+        help="Deprecated alias for --k-pivot (back-compat).",
+    )
     p.add_argument("--log", default="outputs/simulations/logs/bg_scan.jsonl")
     args = p.parse_args()
+
+    # Back-compat: --pivot-k aliases --k-pivot
+    if args.pivot_k is not None:
+        args.k_pivot = args.pivot_k
 
     xc_vals = np.linspace(args.x_c_lo, args.x_c_hi, args.n_xc)
     c_vals = np.linspace(args.c_lo, args.c_hi, args.n_c)
@@ -227,7 +239,7 @@ def main():
     print(
         f"Scan: {len(xc_vals)} x_c × {len(c_vals)} c × "
         f"{len(beta_vals)} β × {len(chi0_vals)} χ₀ × "
-        f"{len(N_star_vals)} N* = {total} configs  pivot_k={args.pivot_k}"
+        f"{len(N_star_vals)} N* = {total} configs  k_pivot={args.k_pivot}"
     )
 
     t0 = time.time()
@@ -250,7 +262,7 @@ def main():
         chi0_vals,
         N_star_vals,
         y0=args.y0,
-        pivot_k=args.pivot_k,
+        pivot_k=args.k_pivot,
         log_path=args.log,
         progress_fn=progress,
     )

@@ -12,6 +12,7 @@ import argparse
 import numpy as np
 from scipy.special import erfc
 from scripts.constants import ROOT_DIR
+from scripts.observables import extract_ns, interpolate_As, extract_pbh_peak
 
 ACCRETION = 3e7; K_EQ = 0.0104; M_EQ = 3.0e17; GAMMA = 0.4
 C = 0.77
@@ -24,7 +25,7 @@ def _pbh_weighted_kgrid():
     k_pbh = np.logspace(6, 22, 350)
     return np.unique(np.concatenate([k_cmb, k_pbh]))
 
-def run_one(xc, beta, nstar, chi0=8.0, workers=8):
+def run_one(xc, beta, nstar, chi0=8.0, workers=8, k_pivot=0.05):
     from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
     from inf_dyn_background import run_background_simulation, get_derived_quantities
     from pspectrum_pipeline import run_pspectrum_pipeline
@@ -47,7 +48,7 @@ def run_one(xc, beta, nstar, chi0=8.0, workers=8):
     k_grid = _pbh_weighted_kgrid()
     result = run_pspectrum_pipeline(
         model=model, phi0=None, y0=None,
-        k_phys_grid=k_grid, k_pivot_phys=0.05,
+        k_phys_grid=k_grid, k_pivot_phys=k_pivot,
         N_star=nstar, k_start_factor=100.0, ms_steps=5000,
         normalize_to_As=False, save_outputs=False, n_workers=workers,
     )
@@ -55,18 +56,9 @@ def run_one(xc, beta, nstar, chi0=8.0, workers=8):
     k_phys = np.array(result['k_phys'])
     P_S = np.array(result['P_S'])
 
-    # n_s at CMB pivot
-    lo, hi = 0.05/3.0, 0.05*3.0
-    idx = (k_phys >= lo) & (k_phys <= hi)
-    k_fit, ps_fit = k_phys[idx], P_S[idx]
-    valid = np.isfinite(ps_fit) & (ps_fit > 1e-30)
-    k_fit, ps_fit = k_fit[valid], ps_fit[valid]
-    if len(k_fit) >= 3:
-        coeffs = np.polyfit(np.log(k_fit), np.log(ps_fit), 1)
-        n_s = float(coeffs[0] + 1)
-        A_s = float(np.exp(np.interp(np.log(0.05), np.log(k_fit), np.log(ps_fit))))
-    else:
-        n_s, A_s = None, None
+    # n_s via logarithmic derivative at k_pivot (theoretical definition).
+    n_s, _ns_meta = extract_ns(k_phys, P_S, k_pivot=k_pivot)
+    A_s = interpolate_As(k_phys, P_S, k_pivot)
 
     # P_S peak
     pbh_mask = k_phys > 1.0
@@ -99,6 +91,7 @@ def run_one(xc, beta, nstar, chi0=8.0, workers=8):
     return {
         'xc': xc, 'c': C, 'beta': beta, 'chi0': chi0, 'N_star': nstar,
         'N_total': N_total, 'n_s': n_s, 'A_s': A_s,
+        'k_pivot': k_pivot, 'ns_window': None,
         'k_peak': k_peak, 'P_S_peak': ps_peak, 'on_grid_boundary': on_b,
         'best_zeta_c': best['zeta_c'] if best else None,
         'f_total_best': best['f_total'] if best else 0,
@@ -110,7 +103,19 @@ def run_one(xc, beta, nstar, chi0=8.0, workers=8):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--workers', type=int, default=8)
+    p.add_argument(
+        '--k-pivot', type=float, default=0.05,
+        help='Pivot k_pivot_phys (Mpc^-1) — drives BOTH As normalization and '
+             'n_s extraction. Planck default 0.05; Higgs low-ell 0.002.',
+    )
+    p.add_argument(
+        '--ns-window', type=float, default=None,
+        help='Deprecated — n_s is now the logarithmic derivative at k_pivot. '
+             'Only used when method=lsq for cross-check.',
+    )
     args = p.parse_args()
+
+    # Back-compat: --ns-window no longer affects n_s computation (derivative).
 
     xc_vals = [0.786, 0.787, 0.788]
     beta_vals = [5e-5, 7e-5, 1e-4, 1.5e-4, 2e-4]
@@ -136,7 +141,8 @@ def main():
                 completed += 1
                 print(f'\n[{completed}/{total}] x_c={xc} β={beta:.0e} N*={nstar}')
                 try:
-                    r = run_one(xc, beta, nstar, workers=args.workers)
+                    r = run_one(xc, beta, nstar, workers=args.workers,
+                                k_pivot=args.k_pivot)
                     all_results.append(r)
 
                     # Write log entry

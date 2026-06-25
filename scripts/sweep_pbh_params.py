@@ -24,6 +24,7 @@ from matplotlib.colors import LogNorm
 from scripts.plotting import save_fig, TOL, PAPER_RCPARAMS
 
 from scripts.constants import gamma_default, k_eq_default, M_eq_default, ACCRETION
+from scripts.observables import extract_ns, interpolate_As
 
 # Paper targets
 TARGET_PS_RATIO = 2.3e4  # P_S_peak / As
@@ -75,31 +76,6 @@ def _pbh_weighted_kgrid(target="subsolar"):
     return grid, k_min_val, k_max_val
 
 
-def compute_ns(
-    k_phys, P_S, k_pivot=0.05, window=3.0
-):  # always 0.05 (Planck) for Ezquiaga
-    """Compute n_s and interpolated A_s at k_pivot from MS P_S(k).
-
-    Fits ln(P_S) vs ln(k) over k ∈ [k_pivot/window, k_pivot*window].
-    Returns (n_s, A_s_at_pivot) or (None, None) if too few points.
-    """
-    lo = k_pivot / window
-    hi = k_pivot * window
-    idx = (k_phys >= lo) & (k_phys <= hi)
-    k_fit = k_phys[idx]
-    ps_fit = P_S[idx]
-    if len(k_fit) < 3:
-        return None, None
-    valid = np.isfinite(ps_fit) & (ps_fit > 1e-30)
-    k_fit, ps_fit = k_fit[valid], ps_fit[valid]
-    if len(k_fit) < 3:
-        return None, None
-    coeffs = np.polyfit(np.log(k_fit), np.log(ps_fit), 1)
-    n_s = float(coeffs[0] + 1)
-    A_s = float(np.exp(np.interp(np.log(k_pivot), np.log(k_fit), np.log(ps_fit))))
-    return n_s, A_s
-
-
 def classify_mass_range(M_peak):
     """Classify PBH peak present-day mass into an observable range bin."""
     if np.isnan(M_peak) or M_peak <= 0:
@@ -119,7 +95,7 @@ def classify_mass_range(M_peak):
     return "massive"
 
 
-def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar", pivot_k=0.05, N_star=65):
+def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar", k_pivot=0.05, N_star=65):
     """Run the MS solver for a given model, return k_phys, P_S, N_total."""
     from pspectrum_pipeline import run_pspectrum_pipeline
 
@@ -134,7 +110,7 @@ def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar", pivot_k=0.05, N_star=65
         phi0=None,
         y0=None,
         k_phys_grid=k_grid,
-        k_pivot_phys=pivot_k,
+        k_pivot_phys=k_pivot,
         N_star=N_star,
         k_start_factor=100.0,
         ms_steps=5000,
@@ -207,7 +183,7 @@ def run_sweep(
     zeta_c_vals,
     target="subsolar",
     N_total_min=65,
-    pivot_k=0.002,
+    k_pivot=0.05,
     N_star_vals=None,
     progress_fn=None,
     log_path=None,
@@ -305,13 +281,18 @@ def run_sweep(
                                 pipe_result,
                                 k_min_val,
                                 k_max_val,
-                            ) = run_ms(m, chi0, y0, target, pivot_k, N_star)
+                            ) = run_ms(m, chi0, y0, target, k_pivot, N_star)
                             if N_total < N_total_min:
                                 continue
                             peak = find_pbh_peak(k_m, ps_ms, k_min_val, k_max_val)
                             if peak is None:
                                 continue
-                            n_s, A_s_at_cmb = compute_ns(k_m, ps_ms)
+                            # n_s extracted via logarithmic derivative at k_pivot
+                            # (theoretical definition: n_s - 1 = d ln P / d ln k).
+                            n_s, ns_meta = extract_ns(
+                                k_m, ps_ms, k_pivot=k_pivot,
+                            )
+                            A_s_at_cmb = interpolate_As(k_m, ps_ms, k_pivot)
                             M_kpeak = (
                                 gamma_default
                                 * M_eq_default
@@ -339,6 +320,8 @@ def run_sweep(
                                 "on_grid_boundary": peak.get("on_grid_boundary", False),
                                 "mass_bin": mass_bin,
                                 "n_s": n_s,
+                                "k_pivot": float(k_pivot),
+                                "ns_window": None,
                                 "A_s_at_cmb": A_s_at_cmb,
                                 "k_phys": k_m.tolist(),
                                 "P_S": ps_ms.tolist(),
@@ -602,10 +585,25 @@ def main():
         help="Minimum N_total to accept a config",
     )
     p.add_argument(
-        "--pivot-k",
+        "--k-pivot",
         type=float,
         default=0.05,
-        help="MS solver pivot k_pivot_phys (Planck default 0.05; Higgs low-ell 0.002)",
+        help="Pivot k_pivot_phys (Mpc^-1) — drives BOTH As normalization and "
+             "n_s extraction (single-pivot invariant). Planck default 0.05; "
+             "Higgs low-ell 0.002.",
+    )
+    p.add_argument(
+        "--pivot-k",
+        type=float,
+        default=None,
+        help="Deprecated alias for --k-pivot (back-compat).",
+    )
+    p.add_argument(
+        "--ns-window",
+        type=float,
+        default=3.0,
+        help="Deprecated — n_s is now the logarithmic derivative at k_pivot. "
+             "Only used when method='lsq' for cross-check.",
     )
     p.add_argument(
         "--workers", type=int, default=8, help="MS solver parallel workers per config"
@@ -638,6 +636,10 @@ def main():
 
     args = p.parse_args()
 
+    # Back-compat: --pivot-k aliases --k-pivot
+    if args.pivot_k is not None:
+        args.k_pivot = args.pivot_k
+
     global MS_N_WORKERS
     MS_N_WORKERS = args.workers
 
@@ -665,7 +667,7 @@ def main():
         f"{len(beta_vals)} β × {len(chi0_vals)} χ₀ × "
         f"{len(N_star_vals)} N* × {len(zeta_c_vals)} ζ_c = "
         f"{n_unique} MS solves → {total_entries} entries  "
-        f"target={args.target}  pivot_k={args.pivot_k}  "
+        f"target={args.target}  k_pivot={args.k_pivot}  "
         f"N_total_min={args.N_total_min}  workers={args.workers}"
     )
 
@@ -692,7 +694,7 @@ def main():
         zeta_c_vals=args.zeta_c_vals,
         target=args.target,
         N_total_min=args.N_total_min,
-        pivot_k=args.pivot_k,
+        k_pivot=args.k_pivot,
         N_star_vals=N_star_vals,
         progress_fn=progress,
         log_path=args.log,
@@ -749,7 +751,7 @@ def main():
             "n_s",
             r"$x_c$",
             r"$c$",
-            r"$n_s (k=0.05)$",
+            r"$n_s$",
             "sweep_xc_vs_c_ns",
             "pbh",
         )
