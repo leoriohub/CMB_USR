@@ -177,20 +177,32 @@ def extract_mode_initial_conditions(bg_sol, T_span_bg, end_idx, k_code, k_start_
 
     Finds the time when k/(aH) = k_start_factor (typically 100), i.e.
     sufficiently deep inside the horizon for vacuum initial conditions.
-    Uses the background trajectory to locate this crossing.
+    Uses linear interpolation on the background trajectory to avoid step discretization.
     """
     n_bg = bg_sol[3]
     z_bg = bg_sol[2]
     log_az = n_bg + np.log(np.maximum(z_bg, 1e-300))
     target_start = np.log(k_code) - np.log(k_start_factor)
-    start_idx = _find_crossing_index(log_az, target_start, end_idx)
-    xi = bg_sol[0][start_idx]
-    y0 = bg_sol[1][start_idx]
-    zi = bg_sol[2][start_idx]
-    ni = bg_sol[3][start_idx]
-    t_start = T_span_bg[start_idx]
+    
+    # log_az is monotonic, find the enclosing interval
+    idx = np.searchsorted(log_az[:end_idx], target_start) - 1
+    idx = max(0, min(idx, end_idx - 2))
+    
+    denom = log_az[idx+1] - log_az[idx]
+    if abs(denom) > 1e-15:
+        frac = (target_start - log_az[idx]) / denom
+    else:
+        frac = 0.0
+    frac = max(0.0, min(1.0, frac))
+    
+    xi = float(bg_sol[0][idx] + frac * (bg_sol[0][idx+1] - bg_sol[0][idx]))
+    y0 = float(bg_sol[1][idx] + frac * (bg_sol[1][idx+1] - bg_sol[1][idx]))
+    zi = float(bg_sol[2][idx] + frac * (bg_sol[2][idx+1] - bg_sol[2][idx]))
+    ni = float(bg_sol[3][idx] + frac * (bg_sol[3][idx+1] - bg_sol[3][idx]))
+    t_start = float(T_span_bg[idx] + frac * (T_span_bg[idx+1] - T_span_bg[idx]))
     t_end = T_span_bg[end_idx]
-    return xi, y0, zi, ni, t_start, t_end, start_idx
+    
+    return xi, y0, zi, ni, t_start, t_end, idx
 
 
 def _compute_mode_batch(args):
