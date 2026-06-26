@@ -254,6 +254,7 @@ def run_pspectrum_pipeline(
     use_numba=True,
     executor=None,
     ms_method='dp5',
+    backend='numba',
 ):
     """
     Compute P_S(k) for a grid of k-modes for a given inflation model.
@@ -460,73 +461,91 @@ def run_pspectrum_pipeline(
             failed_modes.append(idx)
             errors.append(f"mode {idx} (k={k_code_grid[idx]:.4e}): non-finite P_S={ps}")
 
-    use_numba_parallel_success = False
-    if use_numba and n_workers > 1:
-        print(f"  Computing {n_modes} k-modes using Numba parallel grid solver...")
+    if backend == 'fortran':
+        from fortran_ms_solver import fortran_run_ms_grid
         try:
-            P_S_arr, P_T_arr, start_idx_arr = numba_run_ms_grid(
+            P_S_raw, P_T_raw, start_indices = fortran_run_ms_grid(
                 bg_sol, T_span_bg, end_idx, k_code_grid, model,
-                k_start_factor=k_start_factor, bg_coefs=bg_coefs, method=ms_method
+                k_start_factor=k_start_factor
             )
+            failed_modes = []
+            errors = []
             for idx in range(n_modes):
-                record_result(idx, P_S_arr[idx], P_T_arr[idx], start_idx_arr[idx], None)
-            use_numba_parallel_success = True
+                ps = P_S_raw[idx]
+                if not (np.isfinite(ps) and ps > 0):
+                    failed_modes.append(idx)
+                    errors.append(f"mode {idx} (k={k_code_grid[idx]:.4e}): non-finite P_S={ps}")
         except Exception as e:
-            print(f"  Numba parallel solver failed: {e}. Falling back to multiprocessing pool...")
-            use_numba_parallel_success = False
-
-    if not use_numba_parallel_success:
-        if n_workers > 1:
-            from concurrent.futures import ProcessPoolExecutor, as_completed
-            import multiprocessing
-            n_actual = min(n_workers, n_modes, multiprocessing.cpu_count())
-            print(f"  Computing {n_modes} k-modes on {n_actual} workers...")
-
-            # Batch: one IPC round-trip per worker instead of per mode
-            indices = list(range(n_modes))
-            chunks = []
-            for w in range(n_actual):
-                ci = indices[w::n_actual]
-                ck = [k_code_grid[i] for i in ci]
-                chunks.append((ci, ck, bg_sol, T_span_bg, end_idx,
-                               k_start_factor, ms_steps, model, use_numba, ms_method))
-
-            done_count = 0
-            pool = executor if executor is not None else ProcessPoolExecutor(max_workers=n_actual)
+            print(f"Fortran execution failed: {e}")
+            raise e
+    else:
+        use_numba_parallel_success = False
+        if use_numba and n_workers > 1:
+            print(f"  Computing {n_modes} k-modes using Numba parallel grid solver...")
             try:
-                futures = {pool.submit(_compute_mode_batch, c): c[0][0] for c in chunks}
-                for future in as_completed(futures):
-                    for idx, ps, pt, si, err in future.result():
-                        done_count += 1
-                        record_result(idx, ps, pt, si, err)
-                    if done_count % checkpoint_interval == 0:
-                        elapsed = time.time() - t_start_all
-                        rate = done_count / max(elapsed, 0.01)
-                        eta = (n_modes - done_count) / rate
-                        print(f"    {done_count}/{n_modes} modes  "
-                              f"[{elapsed:.0f}s<{eta:.0f}s, {rate:.1f}mode/s]",
-                              flush=True)
-                        save_checkpoint(done_count)
-            finally:
-                if executor is None:
-                    pool.shutdown()
-        else:
-            try:
-                from tqdm import tqdm
-                iterator = tqdm(enumerate(k_code_grid), total=n_modes,
-                                desc="  k-modes", unit="mode",
-                                mininterval=1.0)  # 1s update for SSH
-            except ImportError:
-                iterator = enumerate(k_code_grid)
-                print(f"  Computing {n_modes} k-modes (serial)...", flush=True)
+                P_S_arr, P_T_arr, start_idx_arr = numba_run_ms_grid(
+                    bg_sol, T_span_bg, end_idx, k_code_grid, model,
+                    k_start_factor=k_start_factor, bg_coefs=bg_coefs, method=ms_method
+                )
+                for idx in range(n_modes):
+                    record_result(idx, P_S_arr[idx], P_T_arr[idx], start_idx_arr[idx], None)
+                use_numba_parallel_success = True
+            except Exception as e:
+                print(f"  Numba parallel solver failed: {e}. Falling back to multiprocessing pool...")
+                use_numba_parallel_success = False
 
-            for idx, k_code in iterator:
-                ps, pt, si, err = _solve_one_mode_fast(idx, k_code)
-                record_result(idx, ps, pt, si, err)
+        if not use_numba_parallel_success:
+            if n_workers > 1:
+                from concurrent.futures import ProcessPoolExecutor, as_completed
+                import multiprocessing
+                n_actual = min(n_workers, n_modes, multiprocessing.cpu_count())
+                print(f"  Computing {n_modes} k-modes on {n_actual} workers...")
+
+                # Batch: one IPC round-trip per worker instead of per mode
+                indices = list(range(n_modes))
+                chunks = []
+                for w in range(n_actual):
+                    ci = indices[w::n_actual]
+                    ck = [k_code_grid[i] for i in ci]
+                    chunks.append((ci, ck, bg_sol, T_span_bg, end_idx,
+                                   k_start_factor, ms_steps, model, use_numba, ms_method))
+
+                done_count = 0
+                pool = executor if executor is not None else ProcessPoolExecutor(max_workers=n_actual)
                 try:
-                    save_checkpoint(idx + 1)
-                except Exception:
-                    pass
+                    futures = {pool.submit(_compute_mode_batch, c): c[0][0] for c in chunks}
+                    for future in as_completed(futures):
+                        for idx, ps, pt, si, err in future.result():
+                            done_count += 1
+                            record_result(idx, ps, pt, si, err)
+                        if done_count % checkpoint_interval == 0:
+                            elapsed = time.time() - t_start_all
+                            rate = done_count / max(elapsed, 0.01)
+                            eta = (n_modes - done_count) / rate
+                            print(f"    {done_count}/{n_modes} modes  "
+                                  f"[{elapsed:.0f}s<{eta:.0f}s, {rate:.1f}mode/s]",
+                                  flush=True)
+                            save_checkpoint(done_count)
+                finally:
+                    if executor is None:
+                        pool.shutdown()
+            else:
+                try:
+                    from tqdm import tqdm
+                    iterator = tqdm(enumerate(k_code_grid), total=n_modes,
+                                    desc="  k-modes", unit="mode",
+                                    mininterval=1.0)  # 1s update for SSH
+                except ImportError:
+                    iterator = enumerate(k_code_grid)
+                    print(f"  Computing {n_modes} k-modes (serial)...", flush=True)
+
+                for idx, k_code in iterator:
+                    ps, pt, si, err = _solve_one_mode_fast(idx, k_code)
+                    record_result(idx, ps, pt, si, err)
+                    try:
+                        save_checkpoint(idx + 1)
+                    except Exception:
+                        pass
 
     elapsed = time.time() - t_start_all
     n_ok = n_modes - len(failed_modes)
@@ -714,6 +733,8 @@ def parse_args():
     parser.add_argument("--no-save", action="store_true")
     parser.add_argument("--no-plot", action="store_true", default=None,
                         help="Skip auto-plotting P_S(k)")
+    parser.add_argument("--backend", default=None, choices=["numba", "fortran"],
+                        help="Solver backend (numba or fortran)")
     return parser.parse_args()
 
 
@@ -775,6 +796,7 @@ def main():
     ms_steps = _resolve("ms_steps", args.ms_steps, config) or 5000
     output_dir = _resolve("output_dir", args.output_dir, config) or "outputs/simulations/pspectra"
     k_start_factor = _resolve("k_start_factor", args.k_start_factor, config) or 100.0
+    backend = _resolve("backend", args.backend, config) or "numba"
 
     k_grid = None
     if use_weighted:
@@ -804,6 +826,7 @@ def main():
         As=As_target,
         output_dir=output_dir,
         save_outputs=not args.no_save,
+        backend=backend,
     )
 
     if result["status"] != "success":

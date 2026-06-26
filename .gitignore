@@ -51,3 +51,8 @@ package-lock.json
 
 # Stray log files at project root (one-off run outputs)
 /*.log
+
+# Compiled binary extensions
+*.so
+*.mod
+*.o

@@ -342,18 +342,7 @@ With χ₀=8.0, k=0.05 (Planck pivot) at χ≈6.8 gives n_s=0.952 — exact matc
 **SR vs MS comparison**: `scripts.plotting.plot_ps_sr_ms_comparison()` — P_S(k) overlay with ratio panel.
 Pivot found by k=a·H.
 
-**Key contrast**: Standard Higgs USR = initial-condition effect (tune `y₀`). Ezquiaga USR = structural (near-inflection from RG running). PBH-focused — the peak is at small scales (k∼10¹⁴ Mpc⁻¹) for PBH formation (0.01-100 M_⊙). CMB-scale n_s ≈ 0.952 for χ₀≥8.0.
-
-### 14. pspectrum_pipeline scope — P_S(k) only
-
-`pspectrum_pipeline.py` computes and plots P_S(k) only. It does NOT run CAMB,
-compute D_ℓ, plot backgrounds, or do power-loss analysis. Those belong in
-`camb_wrapper.py`, `run_full_analysis.py`, and `check_full_dell.py`.
-
-Auto-plotting (`--no-plot` to skip) saves P_S(k) plots to
-`outputs/plots/pspectra/` — NOT `outputs/plots/powerloss/`.
-
-### 15. MS n_s Oscillation vs Smooth SR — Physics, Not Numerical
+**Key contrast**: Standard Higgs USR = initial-condition effect (tune `y₀`). Ezquiaga USR = structural (near-inflection from RG running). PBH-focused — the peak is at small scales (k∼10¹⁴ Mpc⁻¹) for PBH formation (0.01-100 M_⊙).### 15. MS n_s Oscillation vs Smooth SR — Physics, Not Numerical
 
 When sweeping x₀ at fixed y₀, SR n_s varies **monotonically** while MS n_s shows
 a small **oscillation** (~0.008 amplitude, ~0.004 x₀ period). This is real
@@ -378,7 +367,7 @@ SR never sees this: it samples one N, one formula, no running.
 - bg_steps 1000 vs 10000 → same oscillation (not from grid resolution)
 - Perfectly reproducible: same x₀ gives same n_s to float64 precision
 
-### 15. Figure 3 Reproduction — PBH Abundance (1705.04861)
+### 16. Figure 3 Reproduction — PBH Abundance (1705.04861)
 
 **Config:** `configs/ezquiaga_fig3.json`
 **Plot:** `outputs/plots/pbh/pbh_phi8.00_y0-0.000_nstar87.4.png`
@@ -417,7 +406,7 @@ SR never sees this: it samples one N, one formula, no running.
 - ζ_c=0.077 is within the paper's stated uncertainty range ζ_c ∈ (0.05, 1) [Sec III].
 - Archive at `outputs/Ezquiaga/` contains configs, plots, MS outputs, sweep logs.
 
-### 16. No Inline Python Code
+### 17. No Inline Python Code
 
 **NEVER** run inline `python -c "..."` or `python <<EOF` for physics analysis. It is non-reproducible, un-tracked, and un-reviewable. Use one of:
 - **Config file** + `pspectrum_pipeline.py` for MS computation
@@ -427,7 +416,7 @@ SR never sees this: it samples one N, one formula, no running.
 
 The one exception: short (≤5 line) diagnostics to check file contents or list directories. Any physics computation must use the proper scripts.
 
-### 17. Ezquiaga PBH Mass Shift — LIGO Constraint
+### 18. Ezquiaga PBH Mass Shift — LIGO Constraint
 
 The Ezquiaga CHI paper's reference configuration (x_c=0.784, c=0.77, β=10⁻⁵) produces PBHs with present-day mass ~0.4-11 M_⊙ (stellar range), which is **ruled out by LIGO** bounds on PBH dark matter in the 1-100 M_⊙ range.
 
@@ -443,7 +432,7 @@ The Ezquiaga CHI paper's reference configuration (x_c=0.784, c=0.77, β=10⁻⁵
 | Sub-solar gap | 10⁻⁶–10⁻² | 2×10¹¹–2×10¹³ |
 | Asteroid gap | 10⁻¹⁷–10⁻¹⁵ | 6×10¹⁷–6×10¹⁸ |
 
-### 18. Empirical Results from Systematic Sweeps
+### 19. Empirical Results from Systematic Sweeps
 
 #### Parameter trends
 
@@ -495,7 +484,7 @@ The potential value V(x_c) changes by only 0.02% across the full β range. The s
 
 **N_star is the dominant knob for PBH mass targeting.** β controls USR strength (peak amplitude), but N* shifts the entire P_S(k) along the k-axis via the k↔N pivot mapping. δ(N*) = +1 shifts k_peak by ×e ≈ ×2.7. The difference between sub-solar (k~10¹¹) and asteroid (k~10¹⁸) masses is δ(N*) ≈ +6 at fixed β. β fine-tunes which specific mass bin within the target regime — N* selects the regime.
 
-### 19. Ezquiaga SM-Allowed Parameter Ranges (from 1705.04861)
+### 20. Ezquiaga SM-Allowed Parameter Ranges (from 1705.04861)
 
 From paper lines 302-303 (ΔN ∈ (30,35) for viable PBH production):
 
@@ -530,7 +519,7 @@ From paper lines 302-303 (ΔN ∈ (30,35) for viable PBH production):
 - First resolved (non-grid-boundary) peak at k=9.1×10¹⁷ at c=1.86, β=3e-4, xc=0.79
 - The search plan is documented in `docs/pbh_search_plan.md`
 
-### 20. Best PBH Configs — Sub-solar & Asteroid
+### 21. Best PBH Configs — Sub-solar & Asteroid
 
 Two independently-verified configs producing real (non-boundary) USR peaks with
 clean observational-constraint fits, companion JSONs auto-generated on plot output:
@@ -546,7 +535,7 @@ python scripts/full_pbh_pipeline.py --config configs/subsolar_pbh.json --tag ran
 python scripts/full_pbh_pipeline.py --config configs/asteroid_pbh.json --tag rank07
 ```
 
-### 21. Ezquiaga Parameter Relationships & Config Structure
+### 22. Ezquiaga Parameter Relationships & Config Structure
 
 **Fundamental potential parameters:**
 - `a = b_λ / λ₀`, `b = b_ξ / ξ₀` — dimensionless RG ratios. These define the potential shape.
@@ -578,3 +567,12 @@ python scripts/full_pbh_pipeline.py --config configs/asteroid_pbh.json --tag ran
 | asteroid | 0.77 | 1.8e-4 | 5.335304 | 1.519334 | 1.190e-6 | 11.471 |
 
 `λ₀=2.23e-7, ξ₀=7.55` are universal across all. `a_eff` barely varies (only via `c`). The radical physics differences come from `b_eff` at the 6th decimal (controlled by `β`).
+
+### 23. Fortran MS Solver Backend
+
+The Hot Path comoving MS grid integration is ported to native Fortran 90 (`fortran/ms_solver.f90`) with OpenMP multi-threaded parallelization over comoving modes.
+- Python bridge: `fortran_ms_solver.py` converts background splines to Fortran memory order (`order='F'`) and calls the library.
+- Compilation: Compiled via `f2py` with Meson/Ninja toolchain in `cmb-anomaly` conda env. Make command: `cd fortran && make`.
+- Linking: Requires `LDFLAGS="-fopenmp"` to resolve OpenMP runtime linker symbols.
+- Execution: Activated via `--backend fortran` flag in `pspectrum_pipeline.py`.
+- Validation: `fortran/test_vs_numba.py` checks single-mode trajectory correctness, full comoving grid agreement across three key configurations (within relative difference < 1e-4), and CAMB observable compatibility.
