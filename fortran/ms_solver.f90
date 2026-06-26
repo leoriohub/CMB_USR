@@ -38,10 +38,10 @@ contains
     val = bc_arr(var_idx, 2, idx) + dt * (bc_arr(var_idx, 3, idx) + dt * (bc_arr(var_idx, 4, idx) + dt * bc_arr(var_idx, 5, idx)))
   end subroutine eval_spline_at_idx
 
-  subroutine find_start_idx(n_bg, z_bg, end_idx_fort, k_code, k_start_factor, start_idx_fort)
+  subroutine find_start_idx(log_az, end_idx_fort, k_code, k_start_factor, start_idx_fort)
     implicit none
     integer, intent(in) :: end_idx_fort
-    double precision, intent(in) :: n_bg(end_idx_fort), z_bg(end_idx_fort)
+    double precision, intent(in) :: log_az(end_idx_fort)
     double precision, intent(in) :: k_code, k_start_factor
     integer, intent(out) :: start_idx_fort
     integer :: i
@@ -49,9 +49,9 @@ contains
 
     target = log(k_code) - log(k_start_factor)
     start_idx_fort = 1
-    min_diff = abs(n_bg(1) + log(z_bg(1)) - target)
+    min_diff = abs(log_az(1) - target)
     do i = 2, end_idx_fort
-       diff = abs(n_bg(i) + log(z_bg(i)) - target)
+       diff = abs(log_az(i) - target)
        if (diff < min_diff) then
           min_diff = diff
           start_idx_fort = i
@@ -124,6 +124,69 @@ contains
 
   end subroutine rhs_eval
 
+  subroutine rhs_eval_idx(t, vars_8, n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, idx, deriv_vars)
+    implicit none
+    double precision, intent(in) :: t
+    double precision, intent(in) :: vars_8(8)
+    integer, intent(in) :: n_var, n_pts
+    double precision, intent(in) :: bc_arr(n_var, 5, n_pts)
+    double precision, intent(in) :: k_rel, ni, S, v0, alpha
+    integer, intent(in) :: use_spline
+    integer, intent(inout) :: idx
+    double precision, intent(out) :: deriv_vars(8)
+
+    double precision :: x, y, z, n_rel, df_val, d2f_val, v0_dfdx, k2a2
+    double precision :: v, vt, u, ut, h, ht, g, gt
+    double precision :: exp_neg_alpha_x, Si2, dydt, m2
+
+    if (t < bc_arr(1, 1, idx) .or. t > bc_arr(1, 1, idx + 1)) then
+       call find_segment_index(t, n_var, n_pts, bc_arr, idx)
+    end if
+
+    call eval_spline_at_idx(t, 1, idx, n_var, n_pts, bc_arr, x)
+    call eval_spline_at_idx(t, 2, idx, n_var, n_pts, bc_arr, y)
+    call eval_spline_at_idx(t, 3, idx, n_var, n_pts, bc_arr, z)
+    call eval_spline_at_idx(t, 4, idx, n_var, n_pts, bc_arr, n_rel)
+    n_rel = n_rel - ni
+
+    Si2 = 1.0d0 / (S * S)
+
+    if (use_spline == 1) then
+       call eval_spline_at_idx(t, 6, idx, n_var, n_pts, bc_arr, df_val)
+       call eval_spline_at_idx(t, 7, idx, n_var, n_pts, bc_arr, d2f_val)
+    else
+       exp_neg_alpha_x = exp(-alpha * x)
+       df_val = 2.0d0 * alpha * exp_neg_alpha_x * (1.0d0 - exp_neg_alpha_x)
+       d2f_val = 2.0d0 * alpha**2 * exp_neg_alpha_x * (2.0d0 * exp_neg_alpha_x - 1.0d0)
+    end if
+
+    v0_dfdx = v0 * df_val * Si2
+    dydt = -3.0d0 * z * y - v0_dfdx
+    k2a2 = k_rel**2 * exp(-2.0d0 * n_rel)
+
+    m2 = 2.5d0 * y**2 + 2.0d0 * y * dydt / z + 2.0d0 * z**2 &
+         + 0.5d0 * y**4 / (z**2) - v0 * d2f_val * Si2 - k2a2
+
+    v  = vars_8(1)
+    vt = vars_8(2)
+    u  = vars_8(3)
+    ut = vars_8(4)
+    h  = vars_8(5)
+    ht = vars_8(6)
+    g  = vars_8(7)
+    gt = vars_8(8)
+
+    deriv_vars(1) = vt
+    deriv_vars(2) = -z * vt + v * m2
+    deriv_vars(3) = ut
+    deriv_vars(4) = -z * ut + u * m2
+    deriv_vars(5) = ht
+    deriv_vars(6) = -z * ht - h * (k2a2 - 2.0d0 * z**2 + 0.5d0 * y**2)
+    deriv_vars(7) = gt
+    deriv_vars(8) = -z * gt - g * (k2a2 - 2.0d0 * z**2 + 0.5d0 * y**2)
+
+  end subroutine rhs_eval_idx
+
   subroutine integrate_dp5_final(y0, T_start, T_end, n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, y_final)
     implicit none
     double precision, intent(in) :: y0(8)
@@ -138,9 +201,8 @@ contains
     double precision :: k1(8), k2(8), k3(8), k4(8), k5(8), k6(8), y_new(8), y4(8), f0(8)
     double precision :: ym(8), sc(8)
     double precision :: fac, rtol, atol
-    integer :: step, max_steps, j
+    integer :: step, max_steps, j, current_idx
 
-    ! DP5 coefficients
     double precision :: a21, a31, a32, a41, a42, a43, a51, a52, a53, a54
     double precision :: a61, a62, a63, a64, a65
     double precision :: b1, b2, b3, b4, b5, b6
@@ -165,7 +227,8 @@ contains
     step = 0
     err_prev = 0.0d0
 
-    call rhs_eval(t, y, n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, f0)
+    call find_segment_index(t, n_var, n_pts, bc_arr, current_idx)
+    call rhs_eval_idx(t, y, n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, current_idx, f0)
 
     do while (t < T_end .and. step < max_steps)
        if (t + h > T_end) then
@@ -173,14 +236,14 @@ contains
        end if
 
        k1 = f0
-       call rhs_eval(t + h*c2, y + h*a21*k1, n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, k2)
-       call rhs_eval(t + h*c3, y + h*(a31*k1 + a32*k2), n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, k3)
-       call rhs_eval(t + h*c4, y + h*(a41*k1 + a42*k2 + a43*k3), n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, k4)
-       call rhs_eval(t + h*c5, y + h*(a51*k1 + a52*k2 + a53*k3 + a54*k4), n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, k5)
-       call rhs_eval(t + h, y + h*(a61*k1 + a62*k2 + a63*k3 + a64*k4 + a65*k5), n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, k6)
+       call rhs_eval_idx(t + h*c2, y + h*a21*k1, n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, current_idx, k2)
+       call rhs_eval_idx(t + h*c3, y + h*(a31*k1 + a32*k2), n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, current_idx, k3)
+       call rhs_eval_idx(t + h*c4, y + h*(a41*k1 + a42*k2 + a43*k3), n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, current_idx, k4)
+       call rhs_eval_idx(t + h*c5, y + h*(a51*k1 + a52*k2 + a53*k3 + a54*k4), n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, current_idx, k5)
+       call rhs_eval_idx(t + h, y + h*(a61*k1 + a62*k2 + a63*k3 + a64*k4 + a65*k5), n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, current_idx, k6)
 
        y_new = y + h*(b1*k1 + b2*k2 + b3*k3 + b4*k4 + b5*k5 + b6*k6)
-       call rhs_eval(t + h, y_new, n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, f0)
+       call rhs_eval_idx(t + h, y_new, n_var, n_pts, bc_arr, k_rel, ni, S, v0, alpha, use_spline, current_idx, f0)
        y4 = y + h*(d1*k1 + d2*k2 + d3*k3 + d4*k4 + d5*k5 + d6*k6 + d7*f0)
 
        do j = 1, 8
@@ -379,25 +442,33 @@ subroutine solve_ms_grid(n_modes, k_codes, n_var, n_pts, bc_arr, &
   !f2py intent(in) n_modes, k_codes, n_var, n_pts, bc_arr, n_bg_points, x_bg, y_bg, z_bg, n_bg, T_span_bg, end_idx_py, k_start_factor, S, v0, alpha, use_spline
   !f2py intent(out) P_S_out, P_T_out, start_idx_out
 
-  integer :: i, start_idx_fort, end_idx_fort
+  integer :: i, start_idx_fort, end_idx_fort, jj
   double precision :: k_code, k_rel, ni, t_start, t_end, zi, vi, yv
   double precision :: y0(8), y_final(8)
   double precision :: epsH, inv_A2, zeta2, h2, pi
   double precision :: y_end, z_end, n_end_rel
+  double precision, allocatable :: log_az(:)
 
   pi = 4.0d0 * atan(1.0d0)
   end_idx_fort = end_idx_py + 1
 
+  ! Pre-compute log(aH) = n + log(z) to avoid repeated log() calls
+  allocate(log_az(n_bg_points))
+  do jj = 1, n_bg_points
+     log_az(jj) = n_bg(jj) + log(z_bg(jj))
+  end do
+
   !$OMP PARALLEL DO &
   !$OMP DEFAULT(none) &
   !$OMP SHARED(n_modes, k_codes, n_var, n_pts, bc_arr, n_bg_points, x_bg, y_bg, z_bg, n_bg, T_span_bg) &
-  !$OMP SHARED(end_idx_fort, k_start_factor, S, v0, alpha, use_spline, pi) &
+  !$OMP SHARED(end_idx_fort, k_start_factor, S, v0, alpha, use_spline, pi, log_az) &
   !$OMP SHARED(P_S_out, P_T_out, start_idx_out) &
   !$OMP PRIVATE(i, start_idx_fort, k_code, k_rel, ni, t_start, t_end, zi, vi, yv, y0, y_final) &
-  !$OMP PRIVATE(epsH, inv_A2, zeta2, h2, y_end, z_end, n_end_rel)
+  !$OMP PRIVATE(epsH, inv_A2, zeta2, h2, y_end, z_end, n_end_rel) &
+  !$OMP SCHEDULE(guided)
   do i = 1, n_modes
      k_code = k_codes(i)
-     call find_start_idx(n_bg, z_bg, end_idx_fort, k_code, k_start_factor, start_idx_fort)
+     call find_start_idx(log_az, end_idx_fort, k_code, k_start_factor, start_idx_fort)
      start_idx_out(i) = start_idx_fort - 1 ! Return 0-based index to Python
 
      ni = n_bg(start_idx_fort)
@@ -435,5 +506,7 @@ subroutine solve_ms_grid(n_modes, k_codes, n_var, n_pts, bc_arr, &
      P_T_out(i) = 4.0d0 * (k_rel**3 * h2) / (pi**2)
   end do
   !$OMP END PARALLEL DO
+
+  deallocate(log_az)
 
 end subroutine solve_ms_grid
