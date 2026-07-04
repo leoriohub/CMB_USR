@@ -20,11 +20,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest", "pytest-cov"]
-dev = ["pytest", "pytest-cov", "jupyter", "ipykernel"]
+test = ["pytest", "pytest-cov", "pytest-mock"]
+dev = ["pytest", "pytest-cov", "pytest-mock", "jupyter", "ipykernel"]
 
 [tool.setuptools.packages.find]
 include = ["models*", "scripts*"]
 
 [tool.setuptools]
 py-modules = ["inf_dyn_background", "inf_dyn_MS_full", "numba_ms_solver", "pspectrum_pipeline"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "fast: unit tests (<1s) that run in pre-commit hook",
+    "slow: integration tests (CAMB, Fortran, full pipeline)",
+]
+addopts = "-v --tb=short"
