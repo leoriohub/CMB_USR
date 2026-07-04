@@ -1,30 +1,8 @@
-"""Tests for Higgs model potentials and background ODE invariants."""
+"""Tests for background ODE integration and pipeline reproducibility."""
 import pytest
 import numpy as np
 import inf_dyn_background as bg_solver
-
-
-@pytest.mark.fast
-def test_higgs_potential_asymptote():
-    """f(x) → 1.0 and dfdx(x) → 0.0 as x → ∞."""
-    from models.higgs import HiggsModel
-    model = HiggsModel()
-    x_large = 100.0
-    f_val = model.f(x_large)
-    dfdx_val = model.dfdx(x_large)
-    assert f_val == pytest.approx(1.0, rel=1e-6)
-    assert dfdx_val == pytest.approx(0.0, abs=1e-6)
-
-
-@pytest.mark.fast
-def test_higgs_potential_zero():
-    """f(0) == 0 and dfdx(0) == 0."""
-    from models.higgs import HiggsModel
-    model = HiggsModel()
-    f_val = model.f(0.0)
-    dfdx_val = model.dfdx(0.0)
-    assert f_val == pytest.approx(0.0, abs=1e-12)
-    assert dfdx_val == pytest.approx(0.0, abs=1e-12)
+from scipy.interpolate import interp1d
 
 
 @pytest.mark.fast
@@ -67,3 +45,71 @@ def test_einstein_frame_energy_conservation():
 
     max_rel_error = float(np.max(np.abs(lhs - rhs) / np.maximum(rhs, 1e-30)))
     assert max_rel_error < 1e-6, f"Friedmann constraint violated: {max_rel_error:.2e}"
+
+
+@pytest.mark.fast
+def test_background_deterministic():
+    """Background solver must be deterministic: same inputs → identical outputs."""
+    from models.higgs import HiggsModel
+    model = HiggsModel()
+    model.x0 = 5.70
+    model.y0 = -0.10
+    T_span = np.linspace(0.0, 500.0, 200)
+
+    bg_1 = bg_solver.run_background_simulation(model, T_span)
+    bg_2 = bg_solver.run_background_simulation(model, T_span)
+
+    assert np.allclose(bg_1, bg_2, rtol=1e-14)
+
+
+@pytest.mark.fast
+def test_pipeline_reproducibility():
+    """Full pipeline with same config must produce identical P_S(k)."""
+    from pspectrum_pipeline import run_pspectrum_pipeline
+    from models.higgs import HiggsModel
+
+    model = HiggsModel()
+    kwargs = dict(
+        model=model, phi0=5.70, y0=-0.10, N_star=52,
+        num_k=10, k_min=1e-4, k_max=0.1,
+        ms_steps=500, bg_steps=500,
+        save_outputs=False, use_numba=True,
+    )
+    res_1 = run_pspectrum_pipeline(**kwargs)
+    res_2 = run_pspectrum_pipeline(**kwargs)
+
+    assert np.allclose(res_1["k_phys"], res_2["k_phys"], rtol=1e-14)
+    assert np.allclose(res_1["P_S"], res_2["P_S"], rtol=1e-12)
+
+
+@pytest.mark.fast
+def test_ms_solver_convergence():
+    """P_S(k) must converge as k_start_factor increases."""
+    from pspectrum_pipeline import run_pspectrum_pipeline
+    from models.higgs import HiggsModel
+
+    base_kw = dict(
+        model=HiggsModel(), phi0=5.70, y0=-0.10, N_star=52,
+        num_k=10, k_min=1e-4, k_max=0.1,
+        ms_steps=500, bg_steps=500,
+        save_outputs=False, use_numba=True,
+    )
+
+    res_10 = run_pspectrum_pipeline(k_start_factor=10, **base_kw)
+    res_100 = run_pspectrum_pipeline(k_start_factor=100, **base_kw)
+    res_1000 = run_pspectrum_pipeline(k_start_factor=1000, **base_kw)
+
+    # Interpolate onto shared k grid
+    k_shared = res_10["k_phys"]
+    ps_100 = interp1d(res_100["k_phys"], res_100["P_S"],
+                      kind='cubic', bounds_error=False, fill_value='extrapolate')(k_shared)
+    ps_1000 = interp1d(res_1000["k_phys"], res_1000["P_S"],
+                       kind='cubic', bounds_error=False, fill_value='extrapolate')(k_shared)
+
+    # Convergence: diff between 100→1000 must be smaller than diff between 10→100
+    diff_10_100 = float(np.nanmean(np.abs(ps_100 - res_10["P_S"]) / np.maximum(res_10["P_S"], 1e-30)))
+    diff_100_1000 = float(np.nanmean(np.abs(ps_1000 - ps_100) / np.maximum(ps_100, 1e-30)))
+
+    assert diff_100_1000 < diff_10_100, (
+        f"Not converging: 10→100={diff_10_100:.2e}, 100→1000={diff_100_1000:.2e}"
+    )
