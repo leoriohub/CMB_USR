@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: pytest-fast
         name: pytest (fast unit tests)
-        entry: python -m pytest tests/ -m "fast" --tb=short
+        entry: /home/diego/miniforge3/envs/cmb-anomaly/bin/python -m pytest tests/ -m "fast" --tb=short
         language: system
         pass_filenames: false
         always_run: true
