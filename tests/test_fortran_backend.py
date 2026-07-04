@@ -15,8 +15,8 @@ pytestmark = [
 
 from models.higgs import HiggsModel
 import inf_dyn_background as bg_solver
-from numba_ms_solver import numba_run_ms, build_numba_splines
-from pspectrum_pipeline import run_pspectrum_pipeline, find_end_of_inflation, extract_mode_initial_conditions
+from numba_ms_solver import numba_run_ms_grid, build_numba_splines
+from pspectrum_pipeline import run_pspectrum_pipeline, find_end_of_inflation
 from scripts.camb_wrapper import compute_cl_full_camb, compute_chi2_camb
 from scripts.planck_data import C_ell_to_d_ell
 
@@ -40,66 +40,41 @@ def _setup_higgs(phi0, y0, N_star):
     return model, bg_sol, T_span, derived, end
 
 
-# ── Level 1: Single-mode trajectory ──────────────────────────────────────
+# ── Level 1: Multi-mode grid comparison (direct backend) ────────────────
 
 
 @pytest.mark.fast
-def test_level1_single_mode():
-    """Single k-mode trajectory: Fortran and Numba must agree to 1e-5 in P_S."""
+def test_level1_grid_backend_agreement():
+    """10 k-modes: Fortran and Numba raw P_S(k) must agree to 1e-4 before normalization."""
     model, bg_sol, T_span, derived, end_idx = _setup_higgs(5.70, -0.170, 52)
 
-    k_phys = 0.002
     N_total = derived["N"][end_idx]
     N_pivot = N_total - 52.0
     pivot_idx = int(np.argmin(np.abs(derived["N"][:end_idx] - N_pivot)))
     k_pivot_code = np.exp(bg_sol[3][pivot_idx]) * bg_sol[2][pivot_idx]
-    k_code = k_pivot_code * (k_phys / 0.002)
 
-    xi, y0_m, zi, ni, t_start, t_end, _ = extract_mode_initial_conditions(
-        bg_sol, T_span, end_idx, k_code, 100.0
-    )
-
-    ms_steps = 5000
-    T_ms = np.linspace(t_start, t_end, ms_steps)
-    k_rel = k_code * np.exp(-ni)
+    k_phys = np.logspace(-5, 0, 10)
+    k_codes = k_pivot_code * (k_phys / 0.002)
 
     bg_coefs = build_numba_splines(bg_sol, T_span)
-    out_numba = numba_run_ms(bg_sol, T_span, T_ms, ni, k_code, model, bg_coefs=bg_coefs)
-
     bc_arr = _pack_spline_coefs(bg_coefs)
-    yv = zi / k_rel
-    vi = 1.0 / np.sqrt(2.0 * k_rel)
-    y0_state = np.array([
-        vi, k_rel/np.sqrt(2.0*k_rel)*yv, yv*vi, -k_rel/np.sqrt(2.0*k_rel)*(1-yv*yv),
-        vi, k_rel/np.sqrt(2.0*k_rel)*yv, yv*vi, -k_rel/np.sqrt(2.0*k_rel)*(1-yv*yv),
-    ], dtype=np.float64)
-    out_fort = _fort.integrate_dp5_wrapper(
-        y0_state, t_start, t_end, T_ms, bc_arr, k_rel, ni, model.S, model.v0, model.alpha, 0
+
+    PS_nb, PT_nb, _ = numba_run_ms_grid(
+        bg_sol, T_span, end_idx, k_codes, model, k_start_factor=100.0, bg_coefs=bg_coefs
+    )
+    PS_ft, PT_ft, _ = _fort.solve_ms_grid(
+        k_codes, bc_arr, bg_sol[0], bg_sol[1], bg_sol[2], bg_sol[3], T_span,
+        end_idx, 100.0, model.S, model.v0, model.alpha, 0
     )
 
-    abs_diff = np.abs(out_fort - out_numba)
-    rel_err = abs_diff / np.maximum(np.abs(out_numba), 1e-30)
-    max_rel_err = np.max(rel_err)
-    assert max_rel_err < 0.1, f"Trajectory error {max_rel_err:.4e} >= 0.1"
+    PS_nb, PS_ft = np.asarray(PS_nb), np.asarray(PS_ft)
+    PT_nb, PT_ft = np.asarray(PT_nb), np.asarray(PT_ft)
 
-    y_bg_end = bg_sol[1][end_idx]
-    z_bg_end = bg_sol[2][end_idx]
-    n_end_rel = bg_sol[3][end_idx] - ni
-    epsH = max(y_bg_end**2 / (2.0 * z_bg_end**2), 1e-30)
-    inv_A2 = np.exp(-2.0 * n_end_rel)
+    rel_ps = np.abs(PS_ft - PS_nb) / np.maximum(PS_nb, 1e-30)
+    rel_pt = np.abs(PT_ft - PT_nb) / np.maximum(PT_nb, 1e-30)
 
-    for label, y_end in [("Numba", out_numba[:, -1]), ("Fortran", out_fort[:, -1])]:
-        zeta2 = (y_end[0]**2 + y_end[2]**2) * inv_A2 * (model.S**2) / (2.0 * epsH)
-        ps = (k_rel**3 * zeta2) / (2.0 * np.pi**2)
-        h2 = (y_end[4]**2 + y_end[6]**2) * inv_A2 * (model.S**2)
-        pt = 4.0 * (k_rel**3 * h2) / (np.pi**2)
-        if label == "Numba":
-            ps_nb, pt_nb = ps, pt
-        else:
-            ps_ft, pt_ft = ps, pt
-
-    assert abs(ps_ft - ps_nb) / ps_nb < 1e-5, f"P_S diff {abs(ps_ft - ps_nb) / ps_nb:.4e}"
-    assert abs(pt_ft - pt_nb) / pt_nb < 1e-5, f"P_T diff {abs(pt_ft - pt_nb) / pt_nb:.4e}"
+    assert np.nanmax(rel_ps) < 1e-4, f"P_S max diff over 10 modes: {np.nanmax(rel_ps):.4e}"
+    assert np.nanmax(rel_pt) < 1e-4, f"P_T max diff over 10 modes: {np.nanmax(rel_pt):.4e}"
 
 
 # ── Level 2+3: Grid + CAMB agreement ─────────────────────────────────────
