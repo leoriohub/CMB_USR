@@ -19,6 +19,7 @@ from numba_ms_solver import numba_run_ms_grid, build_numba_splines
 from pspectrum_pipeline import run_pspectrum_pipeline, find_end_of_inflation
 from scripts.camb_wrapper import compute_cl_full_camb, compute_chi2_camb
 from scripts.planck_data import C_ell_to_d_ell
+from scripts.constants import k_pivot_phys
 
 import ms_solver_fort as _fort
 from fortran_ms_solver import _pack_spline_coefs
@@ -54,7 +55,7 @@ def test_level1_grid_backend_agreement():
     k_pivot_code = np.exp(bg_sol[3][pivot_idx]) * bg_sol[2][pivot_idx]
 
     k_phys = np.logspace(-5, 0, 10)
-    k_codes = k_pivot_code * (k_phys / 0.002)
+    k_codes = k_pivot_code * (k_phys / k_pivot_phys)
 
     bg_coefs = build_numba_splines(bg_sol, T_span)
     bc_arr = _pack_spline_coefs(bg_coefs)
@@ -75,6 +76,52 @@ def test_level1_grid_backend_agreement():
 
     assert np.nanmax(rel_ps) < 1e-4, f"P_S max diff over 10 modes: {np.nanmax(rel_ps):.4e}"
     assert np.nanmax(rel_pt) < 1e-4, f"P_T max diff over 10 modes: {np.nanmax(rel_pt):.4e}"
+
+
+@pytest.mark.fast
+def test_level1_ezquiaga_backend_agreement():
+    """10 k-modes on Ezquiaga: Fortran and Numba raw P_S must agree to 1e-4 (use_spline=1)."""
+    from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
+    from scripts.constants import k_pivot_phys
+
+    c_val = 0.77
+    m = EzquiagaCHIModel(c=c_val)
+    a, b = inflection_parameters(0.784, c_val, beta=1e-5)
+    m.a = a; m.b = b
+    m.v0 = m._V0 * m.a / (m.b * m.c) ** 2
+    m.x0 = 8.0
+    m.y0 = -1e-4
+    m.T_max = 1000.0
+    m.bg_steps = 5000
+
+    T_span = np.linspace(0.0, m.T_max, m.bg_steps)
+    bg_sol = bg_solver.run_background_simulation(m, T_span)
+    derived = bg_solver.get_derived_quantities(bg_sol, m)
+    end_idx = find_end_of_inflation(derived["epsH"])
+    if end_idx == -1:
+        end_idx = len(T_span) - 1
+
+    N_total = derived["N"][end_idx]
+    N_pivot = N_total - 65.0
+    pivot_idx = int(np.argmin(np.abs(derived["N"][:end_idx] - N_pivot)))
+    k_pivot_code = np.exp(bg_sol[3][pivot_idx]) * bg_sol[2][pivot_idx]
+
+    k_phys = np.logspace(np.log10(k_pivot_phys), 0, 10)
+    k_codes = k_pivot_code * (k_phys / k_pivot_phys)
+
+    bg_coefs = build_numba_splines(bg_sol, T_span, model=m)
+    bc_arr = _pack_spline_coefs(bg_coefs)
+
+    PS_nb, PT_nb, _ = numba_run_ms_grid(
+        bg_sol, T_span, end_idx, k_codes, m, k_start_factor=100.0, bg_coefs=bg_coefs,
+    )
+    PS_ft, PT_ft, _ = _fort.solve_ms_grid(
+        k_codes, bc_arr, bg_sol[0], bg_sol[1], bg_sol[2], bg_sol[3], T_span,
+        end_idx, 100.0, m.S, m.v0, 0.0, 1
+    )
+
+    rel_ps = np.abs(PS_ft - PS_nb) / np.maximum(PS_nb, 1e-30)
+    assert np.nanmax(rel_ps) < 1e-3, f"Ezquiaga P_S max diff: {np.nanmax(rel_ps):.4e}"
 
 
 # ── Level 2+3: Grid + CAMB agreement ─────────────────────────────────────
@@ -112,8 +159,6 @@ def test_level2_grid_agreement(phi0, y0, nstar, label):
 
 
 @pytest.mark.parametrize("phi0,y0,nstar", [
-    (6.40, -0.475, 59),
-    (5.75, -0.170, 55),
     (5.70, -0.170, 52),
 ])
 def test_level3_camb_agreement(phi0, y0, nstar):

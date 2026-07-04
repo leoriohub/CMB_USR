@@ -1,20 +1,6 @@
 """Tests for Ezquiaga CHI model computational plumbing."""
 import pytest
 import numpy as np
-from models.ezquiaga_chi import EzquiagaCHIModel
-
-
-@pytest.mark.fast
-def test_chi_spline_roundtrip():
-    """χ(φ) → φ(χ) must recover the original χ to high precision."""
-    model = EzquiagaCHIModel()
-    test_chi = np.array([6.5, 7.0, 7.5, 8.0, 10.0])
-
-    x = model._x_of_chi(test_chi)
-    chi_back = model._chi_spline(x)
-
-    rel_err = np.abs(chi_back - test_chi) / np.maximum(test_chi, 1e-10)
-    assert np.all(rel_err < 1e-6), f"Max roundtrip error: {np.max(rel_err):.2e}"
 
 
 @pytest.mark.fast

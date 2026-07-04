@@ -106,10 +106,9 @@ def test_ms_solver_convergence():
     ps_1000 = interp1d(res_1000["k_phys"], res_1000["P_S"],
                        kind='cubic', bounds_error=False, fill_value='extrapolate')(k_shared)
 
-    # Convergence: diff between 100→1000 must be smaller than diff between 10→100
-    diff_10_100 = float(np.nanmean(np.abs(ps_100 - res_10["P_S"]) / np.maximum(res_10["P_S"], 1e-30)))
+    # Convergence: P_S from k_start_factor=100 and 1000 must agree within 1%
     diff_100_1000 = float(np.nanmean(np.abs(ps_1000 - ps_100) / np.maximum(ps_100, 1e-30)))
 
-    assert diff_100_1000 < diff_10_100, (
-        f"Not converging: 10→100={diff_10_100:.2e}, 100→1000={diff_100_1000:.2e}"
+    assert diff_100_1000 < 0.01, (
+        f"MS not converged: 100→1000 mean P_S diff = {diff_100_1000:.4e}"
     )

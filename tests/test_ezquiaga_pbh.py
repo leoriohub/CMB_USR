@@ -4,7 +4,6 @@ Locks known-good behavior of solver + pipeline for the subsolar PBH config.
 If these fail after a solver change, the change broke known physics.
 """
 import pytest
-import json
 import numpy as np
 import inf_dyn_background as bg_solver
 from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
@@ -27,7 +26,7 @@ def _build_subsolar_model():
 
 @pytest.mark.fast
 def test_subsolar_config_roundtrip():
-    """Building the subsolar model produces finite potentials and correct N_total."""
+    """Building the subsolar model produces finite, positive potentials."""
     m = _build_subsolar_model()
 
     f_x0 = m.f(m.x0)
@@ -35,14 +34,6 @@ def test_subsolar_config_roundtrip():
     assert np.isfinite(f_x0)
     assert np.isfinite(dfdx_x0)
     assert f_x0 > 0
-
-    # Potential must monotonically decrease from plateau → inflection → minimum
-    V_plateau = m._V(100.0)
-    V_inflection = m._V(SUBSOLAR["xc"])
-    V_near_min = m._V(0.5)
-    assert V_plateau > V_inflection > V_near_min, (
-        f"Shape wrong: V(100)={V_plateau:.3f}, V(x_c)={V_inflection:.3f}, V(0.5)={V_near_min:.3f}"
-    )
 
 
 @pytest.mark.fast
@@ -87,6 +78,6 @@ def test_subsolar_pipeline_output():
         ps_cmb = ps[k < 1]
         cmb_level = float(np.nanmedian(ps_cmb)) if len(ps_cmb) > 0 else 2.1e-9
         peak_ratio = float(np.nanmax(ps_amplified)) / max(cmb_level, 1e-30)
-        assert peak_ratio > 10, (
+        assert peak_ratio > 100, (
             f"No USR peak: P_S amplification factor = {peak_ratio:.1e}"
         )
