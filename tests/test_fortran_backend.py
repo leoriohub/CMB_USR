@@ -21,7 +21,8 @@ from scripts.camb_wrapper import compute_cl_full_camb, compute_chi2_camb
 from scripts.planck_data import C_ell_to_d_ell
 from scripts.constants import k_pivot_phys
 
-import ms_solver_fort as _fort
+if HAVE_FORTRAN:
+    import ms_solver_fort as _fort
 from fortran_ms_solver import _pack_spline_coefs
 
 
