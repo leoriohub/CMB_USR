@@ -1,6 +1,6 @@
 FC = x86_64-conda-linux-gnu-gfortran
-FFLAGS = -O3 -march=native -fopenmp
-LDFLAGS = -fopenmp
+FFLAGS = -O3 -march=native -fopenmp -fopenmp-simd -ffast-math -funroll-loops -flto
+LDFLAGS = -fopenmp -flto
 MODULE = ms_solver_fort
 
 all:

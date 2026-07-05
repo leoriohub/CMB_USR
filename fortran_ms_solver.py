@@ -53,14 +53,26 @@ def fortran_run_ms_grid(bg_sol, T_span_bg, end_idx, k_codes, model,
 
 
 def _pack_spline_coefs(bg_coefs):
-    """Convert list-of-tuples spline coefs to (n_var, 5, n_pts) Fortran array."""
+    """Convert list-of-tuples spline coefs to (5, n_var, n_pts) Fortran array.
+
+    Layout (matching Fortran's bc_arr(5, n_var, n_pts)):
+      bc[0, i, :] = t_grid        (time nodes)
+      bc[1, i, :n_pts-1] = a      (constant term)
+      bc[2, i, :n_pts-1] = b      (linear)
+      bc[3, i, :n_pts-1] = c      (quadratic)
+      bc[4, i, :n_pts-1] = d      (cubic)
+
+    With order='F' (Fortran/column-major), the first dimension (5) varies
+    fastest in memory, making bc[:, var, idx] 5 contiguous doubles —
+    one cache line for all spline coefficients at a given variable and segment.
+    """
     n_var = len(bg_coefs)
     n_pts = len(bg_coefs[0][0])
-    bc = np.zeros((n_var, 5, n_pts), dtype=np.float64, order='F')
+    bc = np.zeros((5, n_var, n_pts), dtype=np.float64, order='F')
     for i, (t, a, b, c, d) in enumerate(bg_coefs):
-        bc[i, 0, :] = t
-        bc[i, 1, :n_pts-1] = a
-        bc[i, 2, :n_pts-1] = b
-        bc[i, 3, :n_pts-1] = c
-        bc[i, 4, :n_pts-1] = d
+        bc[0, i, :] = t
+        bc[1, i, :n_pts-1] = a
+        bc[2, i, :n_pts-1] = b
+        bc[3, i, :n_pts-1] = c
+        bc[4, i, :n_pts-1] = d
     return bc
