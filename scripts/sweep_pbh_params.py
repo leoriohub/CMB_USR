@@ -119,7 +119,7 @@ def classify_mass_range(M_peak):
     return "massive"
 
 
-def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar", pivot_k=0.05, N_star=65):
+def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar", k_pivot=0.05, N_star=65):
     """Run the MS solver for a given model, return k_phys, P_S, N_total."""
     from pspectrum_pipeline import run_pspectrum_pipeline
 
@@ -134,7 +134,7 @@ def run_ms(model, chi0=8.0, y0=-1e-4, target="subsolar", pivot_k=0.05, N_star=65
         phi0=None,
         y0=None,
         k_phys_grid=k_grid,
-        k_pivot_phys=pivot_k,
+        k_pivot_phys=k_pivot,
         N_star=N_star,
         k_start_factor=100.0,
         ms_steps=5000,
@@ -207,7 +207,7 @@ def run_sweep(
     zeta_c_vals,
     target="subsolar",
     N_total_min=65,
-    pivot_k=0.002,
+    k_pivot=0.002,
     N_star_vals=None,
     progress_fn=None,
     log_path=None,
@@ -305,7 +305,7 @@ def run_sweep(
                                 pipe_result,
                                 k_min_val,
                                 k_max_val,
-                            ) = run_ms(m, chi0, y0, target, pivot_k, N_star)
+                            ) = run_ms(m, chi0, y0, target, k_pivot, N_star)
                             if N_total < N_total_min:
                                 continue
                             peak = find_pbh_peak(k_m, ps_ms, k_min_val, k_max_val)
@@ -602,10 +602,16 @@ def main():
         help="Minimum N_total to accept a config",
     )
     p.add_argument(
-        "--pivot-k",
+        "--k-pivot",
         type=float,
         default=0.05,
-        help="MS solver pivot k_pivot_phys (Planck default 0.05; Higgs low-ell 0.002)",
+        help="Pivot k_pivot_phys (Mpc^-1) — drives As normalization and n_s extraction (single-pivot invariant). Planck default 0.05; Higgs low-ell 0.002.",
+    )
+    p.add_argument(
+        "--pivot-k",
+        type=float,
+        default=None,
+        help="Deprecated alias for --k-pivot (back-compat).",
     )
     p.add_argument(
         "--workers", type=int, default=8, help="MS solver parallel workers per config"
@@ -638,6 +644,10 @@ def main():
 
     args = p.parse_args()
 
+    # Back-compat: --pivot-k aliases --k-pivot
+    if args.pivot_k is not None:
+        args.k_pivot = args.pivot_k
+
     global MS_N_WORKERS
     MS_N_WORKERS = args.workers
 
@@ -665,7 +675,7 @@ def main():
         f"{len(beta_vals)} β × {len(chi0_vals)} χ₀ × "
         f"{len(N_star_vals)} N* × {len(zeta_c_vals)} ζ_c = "
         f"{n_unique} MS solves → {total_entries} entries  "
-        f"target={args.target}  pivot_k={args.pivot_k}  "
+        f"target={args.target}  k_pivot={args.k_pivot}  "
         f"N_total_min={args.N_total_min}  workers={args.workers}"
     )
 
@@ -692,7 +702,7 @@ def main():
         zeta_c_vals=args.zeta_c_vals,
         target=args.target,
         N_total_min=args.N_total_min,
-        pivot_k=args.pivot_k,
+        k_pivot=args.k_pivot,
         N_star_vals=N_star_vals,
         progress_fn=progress,
         log_path=args.log,
