@@ -1207,6 +1207,8 @@ def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
                             # Discard the first two points which are flat digitization artifacts along the bottom axis
                             m_b = m_b[2:]
                             f_b = f_b[2:]
+                            if len(m_b) < 2:
+                                continue
                             # Extrapolate to the left plot limit (1e-19) following the log-log slope of the first two points
                             log_m1, log_m2 = np.log10(m_b[0]), np.log10(m_b[1])
                             log_f1, log_f2 = np.log10(f_b[0]), np.log10(f_b[1])
@@ -1219,6 +1221,8 @@ def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
                             m_b = np.insert(m_b, 0, 1e-19)
                             f_b = np.insert(f_b, 0, f_left)
                         elif label == "Eri-II" and m_b[-1] < 1e8:
+                            if len(m_b) < 2:
+                                continue
                             # Extrapolate to the right plot limit (1e8) following the log-log slope of the last two points
                             log_m1, log_m2 = np.log10(m_b[-2]), np.log10(m_b[-1])
                             log_f1, log_f2 = np.log10(f_b[-2]), np.log10(f_b[-1])
