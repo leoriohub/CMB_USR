@@ -280,13 +280,18 @@ def run_sweep(
                         # MS solver runs ONCE per (xc, c, beta, chi0, N_star)
                         ms_done_key = (xc, c, beta, chi0, N_star)
                         ms_completed = any(k[:5] == ms_done_key for k in done_set)
+
                         if ms_completed:
-                            # All zeta_c variants already done for this config
-                            zeta_in_done = sum(
-                                1 for k in done_set if k[:5] == ms_done_key
+                            # Check if ALL zeta_c variants are done for this config
+                            all_zeta_done = all(
+                                (xc, c, beta, chi0, N_star, z) in done_set for z in zeta_c_vals
                             )
-                            skipped += zeta_in_done
-                            continue
+                            if all_zeta_done:
+                                skipped += len(zeta_c_vals)
+                                continue
+                            # Some zeta_c remaining — fall through to re-run MS solver
+                            # This re-runs MS for the config, but the inner zeta_c loop
+                            # (lines 333-334) correctly skips already-logged zeta_c values
 
                         idx += 1
                         n_remaining = n_unique - idx + skipped
