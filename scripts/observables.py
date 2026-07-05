@@ -147,3 +147,15 @@ def extract_pbh_peak(k_phys, P_S, As=As_planck):
     k_v, p_v = k_phys[valid], P_S[valid]
     i = int(np.argmax(p_v))
     return float(k_v[i]), float(p_v[i]), float(p_v[i] / As)
+
+
+def model_from_params(x_c, c, beta):
+    """Construct Ezquiaga CHI model from inflection parameters."""
+    from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
+
+    m = EzquiagaCHIModel(c=c)
+    a, b = inflection_parameters(x_c, c, beta=beta)
+    m.a = a
+    m.b = b
+    m.v0 = m._V0 * m.a / (m.b * m.c) ** 2
+    return m

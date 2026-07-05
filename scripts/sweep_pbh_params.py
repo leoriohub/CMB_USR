@@ -24,7 +24,7 @@ from matplotlib.colors import LogNorm
 from scripts.plotting import save_fig, TOL, PAPER_RCPARAMS
 
 from scripts.constants import gamma_default, k_eq_default, M_eq_default, ACCRETION
-from scripts.observables import extract_ns, interpolate_As
+from scripts.observables import extract_ns, interpolate_As, model_from_params
 
 # Paper targets
 TARGET_PS_RATIO = 2.3e4  # P_S_peak / As
@@ -34,17 +34,6 @@ TARGET_F_TOTAL = 0.42  # Omega_PBH / Omega_DM
 
 
 MS_N_WORKERS = 8  # overridden by --workers CLI arg
-
-
-def model_from_params(x_c, c, beta):
-    from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
-
-    m = EzquiagaCHIModel(c=c)
-    a, b = inflection_parameters(x_c, c, beta=beta)
-    m.a = a
-    m.b = b
-    m.v0 = m._V0 * m.a / (m.b * m.c) ** 2
-    return m
 
 
 def _pbh_weighted_kgrid(target="subsolar"):

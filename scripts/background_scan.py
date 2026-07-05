@@ -15,15 +15,7 @@ import argparse
 import numpy as np
 
 
-def model_from_params(x_c, c, beta):
-    from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
-
-    m = EzquiagaCHIModel(c=c)
-    a, b = inflection_parameters(x_c, c, beta=beta)
-    m.a = a
-    m.b = b
-    m.v0 = m._V0 * m.a / (m.b * m.c) ** 2
-    return m
+from scripts.observables import model_from_params
 
 
 def find_end_of_inflation_simple(epsH):
