@@ -16,6 +16,7 @@ import time
 from datetime import datetime
 
 import numpy as np
+from concurrent.futures import ProcessPoolExecutor
 
 from pspectrum_pipeline import (
     run_pspectrum_pipeline, find_end_of_inflation,
