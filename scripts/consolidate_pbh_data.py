@@ -214,7 +214,6 @@ def _plot_ranking_scatter(rankings, filename="ranking_overview"):
             "sub_solar_gap",
             "sub_stellar",
             "stellar_ligo",
-            "stellar_ligo",
             "intermediate",
             "massive",
             "too_light",

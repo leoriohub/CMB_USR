@@ -28,9 +28,10 @@ def measure_usr_duration(N, epsH, eps2, threshold=-5.5):
       3. Truncate to inflationary segment.
       4. Sum dN where eps2 < threshold.
     """
-    if np.all(epsH >= 1.0):
+    finite_eps = epsH[np.isfinite(epsH)]
+    if len(finite_eps) == 0 or np.all(finite_eps >= 1.0):
         return 0.0
-    start = int(np.where(epsH < 1.0)[0][0])
+    start = int(np.where(finite_eps < 1.0)[0][0])
     post = epsH[start:] >= 1.0
     if np.any(post):
         cutoff = start + int(np.where(post)[0][0])
