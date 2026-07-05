@@ -617,8 +617,8 @@ def plot_dell(ells, D_ell_model, planck_ells=None, D_planck=None,
             D_lcdm_interp = CubicSpline(ells_l_mask, D_l_mask, bc_type='not-a-knot', extrapolate=True)(ell_dense)
         else:
             D_lcdm_interp = np.interp(ell_dense, ells_l_mask, D_l_mask)
-    ax.plot(ell_dense, D_lcdm_interp, "--", color=TOL["grey"], lw=1.2,
-            alpha=0.6, label=r"$\Lambda$CDM")
+        ax.plot(ell_dense, D_lcdm_interp, "--", color=TOL["grey"], lw=1.2,
+                alpha=0.6, label=r"$\Lambda$CDM")
 
     ax.set_xlabel(r"$\ell$", fontsize=14)
     ax.set_ylabel(r"$D_\ell^{TT}\ [\mu{\rm K}^2]$", fontsize=14)
