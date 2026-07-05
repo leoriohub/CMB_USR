@@ -4,13 +4,6 @@ Delegates to the compiled Fortran module ms_solver_fort.
 Falls back to Numba if Fortran module is not compiled.
 """
 import numpy as np
-import os
-import sys
-
-# Fortran .so is in fortran/ — ensure it's importable
-_fortran_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fortran')
-if _fortran_dir not in sys.path:
-    sys.path.insert(0, _fortran_dir)
 
 try:
     import ms_solver_fort as _fort

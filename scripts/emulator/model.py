@@ -5,16 +5,11 @@ Output: P_S(k) at 200-point fixed k-grid.
 """
 import argparse
 import os
-import sys
 
 import joblib
 import numpy as np
 import torch
 import torch.nn as nn
-
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
 
 from scripts.emulator.grid import FIXED_K_GRID
 

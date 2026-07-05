@@ -7,9 +7,6 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-# Add project root to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from models.higgs import HiggsModel
 import inf_dyn_background as bg_solver
 from numba_ms_solver import numba_run_ms, build_numba_splines

@@ -56,9 +56,6 @@ def worker_main(backend, nthreads):
     os.environ["NUMBA_NUM_THREADS"] = str(nthreads)
     os.environ["OMP_NUM_THREADS"] = str(nthreads)
 
-    sys.path.insert(0, PROJECT_ROOT)
-    sys.path.insert(0, os.path.join(PROJECT_ROOT, "fortran"))
-
     import numpy as np
     from models.higgs import HiggsModel
     import inf_dyn_background as bg_solver
