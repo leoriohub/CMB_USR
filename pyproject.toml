@@ -25,3 +25,9 @@ include = ["models*", "scripts*"]
 
 [tool.setuptools]
 py-modules = ["inf_dyn_background", "inf_dyn_MS_full", "numba_ms_solver", "pspectrum_pipeline"]
+
+[tool.pytest.ini_options]
+markers = [
+    "fast: unit tests that run quickly with no external dependencies",
+    "slow: integration tests that require solvers, CAMB, or model files",
+]

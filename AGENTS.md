@@ -291,8 +291,9 @@ fit half-width `ns_window` is the only separate knob.
 
 **CLI flags (on every script that uses the pivot):**
 ```
---k-pivot FLOAT      # drives BOTH As normalization and n_s extraction
---ns-window FLOAT    # n_s fit half-width [k_pivot/w, k_pivot*w]
+--k-pivot FLOAT                   # drives BOTH As normalization and n_s extraction
+--ns-window FLOAT                 # n_s fit half-width [k_pivot/w, k_pivot*w]
+--ns-method {lsq,derivative}      # n_s extraction method: lsq=window fit (default), derivative=log-derivative at k_pivot
 ```
 `sweep_pbh_params.py` also keeps `--pivot-k` as a deprecated back-compat
 alias for `--k-pivot`.
@@ -303,6 +304,8 @@ alias for `--k-pivot`.
 ```
 
 **Precedence:** `--k-pivot` CLI > config `pipeline.k_pivot_phys` > script default.
+
+> **ns_method default:** `lsq` (window-averaged fit over `[k_pivot/ns_window, k_pivot*ns_window]`). Use `derivative` for the logarithmic derivative at k_pivot, which is more sensitive to local features.
 
 **Single-pivot invariant:** the SAME `k_pivot` value feeds both the pipeline
 call (`k_pivot_phys=...`) and `extract_ns(k_pivot=...)`. Never normalize A_s
