@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-n_s vs x₀: SR, MS-LSQ, and MS-log-derivative comparison.
+n_s vs x₀: SR and MS comparison (user-selectable method).
 
 Scan x₀ at fixed y₀ and N*, computing n_s three ways at each point:
   1. SR algebraic:  n_s = 1 + 2η_H − 4ε_H at N_pivot
@@ -68,15 +68,15 @@ def compute_sr_ns_at_pivot(derived_bg, N_star, N_total):
 
 
 def compute_ns_at_x0(x0, y0, N_star, ns_window, ms_steps, pivot_k,
-                     k_grid, xi=15000.0, lam=0.13):
-    """Compute n_s three ways for a single (x₀, y₀, N*) configuration.
+                     k_grid, ns_method="lsq", xi=15000.0, lam=0.13):
+    """Compute n_s for a single (x₀, y₀, N*) configuration.
 
     Uses a FIXED k_grid (same for all x₀) to avoid random k-subset noise
     in the derivative n_s.
 
     Returns dict with keys:
-        x0, y0, N_star,
-        ns_SR, ns_MS_lsq, ns_MS_der,
+        x0, y0, N_star, ns_method,
+        ns_SR, ns_MS_val,
         N_total, pivot_k, status
     """
     model = HiggsModel(xi=xi, lam=lam)
@@ -100,7 +100,8 @@ def compute_ns_at_x0(x0, y0, N_star, ns_window, ms_steps, pivot_k,
     except Exception as e:
         return {
             "x0": x0, "y0": y0, "N_star": N_star,
-            "ns_SR": None, "ns_MS_lsq": None, "ns_MS_der": None,
+            "ns_SR": None, "ns_MS_val": None,
+            "ns_MS_method": ns_method,
             "N_total": None, "pivot_k": pivot_k,
             "status": f"pipeline failed: {e}",
         }
@@ -108,10 +109,11 @@ def compute_ns_at_x0(x0, y0, N_star, ns_window, ms_steps, pivot_k,
     if result["status"] != "success":
         return {
             "x0": x0, "y0": y0, "N_star": N_star,
-            "ns_SR": None, "ns_MS_lsq": None, "ns_MS_der": None,
-            "N_total": result["metadata"]["N_total"],
+            "ns_SR": None, "ns_MS_val": None,
+            "ns_MS_method": ns_method,
+            "N_total": result.get("metadata", {}).get("N_total"),
             "pivot_k": pivot_k,
-            "status": result["message"],
+            "status": result.get("message", result["status"]),
         }
 
     k_phys = result["k_phys"]
@@ -122,23 +124,19 @@ def compute_ns_at_x0(x0, y0, N_star, ns_window, ms_steps, pivot_k,
     # 1. SR n_s from background
     ns_sr, _ = compute_sr_ns_at_pivot(result["derived_bg"], N_star, N_total)
 
-    # 2. MS n_s via LSQ fit over [k_pivot/w, k_pivot*w]
-    ns_lsq, _ = extract_ns(k_phys, P_S, pivot_k,
-                           ns_window=ns_window, method="lsq")
-
-    # 3. MS n_s via logarithmic derivative at k_pivot
-    ns_der, _ = extract_ns(k_phys, P_S, pivot_k,
-                           method="derivative")
+    # 2. MS n_s via selected method
+    ns_kw = dict(ns_window=ns_window) if ns_method == "lsq" else dict()
+    ns_ms, ns_meta = extract_ns(k_phys, P_S, pivot_k,
+                                method=ns_method, **ns_kw)
 
     msg_parts = [f"x0={x0:.4f}"]
     msg_parts.append(f"ns_SR={ns_sr:.4f}" if ns_sr is not None else "ns_SR=FAIL")
-    msg_parts.append(f"ns_MS_lsq={ns_lsq:.4f}" if ns_lsq is not None else "ns_MS_lsq=FAIL")
-    msg_parts.append(f"ns_MS_der={ns_der:.4f}" if ns_der is not None else "ns_MS_der=FAIL")
+    msg_parts.append(f"ns_MS={ns_ms:.4f}" if ns_ms is not None else "ns_MS=FAIL")
     print(f"  [{','.join(msg_parts)}]")
 
     return {
         "x0": x0, "y0": y0, "N_star": N_star,
-        "ns_SR": ns_sr, "ns_MS_lsq": ns_lsq, "ns_MS_der": ns_der,
+        "ns_SR": ns_sr, "ns_MS_val": ns_ms, "ns_MS_method": ns_method,
         "N_total": N_total, "pivot_k": pivot_k,
         "status": "ok",
     }
@@ -147,25 +145,48 @@ def compute_ns_at_x0(x0, y0, N_star, ns_window, ms_steps, pivot_k,
 def _worker(args):
     """Top-level worker function for ProcessPoolExecutor (must be picklable).
 
-    args: (x0, y0, N_star, ns_window, ms_steps, pivot_k, k_grid, xi, lam)
+    args: (x0, y0, N_star, ns_window, ms_steps, pivot_k, k_grid, ns_method, xi, lam)
     """
     return compute_ns_at_x0(*args)
 
 
 def plot_ns_comparison(results, y0, N_star, x0_min, x0_max,
-                       n_points, ms_steps, ns_window, pivot_k, filename):
+                       n_points, ms_steps, ns_window, pivot_k, ns_method,
+                       filename):
     """Produce the 2-panel comparison plot (main + residuals)."""
     x0s = np.array([r["x0"] for r in results])
     order = np.argsort(x0s)
     x0s = x0s[order]
 
-    ns_sr = np.array([r["ns_SR"] for r in results])[order]
-    ns_lsq = np.array([r["ns_MS_lsq"] for r in results])[order]
-    ns_der = np.array([r["ns_MS_der"] for r in results])[order]
+    ns_sr = np.array([r["ns_SR"] if r["ns_SR"] is not None else np.nan
+                      for r in results], dtype=float)[order]
+    ns_ms = np.array([r["ns_MS_val"] if r["ns_MS_val"] is not None else np.nan
+                      for r in results], dtype=float)[order]
 
     valid_sr = np.isfinite(ns_sr)
-    valid_lsq = np.isfinite(ns_lsq)
-    valid_der = np.isfinite(ns_der)
+    valid_ms = np.isfinite(ns_ms)
+
+    # Mask out-of-range data so connecting lines don't create
+    # visual artifacts at the y-axis boundaries.
+    ns_sr_plot = np.where((ns_sr >= 0.9) & (ns_sr <= 1.0), ns_sr, np.nan)
+    ns_ms_plot = np.where((ns_ms >= 0.9) & (ns_ms <= 1.0), ns_ms, np.nan)
+
+    # Trim x-range: only show region where EITHER curve has valid data
+    # within [0.9, 1.0]. Everything outside is blank space.
+    both_ok = np.isfinite(ns_sr_plot) & np.isfinite(ns_ms_plot)
+    if both_ok.any():
+        x_lo = float(x0s[both_ok][0])
+        x_hi = float(x0s[both_ok][-1])
+    else:
+        x_lo, x_hi = x0s.min(), x0s.max()
+
+    # MS method label for plot
+    if ns_method == "lsq":
+        ms_label = rf"MS (LSQ, $k_p/\gamma$..$\gamma k_p$, $\gamma$={ns_window})"
+        ms_res_label = rf"LSQ $\gamma$={ns_window}"
+    else:
+        ms_label = r"MS ($d\ln P/d\ln k$ at $k_p$)"
+        ms_res_label = "Derivative"
 
     with plt.rc_context(PAPER_RCPARAMS):
         fig, (ax_main, ax_res) = plt.subplots(
@@ -177,66 +198,41 @@ def plot_ns_comparison(results, y0, N_star, x0_min, x0_max,
         use_markers = len(x0s) <= 60
         marker_kw = dict(ms=3.5) if use_markers else dict()
         if valid_sr.any():
-            ax_main.plot(x0s[valid_sr], ns_sr[valid_sr],
+            ax_main.plot(x0s[valid_sr], ns_sr_plot[valid_sr],
                          "s-" if use_markers else "-",
                          color=TOL["blue"], lw=1.0,
                          label=r"SR ($n_s = 1 + 2\eta_H - 4\varepsilon_H$)",
                          zorder=3, **marker_kw)
-        if valid_lsq.any():
-            ax_main.plot(x0s[valid_lsq], ns_lsq[valid_lsq],
+        if valid_ms.any():
+            ax_main.plot(x0s[valid_ms], ns_ms_plot[valid_ms],
                          "D-" if use_markers else "-",
                          color=TOL["teal"], lw=1.0,
-                         label=rf"MS (LSQ, $k_p/\gamma$..$\gamma k_p$, "
-                               rf"$\gamma$={ns_window})",
+                         label=ms_label,
                          zorder=2, **marker_kw)
-        if valid_der.any():
-            ax_main.plot(x0s[valid_der], ns_der[valid_der],
-                         "o-" if use_markers else "-",
-                         color=TOL["red"], lw=1.0,
-                         label=r"MS ($d\ln P/d\ln k$ at $k_p$)",
-                         zorder=4, **marker_kw)
 
         ax_main.axhline(0.965, color=TOL["grey"], ls="--", lw=0.6, alpha=0.5)
-        ax_main.text(x0s.min(), 0.966, r"$n_s=0.965$ (Planck)",
+        ax_main.text(x_lo, 0.966, r"$n_s=0.965$ (Planck)",
                      fontsize=6, color=TOL["grey"], alpha=0.6)
         ax_main.set_ylabel(r"$n_s$", fontsize=9)
 
-        y_lo = 0.92
-        if valid_der.any():
-            y_lo = min(y_lo, np.nanmin(ns_der[valid_der]) - 0.01)
-        if valid_lsq.any():
-            y_lo = min(y_lo, np.nanmin(ns_lsq[valid_lsq]) - 0.01)
-        if valid_sr.any():
-            y_lo = min(y_lo, np.nanmin(ns_sr[valid_sr]) - 0.01)
-
-        # y_hi capped at 1.0 to focus on n_s < 1 (red-tilted / suppressed region)
-        y_hi = 1.0
+        # Hard y-limits: [0.9, 1.0]. Anything outside this range is
+        # unphysical for n_s and gets clipped from view.
+        y_lo, y_hi = 0.9, 1.0
         ax_main.set_ylim(y_lo, y_hi)
-
-        # x-axis cutoff: none (show full scanned range).
-        # Y-axis caps at n_s = 1 so dips below 1 are visible,
-        # spikes above 1 are clipped.
-        ax_main.set_xlim(x0s.min(), x0s.max())
+        ax_main.set_xlim(x_lo, x_hi)
         ax_main.legend(fontsize=6, loc="lower left", framealpha=0.8)
         ax_main.grid(True, alpha=0.2, which="both")
 
         # ── Bottom panel: residuals vs SR ──
         use_markers = len(x0s) <= 60
         marker_kw_res = dict(ms=3) if use_markers else dict()
-        nan_mask = np.isfinite(ns_lsq) & np.isfinite(ns_sr) & (np.abs(ns_sr) > 1e-10)
+        nan_mask = np.isfinite(ns_ms) & np.isfinite(ns_sr) & (np.abs(ns_sr) > 1e-10)
         if nan_mask.any():
-            res_lsq = ns_lsq[nan_mask] - ns_sr[nan_mask]
-            ax_res.plot(x0s[nan_mask], res_lsq,
+            res_ms = ns_ms[nan_mask] - ns_sr[nan_mask]
+            ax_res.plot(x0s[nan_mask], res_ms,
                         "D-" if use_markers else "-",
                         color=TOL["teal"], lw=0.8,
-                        label=rf"LSQ $\gamma$={ns_window}", zorder=2, **marker_kw_res)
-        nan_mask_d = np.isfinite(ns_der) & np.isfinite(ns_sr) & (np.abs(ns_sr) > 1e-10)
-        if nan_mask_d.any():
-            res_der = ns_der[nan_mask_d] - ns_sr[nan_mask_d]
-            ax_res.plot(x0s[nan_mask_d], res_der,
-                        "o-" if use_markers else "-",
-                        color=TOL["red"], lw=0.8,
-                        label="Derivative", zorder=3, **marker_kw_res)
+                        label=ms_res_label, zorder=2, **marker_kw_res)
 
         ax_res.axhline(0, color=TOL["grey"], ls="--", lw=0.6, alpha=0.4)
         ax_res.set_xlabel(r"$x_0$ (initial field value)", fontsize=9)
@@ -247,7 +243,8 @@ def plot_ns_comparison(results, y0, N_star, x0_min, x0_max,
         # Annotate run config
         config_str = (
             rf"$y_0={y0:.3f}$, $N^*={N_star:.0f}$, "
-            rf"$k_p={pivot_k:.3f}$, modes={ms_steps}, window={ns_window}"
+            rf"$k_p={pivot_k:.3f}$, modes={ms_steps}, window={ns_window}, "
+            rf"ns_method={ns_method}"
         )
         ax_main.text(0.98, 0.98, config_str, transform=ax_main.transAxes,
                      fontsize=5, ha="right", va="top", alpha=0.6,
@@ -259,7 +256,7 @@ def plot_ns_comparison(results, y0, N_star, x0_min, x0_max,
 
 def main():
     parser = argparse.ArgumentParser(
-        description="n_s vs x₀: SR, MS-LSQ, and MS-log-derivative comparison"
+        description="n_s vs x₀: SR and MS comparison (user-selectable method)",
     )
     parser.add_argument("--y0", type=float, default=-0.10, help="Initial velocity")
     parser.add_argument("--N-star", type=float, default=60,
@@ -271,12 +268,18 @@ def main():
     parser.add_argument("--n-modes", type=int, default=1000,
                         help="MS integration steps per k-mode")
     parser.add_argument("--ns-window", type=float, default=4.0,
-                        help="LSQ fit half-width [k_p/w, k_p*w]")
+                        help="Fit half-width for lsq method [k_pivot/w, k_pivot*w] (ignored for derivative)")
     parser.add_argument("--xi", type=float, default=15000.0,
                         help="Non-minimal coupling ξ")
     parser.add_argument("--lam", type=float, default=0.13, help="Higgs quartic λ")
     parser.add_argument("--k-pivot", type=float, default=k_pivot_phys,
                         help="Pivot wavenumber (same for As and n_s)")
+    parser.add_argument("--ns-method", choices=["lsq", "derivative"], default="lsq",
+                        help="n_s extraction method: lsq=window fit (default), derivative=log-derivative at k_pivot")
+    parser.add_argument("--k-dense", type=int, default=500,
+                        help="Number of dense k-modes near the pivot (default 500)")
+    parser.add_argument("--k-outer", type=int, default=200,
+                        help="Number of outer k-modes on each side (default 200)")
     args = parser.parse_args()
 
     pivot_k = args.k_pivot
@@ -285,7 +288,7 @@ def main():
     print(f"n_s scan: x₀ ∈ [{args.x0_min:.4f}, {args.x0_max:.4f}] "
           f"({args.n_points} pts), y₀={args.y0:.3f}, N*={args.N_star:.0f}")
     print(f"  Workers: {args.n_cores}, MS modes: {args.n_modes}, "
-          f"ns_window: {args.ns_window}")
+          f"ns_window: {args.ns_window}, k-grid: {args.k_dense}+2x{args.k_outer}")
     t_start = time.time()
 
     # Build a FIXED k-grid (same for ALL x₀) to eliminate random-subsample noise
@@ -295,16 +298,16 @@ def main():
         k_pivot_phys=pivot_k,
         dense_min=pivot_k / 10.0,
         dense_max=pivot_k * 10.0,
-        n_dense=80,
-        n_outer=30,
+        n_dense=args.k_dense,
+        n_outer=args.k_outer,
     )
     print(f"  Fixed k-grid: {len(k_grid)} modes spanning "
           f"[{k_grid[0]:.2e}, {k_grid[-1]:.2e}]")
 
-    # Build worker args: (x0, y0, N_star, ns_window, ms_steps, pivot_k, k_grid, xi, lam)
+    # Build worker args: (x0, y0, N_star, ns_window, ms_steps, pivot_k, k_grid, ns_method, xi, lam)
     worker_args = [
         (x0, args.y0, args.N_star, args.ns_window, args.n_modes,
-         pivot_k, k_grid, args.xi, args.lam)
+         pivot_k, k_grid, args.ns_method, args.xi, args.lam)
         for x0 in x0s
     ]
 
@@ -341,7 +344,7 @@ def main():
     plot_ns_comparison(results, args.y0, args.N_star,
                        args.x0_min, args.x0_max,
                        args.n_points, args.n_modes, args.ns_window,
-                       pivot_k, filename)
+                       pivot_k, args.ns_method, filename)
 
     # Save data to scan JSON
     data_path = get_path("scans", filename + ".json")
@@ -354,12 +357,13 @@ def main():
         "ns_window": args.ns_window,
         "ms_modes": args.n_modes,
         "k_pivot": pivot_k,
+        "ns_method": args.ns_method,
         "results": [
             {
                 "x0": r["x0"],
                 "ns_SR": r["ns_SR"],
-                "ns_MS_lsq": r["ns_MS_lsq"],
-                "ns_MS_der": r["ns_MS_der"],
+                "ns_MS_val": r["ns_MS_val"],
+                "ns_MS_method": r["ns_MS_method"],
                 "N_total": r["N_total"],
                 "status": r["status"],
             }

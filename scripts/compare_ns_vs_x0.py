@@ -73,7 +73,9 @@ def main():
     parser.add_argument("--k-pivot", type=float, default=k_pivot_phys,
                         help="Pivot wavenumber (default: %(default)s)")
     parser.add_argument("--ns-window", type=float, default=4.0,
-                        help="LSQ fit half-width [k_p/w, k_p*w] (default: %(default)s)")
+                        help="Fit half-width for lsq method [k_p/w, k_p*w] (ignored for derivative)")
+    parser.add_argument("--ns-method", choices=["lsq", "derivative"], default="lsq",
+                        help="n_s extraction method: lsq=window fit (default), derivative=log-derivative at k_pivot")
     parser.add_argument("--dir", type=str, default=None,
                         help="P_S(k) JSON directory (default: outputs/simulations/pspectra/)")
     parser.add_argument("--output", type=str, default="ns_method_comparison",
@@ -125,19 +127,15 @@ def main():
             if N_star is not None:
                 label += f" N*={N_star:.1f}"
 
-        # n_s via LSQ
-        ns_lsq, meta_lsq = extract_ns(k_phys, P_S, args.k_pivot,
-                                      ns_window=args.ns_window, method="lsq")
+        # n_s via user-selected method
+        ns_val, ns_meta = extract_ns(k_phys, P_S, args.k_pivot,
+                                     ns_window=args.ns_window if args.ns_method == "lsq" else None,
+                                     method=args.ns_method)
 
-        # n_s via log derivative
-        ns_der, meta_der = extract_ns(k_phys, P_S, args.k_pivot,
-                                      method="derivative")
-
-        if ns_lsq is None and ns_der is None:
+        if ns_val is None:
             continue
 
-        delta = (ns_der - ns_lsq) if (ns_der is not None and ns_lsq is not None) else None
-        k_range_str = meta_der.get("k_range", ["?", "?"])
+        k_range_str = ns_meta.get("k_range", ["?", "?"])
         k_range_str = f"[{k_range_str[0]:.2e}, {k_range_str[1]:.2e}]"
 
         rows.append({
@@ -147,11 +145,8 @@ def main():
             "y0": y0,
             "N_star": N_star,
             "N_total": N_total,
-            "ns_lsq": ns_lsq,
-            "ns_der": ns_der,
-            "delta": delta,
-            "n_modes_lsq": meta_lsq.get("n_modes", 0) if meta_lsq else 0,
-            "n_modes_der": meta_der.get("n_modes", 0) if meta_der else 0,
+            "ns": ns_val,
+            "n_modes": ns_meta.get("n_modes", 0) if ns_meta else 0,
             "k_range": k_range_str,
         })
 
@@ -160,71 +155,46 @@ def main():
         sys.exit(1)
 
     # ── Print summary table ──
-    print(f"{'File':<50} {'n_s(LSQ)':>10} {'n_s(Der)':>10} {'Δ':>10} {'n_modes':>8} {'N*':>7}")
-    print("-" * 100)
+    print(f"{'File':<50} {'n_s':>10} {'n_modes':>8} {'N*':>7} {'k_range':>25}")
+    print("-" * 102)
     for r in rows:
-        ns_lsq_str = f"{r['ns_lsq']:.4f}" if r['ns_lsq'] is not None else "FAIL"
-        ns_der_str = f"{r['ns_der']:.4f}" if r['ns_der'] is not None else "FAIL"
-        delta_str = f"{r['delta']:+.5f}" if r['delta'] is not None else "N/A"
-        n_modes_str = f"{r['n_modes_der']}"
+        ns_str = f"{r['ns']:.4f}" if r['ns'] is not None else "FAIL"
+        n_modes_str = f"{r['n_modes']}"
         nstar_str = f"{r['N_star']:.1f}" if r['N_star'] is not None else "?"
-        print(f"{r['file']:<50} {ns_lsq_str:>10} {ns_der_str:>10} {delta_str:>10} "
-              f"{n_modes_str:>8} {nstar_str:>7}")
+        print(f"{r['file']:<50} {ns_str:>10} {n_modes_str:>8} {nstar_str:>7} {r['k_range']:>25}")
 
     # ── Summary stats ──
-    valid_deltas = [r['delta'] for r in rows if r['delta'] is not None]
-    if valid_deltas:
-        deltas = np.array(valid_deltas)
-        print(f"\nSummary: {len(valid_deltas)} valid comparisons")
-        print(f"  Δ (der - lsq):  mean={np.mean(deltas):+.6f}  "
-              f"std={np.std(deltas):.6f}  "
-              f"max|Δ|={np.max(np.abs(deltas)):.6f}")
-        n_above_1pct = int(np.sum(np.abs(deltas) > 0.01))
-        print(f"  |Δ| > 0.01: {n_above_1pct}/{len(deltas)} "
-              f"({100*n_above_1pct/len(deltas):.1f}%)")
+    valid_ns = [r['ns'] for r in rows if r['ns'] is not None]
+    if valid_ns:
+        vals = np.array(valid_ns)
+        print(f"\nSummary: {len(valid_ns)} valid extractions ({args.ns_method} method)")
+        print(f"  n_s:  mean={np.mean(vals):.6f}  std={np.std(vals):.6f}  "
+              f"range=[{np.min(vals):.6f}, {np.max(vals):.6f}]")
 
-    # ── Plot: LSQ vs derivative scatter ──
-    valid = [r for r in rows if r['ns_lsq'] is not None and r['ns_der'] is not None]
+    # ── Plot: histogram of n_s values ──
+    valid = [r for r in rows if r['ns'] is not None]
     if valid:
-        ns_lsqs = np.array([r['ns_lsq'] for r in valid])
-        ns_ders = np.array([r['ns_der'] for r in valid])
-        deltas = ns_ders - ns_lsqs
+        ns_vals = np.array([r['ns'] for r in valid])
 
         with plt.rc_context(PAPER_RCPARAMS):
-            fig, (ax_sc, ax_hist) = plt.subplots(
-                1, 2, figsize=(5.5, 2.8),
-                gridspec_kw={"width_ratios": [2, 1], "wspace": 0.35},
-            )
+            fig, ax = plt.subplots(1, 1, figsize=(3.5, 2.8))
 
-            # Left: scatter
-            lims = [min(ns_lsqs.min(), ns_ders.min()) * 0.998,
-                    max(ns_lsqs.max(), ns_ders.max()) * 1.002]
-            ax_sc.plot(lims, lims, "--", color=TOL["grey"], lw=0.6, alpha=0.5,
-                       label="1:1")
-            ax_sc.scatter(ns_lsqs, ns_ders, c=TOL["red"], s=10, alpha=0.7,
-                          edgecolors="none", zorder=3)
-            ax_sc.set_xlabel(r"$n_s$ (LSQ fit)", fontsize=9)
-            ax_sc.set_ylabel(r"$n_s$ (derivative)", fontsize=9)
-            ax_sc.set_xlim(lims)
-            ax_sc.set_ylim(lims)
-            ax_sc.set_aspect("equal")
-            ax_sc.grid(True, alpha=0.2, which="both")
-
-            # Right: histogram of differences
-            ax_hist.hist(deltas, bins=max(10, len(deltas) // 3),
-                         color=TOL["blue"], alpha=0.7, edgecolor="none")
-            ax_hist.axvline(0, color=TOL["grey"], ls="--", lw=0.6, alpha=0.5)
-            ax_hist.set_xlabel(r"$\Delta n_s$ (der $-$ lsq)", fontsize=9)
-            ax_hist.set_ylabel("Count", fontsize=9)
-            ax_hist.grid(True, alpha=0.2, which="both")
+            ax.hist(ns_vals, bins=max(10, len(ns_vals) // 3),
+                    color=TOL["red"], alpha=0.7, edgecolor="none")
+            ax.axvline(np.mean(ns_vals), color=TOL["blue"], ls="--", lw=0.8,
+                       label=f"mean={np.mean(ns_vals):.4f}")
+            ax.set_xlabel(rf"$n_s$ ({args.ns_method})", fontsize=9)
+            ax.set_ylabel("Count", fontsize=9)
+            ax.grid(True, alpha=0.2, which="both")
+            ax.legend(fontsize=7)
 
             # Annotation
-            ax_hist.text(
+            ax.text(
                 0.95, 0.95,
-                f"N={len(deltas)}\n"
-                f"μ={np.mean(deltas):+.5f}\n"
-                f"σ={np.std(deltas):.5f}",
-                transform=ax_hist.transAxes, fontsize=6, ha="right", va="top",
+                f"N={len(ns_vals)}\n"
+                f"μ={np.mean(ns_vals):.4f}\n"
+                f"σ={np.std(ns_vals):.4f}",
+                transform=ax.transAxes, fontsize=6, ha="right", va="top",
                 bbox=dict(boxstyle="round,pad=0.2", fc="w", ec="none", alpha=0.7),
             )
 
