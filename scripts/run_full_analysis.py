@@ -221,9 +221,12 @@ def parse_args():
              "Planck 0.05.",
     )
     p.add_argument(
-        "--ns-window", type=float, default=None,
-        help="Deprecated — n_s is now the logarithmic derivative at k_pivot. "
-             "Only used when method='lsq' for cross-check.",
+        "--ns-window", type=float, default=4.0,
+        help="Fit half-width for lsq method [k_pivot/w, k_pivot*w] (ignored for derivative)",
+    )
+    p.add_argument(
+        "--ns-method", choices=["lsq", "derivative"], default="lsq",
+        help="n_s extraction method: lsq=window fit (default), derivative=log-derivative at k_pivot",
     )
     return p.parse_args()
 
@@ -298,6 +301,8 @@ def main():
     n_s_val, n_s_meta = extract_ns(
         result["k_phys"], result["P_S"],
         k_pivot=args.k_pivot,
+        ns_window=args.ns_window if args.ns_method == "lsq" else None,
+        method=args.ns_method,
     )
     result["n_s"] = {"value": n_s_val, **n_s_meta}
     A_s_interp = interpolate_As(result["k_phys"], result["P_S"], args.k_pivot)

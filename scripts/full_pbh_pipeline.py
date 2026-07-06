@@ -291,7 +291,9 @@ def run_full_pbh_pipeline(
 
     # ── 5. Compute n_s via logarithmic derivative at k_pivot ──────────
     # n_s - 1 = d ln P_S / d ln k at k = k_pivot (theoretical definition).
-    n_s, ns_meta = extract_ns(k_phys, P_S, k_pivot=pivot_k)
+    n_s, ns_meta = extract_ns(k_phys, P_S, k_pivot=pivot_k,
+                              ns_window=args.ns_window if args.ns_method == "lsq" else None,
+                              method=args.ns_method)
     A_s_cmb = interpolate_As(k_phys, P_S, pivot_k)
     print(f"  n_s(k={pivot_k}) = {n_s}, A_s = {A_s_cmb}")
 
@@ -411,8 +413,13 @@ if __name__ == "__main__":
         "--ns-window",
         type=float,
         default=3.0,
-        help="Deprecated — n_s is now the logarithmic derivative at k_pivot. "
-             "Only used when method='lsq' for cross-check.",
+        help="Fit half-width for lsq method [k_pivot/w, k_pivot*w] (ignored for derivative)",
+    )
+    p.add_argument(
+        "--ns-method",
+        choices=["lsq", "derivative"],
+        default="lsq",
+        help="n_s extraction method: lsq=window fit (default), derivative=log-derivative at k_pivot",
     )
 
     pre, _ = p.parse_known_args()

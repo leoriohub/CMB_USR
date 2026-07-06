@@ -25,7 +25,8 @@ def _pbh_weighted_kgrid():
     k_pbh = np.logspace(6, 22, 350)
     return np.unique(np.concatenate([k_cmb, k_pbh]))
 
-def run_one(xc, beta, nstar, chi0=8.0, workers=8, k_pivot=0.05):
+def run_one(xc, beta, nstar, chi0=8.0, workers=8, k_pivot=0.05,
+         ns_window=3.0, ns_method='lsq'):
     from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
     from inf_dyn_background import run_background_simulation, get_derived_quantities
     from pspectrum_pipeline import run_pspectrum_pipeline
@@ -56,8 +57,10 @@ def run_one(xc, beta, nstar, chi0=8.0, workers=8, k_pivot=0.05):
     k_phys = np.array(result['k_phys'])
     P_S = np.array(result['P_S'])
 
-    # n_s via logarithmic derivative at k_pivot (theoretical definition).
-    n_s, _ns_meta = extract_ns(k_phys, P_S, k_pivot=k_pivot)
+    # n_s via chosen method (window fit or log-derivative at k_pivot).
+    n_s, _ns_meta = extract_ns(k_phys, P_S, k_pivot=k_pivot,
+                               ns_window=ns_window if ns_method == "lsq" else None,
+                               method=ns_method)
     A_s = interpolate_As(k_phys, P_S, k_pivot)
 
     # P_S peak
@@ -109,13 +112,14 @@ def main():
              'n_s extraction. Planck default 0.05; Higgs low-ell 0.002.',
     )
     p.add_argument(
-        '--ns-window', type=float, default=None,
-        help='Deprecated — n_s is now the logarithmic derivative at k_pivot. '
-             'Only used when method=lsq for cross-check.',
+        '--ns-window', type=float, default=3.0,
+        help='Fit half-width for lsq method [k_pivot/w, k_pivot*w] (ignored for derivative)',
+    )
+    p.add_argument(
+        '--ns-method', choices=['lsq', 'derivative'], default='lsq',
+        help="n_s extraction method: lsq=window fit (default), derivative=log-derivative at k_pivot",
     )
     args = p.parse_args()
-
-    # Back-compat: --ns-window no longer affects n_s computation (derivative).
 
     xc_vals = [0.786, 0.787, 0.788]
     beta_vals = [5e-5, 7e-5, 1e-4, 1.5e-4, 2e-4]
@@ -142,7 +146,9 @@ def main():
                 print(f'\n[{completed}/{total}] x_c={xc} β={beta:.0e} N*={nstar}')
                 try:
                     r = run_one(xc, beta, nstar, workers=args.workers,
-                                k_pivot=args.k_pivot)
+                                k_pivot=args.k_pivot,
+                                ns_window=args.ns_window,
+                                ns_method=args.ns_method)
                     all_results.append(r)
 
                     # Write log entry

@@ -276,10 +276,11 @@ def run_sweep(
                             peak = find_pbh_peak(k_m, ps_ms, k_min_val, k_max_val)
                             if peak is None:
                                 continue
-                            # n_s extracted via logarithmic derivative at k_pivot
-                            # (theoretical definition: n_s - 1 = d ln P / d ln k).
+                            # n_s extracted via lsq window fit (default) or derivative at k_pivot
                             n_s, ns_meta = extract_ns(
                                 k_m, ps_ms, k_pivot=k_pivot,
+                                ns_window=args.ns_window if args.ns_method == "lsq" else None,
+                                method=args.ns_method,
                             )
                             A_s_at_cmb = interpolate_As(k_m, ps_ms, k_pivot)
                             M_kpeak = (
@@ -588,11 +589,16 @@ def main():
         help="Deprecated alias for --k-pivot (back-compat).",
     )
     p.add_argument(
+        "--ns-method",
+        choices=["lsq", "derivative"],
+        default="lsq",
+        help="n_s extraction method: lsq=window fit (default), derivative=log-derivative at k_pivot",
+    )
+    p.add_argument(
         "--ns-window",
         type=float,
         default=3.0,
-        help="Deprecated — n_s is now the logarithmic derivative at k_pivot. "
-             "Only used when method='lsq' for cross-check.",
+        help="Fit half-width for lsq method [k_pivot/w, k_pivot*w] (ignored for derivative)",
     )
     p.add_argument(
         "--workers", type=int, default=8, help="MS solver parallel workers per config"
