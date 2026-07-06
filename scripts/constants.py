@@ -25,6 +25,7 @@ As = As_planck * (k_pivot_phys / 0.05) ** (0.965 - 1.0)  # extrapolated to k_piv
 ns_sr_default = 0.965  # Higgs inflation slow-roll prediction at N_* ≈ 55-60.
 # Coincides with Planck 2018 TT+lowE best fit (0.965 ± 0.004).
 # Used as ΛCDM baseline spectral index.
+ns_method_default = "lsq"  # n_s extraction: "lsq" (least-squares fit) or "sr" (slow-roll formula)
 r_ls = 14000.0  # Mpc, comoving distance to last scattering
 T_cmb = 2.7255  # K, CMB temperature
 

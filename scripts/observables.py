@@ -7,13 +7,15 @@ The pivot ``k_pivot`` is the SAME wavenumber used for A_s normalization in
 the pipeline (``pspectrum_pipeline.k_pivot_phys``) - caller passes it
 explicitly so As normalization and n_s extraction always share one pivot.
 
-n_s is the logarithmic derivative of P_S(k) at k_pivot:
+n_s extraction has two methods:
 
-    n_s(k) - 1 = d ln P_S / d ln k   at  k = k_pivot
+    - ``'lsq'`` (default): least-squares fit over
+      ``[k_pivot/ns_window, k_pivot*ns_window]``.  This is a window-averaged
+      slope that is less sensitive to local numerical noise in P_S(k).
 
-This is the theoretical definition - no window-averaging. The ``'lsq'``
-method (least-squares fit over ``[k_pivot/ns_window, k_pivot*ns_window]``)
-is available for cross-checking but is NOT the default.
+    - ``'derivative'``: exact logarithmic derivative via cubic spline at
+      k_pivot.  This is the theoretical definition but can be noisy on
+      discrete MS output.
 
 Two additional n_s methods exist elsewhere in the project:
   - SR algebraic  n_s = 1 + 2 eta_H - 4 eps_H  (``scripts/background_scan.py``)
@@ -28,10 +30,11 @@ from scipy.interpolate import CubicSpline
 from scripts.constants import As_planck
 
 
-def extract_ns(k_phys, P_S, k_pivot, ns_window=None, method="derivative"):
-    """n_s at k_pivot from P_S(k), via logarithmic derivative by default.
+def extract_ns(k_phys, P_S, k_pivot, ns_window=4.0, method="lsq"):
+    """n_s at k_pivot from P_S(k), via window-averaged LSQ fit by default.
 
-    n_s - 1 = d ln P_S / d ln k  evaluated at k = k_pivot.
+    n_s - 1 = slope of ln P_S vs ln k averaged over
+    ``[k_pivot/ns_window, k_pivot*ns_window]``.
 
     ``k_pivot`` MUST be the same value used for A_s normalization in the
     pipeline - this is the single-pivot invariant of the project.
@@ -41,13 +44,13 @@ def extract_ns(k_phys, P_S, k_pivot, ns_window=None, method="derivative"):
     k_phys : array, physical wavenumbers [Mpc^-1]
     P_S : array, primordial scalar power spectrum values
     k_pivot : float, pivot wavenumber [Mpc^-1]
-    ns_window : float or None, fit half-width (only used when
-                method='lsq'; ignored for 'derivative')
-    method : str, ``'derivative'`` (default) or ``'lsq'``.
+    ns_window : float, fit half-width used for ``'lsq'`` method.
+                Default 4.0. Ignored for ``'derivative'``.
+    method : str, ``'lsq'`` (default) or ``'derivative'``.
+             ``'lsq'`` fits a straight line over
+             ``[k_pivot/ns_window, k_pivot*ns_window]``.
              ``'derivative'`` computes the theoretical n_s via
-             logarithmic derivative at k_pivot. ``'lsq'`` fits a
-             straight line over ``[k_pivot/ns_window, k_pivot*ns_window]``
-             (requires ns_window).
+             logarithmic derivative at k_pivot.
 
     Returns
     -------
@@ -83,8 +86,6 @@ def extract_ns(k_phys, P_S, k_pivot, ns_window=None, method="derivative"):
                     method=method)
         return n_s, meta
 
-    if ns_window is None:
-        ns_window = 4.0  # fallback for lsq when caller doesn't provide it
     lo = float(k_pivot) / float(ns_window)
     hi = float(k_pivot) * float(ns_window)
     idx = (k_phys >= lo) & (k_phys <= hi) & np.isfinite(P_S) & (P_S > 1e-30)
