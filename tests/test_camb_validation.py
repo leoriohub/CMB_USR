@@ -2,8 +2,8 @@
 CAMB wrapper validation test suite.
 
 7 independent tests, each with explicit numerical pass/fail criteria.
-Run: python scripts/test_camb_validation.py
-Or:  pytest scripts/test_camb_validation.py -v
+Run: python tests/test_camb_validation.py
+Or:  pytest tests/test_camb_validation.py -v
 """
 
 import glob

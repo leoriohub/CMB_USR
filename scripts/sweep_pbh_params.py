@@ -24,6 +24,7 @@ from matplotlib.colors import LogNorm
 from scripts.plotting import save_fig, TOL, PAPER_RCPARAMS
 
 from scripts.constants import gamma_default, k_eq_default, M_eq_default, ACCRETION
+from scripts.observables import extract_ns, interpolate_As, model_from_params
 
 # Paper targets
 TARGET_PS_RATIO = 2.3e4  # P_S_peak / As
@@ -33,17 +34,6 @@ TARGET_F_TOTAL = 0.42  # Omega_PBH / Omega_DM
 
 
 MS_N_WORKERS = 8  # overridden by --workers CLI arg
-
-
-def model_from_params(x_c, c, beta):
-    from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
-
-    m = EzquiagaCHIModel(c=c)
-    a, b = inflection_parameters(x_c, c, beta=beta)
-    m.a = a
-    m.b = b
-    m.v0 = m._V0 * m.a / (m.b * m.c) ** 2
-    return m
 
 
 def _pbh_weighted_kgrid(target="subsolar"):
@@ -73,31 +63,6 @@ def _pbh_weighted_kgrid(target="subsolar"):
     k_max_val = k_pbh[-1] if len(k_pbh) > 0 else 1e13
     grid = np.unique(np.concatenate([k_cmb_ns, k_pbh]))
     return grid, k_min_val, k_max_val
-
-
-def compute_ns(
-    k_phys, P_S, k_pivot=0.05, window=3.0
-):  # always 0.05 (Planck) for Ezquiaga
-    """Compute n_s and interpolated A_s at k_pivot from MS P_S(k).
-
-    Fits ln(P_S) vs ln(k) over k ∈ [k_pivot/window, k_pivot*window].
-    Returns (n_s, A_s_at_pivot) or (None, None) if too few points.
-    """
-    lo = k_pivot / window
-    hi = k_pivot * window
-    idx = (k_phys >= lo) & (k_phys <= hi)
-    k_fit = k_phys[idx]
-    ps_fit = P_S[idx]
-    if len(k_fit) < 3:
-        return None, None
-    valid = np.isfinite(ps_fit) & (ps_fit > 1e-30)
-    k_fit, ps_fit = k_fit[valid], ps_fit[valid]
-    if len(k_fit) < 3:
-        return None, None
-    coeffs = np.polyfit(np.log(k_fit), np.log(ps_fit), 1)
-    n_s = float(coeffs[0] + 1)
-    A_s = float(np.exp(np.interp(np.log(k_pivot), np.log(k_fit), np.log(ps_fit))))
-    return n_s, A_s
 
 
 def classify_mass_range(M_peak):
@@ -207,7 +172,7 @@ def run_sweep(
     zeta_c_vals,
     target="subsolar",
     N_total_min=65,
-    k_pivot=0.002,
+    k_pivot=0.05,
     N_star_vals=None,
     progress_fn=None,
     log_path=None,
@@ -316,7 +281,13 @@ def run_sweep(
                             peak = find_pbh_peak(k_m, ps_ms, k_min_val, k_max_val)
                             if peak is None:
                                 continue
-                            n_s, A_s_at_cmb = compute_ns(k_m, ps_ms)
+                            # n_s extracted via lsq window fit (default) or derivative at k_pivot
+                            n_s, ns_meta = extract_ns(
+                                k_m, ps_ms, k_pivot=k_pivot,
+                                ns_window=args.ns_window if args.ns_method == "lsq" else None,
+                                method=args.ns_method,
+                            )
+                            A_s_at_cmb = interpolate_As(k_m, ps_ms, k_pivot)
                             M_kpeak = (
                                 gamma_default
                                 * M_eq_default
@@ -344,6 +315,8 @@ def run_sweep(
                                 "on_grid_boundary": peak.get("on_grid_boundary", False),
                                 "mass_bin": mass_bin,
                                 "n_s": n_s,
+                                "k_pivot": float(k_pivot),
+                                "ns_window": None,
                                 "A_s_at_cmb": A_s_at_cmb,
                                 "k_phys": k_m.tolist(),
                                 "P_S": ps_ms.tolist(),
@@ -610,13 +583,27 @@ def main():
         "--k-pivot",
         type=float,
         default=0.05,
-        help="Pivot k_pivot_phys (Mpc^-1) — drives As normalization and n_s extraction (single-pivot invariant). Planck default 0.05; Higgs low-ell 0.002.",
+        help="Pivot k_pivot_phys (Mpc^-1) — drives BOTH As normalization and "
+             "n_s extraction (single-pivot invariant). Planck default 0.05; "
+             "Higgs low-ell 0.002.",
     )
     p.add_argument(
         "--pivot-k",
         type=float,
         default=None,
         help="Deprecated alias for --k-pivot (back-compat).",
+    )
+    p.add_argument(
+        "--ns-method",
+        choices=["lsq", "derivative"],
+        default="lsq",
+        help="n_s extraction method: lsq=window fit (default), derivative=log-derivative at k_pivot",
+    )
+    p.add_argument(
+        "--ns-window",
+        type=float,
+        default=3.0,
+        help="Fit half-width for lsq method [k_pivot/w, k_pivot*w] (ignored for derivative)",
     )
     p.add_argument(
         "--workers", type=int, default=8, help="MS solver parallel workers per config"
@@ -764,7 +751,7 @@ def main():
             "n_s",
             r"$x_c$",
             r"$c$",
-            r"$n_s (k=0.05)$",
+            r"$n_s$",
             "sweep_xc_vs_c_ns",
             "pbh",
         )

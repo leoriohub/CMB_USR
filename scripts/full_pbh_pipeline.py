@@ -27,6 +27,7 @@ from scripts.constants import (
     ACCRETION,
 )
 from scripts.plotting import make_filename
+from scripts.observables import extract_ns, interpolate_As
 
 # ── Default ζ_c sweep ─────────────────────────────────────────────────────
 
@@ -56,23 +57,6 @@ def _pbh_weighted_kgrid():
     k_cmb_ns = np.logspace(np.log10(0.005), np.log10(0.5), 15)
     k_pbh = np.logspace(6, 22, 350)
     return np.unique(np.concatenate([k_cmb_ns, k_pbh]))
-
-
-def _compute_ns(k_phys, P_S, pivot_k=0.05, window=3.0):
-    """Spectral index n_s and A_s at CMB pivot from P_S(k)."""
-    lo = pivot_k / window
-    hi = pivot_k * window
-    idx = (k_phys >= lo) & (k_phys <= hi)
-    k_fit = k_phys[idx]
-    ps_fit = P_S[idx]
-    valid = np.isfinite(ps_fit) & (ps_fit > 1e-30)
-    k_fit, ps_fit = k_fit[valid], ps_fit[valid]
-    if len(k_fit) < 3:
-        return None, None
-    coeffs = np.polyfit(np.log(k_fit), np.log(ps_fit), 1)
-    n_s = float(coeffs[0] + 1)
-    A_s = float(np.exp(np.interp(np.log(pivot_k), np.log(k_fit), np.log(ps_fit))))
-    return n_s, A_s
 
 
 # ── Press-Schechter helpers ────────────────────────────────────────────────
@@ -134,6 +118,7 @@ def run_full_pbh_pipeline(
     use_old_bounds=False,
     smooth_bounds=False,
     force=False,
+    k_pivot=0.05,
 ):
     """Run the full PBH pipeline and produce the abundance plot.
 
@@ -191,7 +176,7 @@ def run_full_pbh_pipeline(
         zeta_c_vals = DEFAULT_ZETA_C_VALS
 
     t0 = time.time()
-    pivot_k = 0.05  # Planck pivot for Ezquiaga
+    pivot_k = k_pivot  # single pivot feeds As normalization AND n_s extraction
 
     # ── 1. Build model ─────────────────────────────────────────────────
     model = EzquiagaCHIModel(c=c)
@@ -290,6 +275,7 @@ def run_full_pbh_pipeline(
             "c": c,
             "beta": beta,
             "k_pivot_Mpc": pivot_k,
+            "ns_window": None,
             "n_modes": len(k_phys),
             "source": "MS" if not fast_sr else "SR",
         }
@@ -303,9 +289,13 @@ def run_full_pbh_pipeline(
             json.dump(save_rec, f, indent=2)
         print(f"Saved P_S(k): {ps_path}")
 
-    # ── 5. Compute n_s ─────────────────────────────────────────────────
-    n_s, A_s_cmb = _compute_ns(k_phys, P_S, pivot_k)
-    print(f"  n_s(k={pivot_k}) = {n_s:.4f}, A_s = {A_s_cmb:.4e}")
+    # ── 5. Compute n_s via logarithmic derivative at k_pivot ──────────
+    # n_s - 1 = d ln P_S / d ln k at k = k_pivot (theoretical definition).
+    n_s, ns_meta = extract_ns(k_phys, P_S, k_pivot=pivot_k,
+                              ns_window=args.ns_window if args.ns_method == "lsq" else None,
+                              method=args.ns_method)
+    A_s_cmb = interpolate_As(k_phys, P_S, pivot_k)
+    print(f"  n_s(k={pivot_k}) = {n_s}, A_s = {A_s_cmb}")
 
     # ── 6. PBH abundance at multiple ζ_c ───────────────────────────────
     print("\n--- PBH abundance ---")
@@ -372,6 +362,9 @@ def run_full_pbh_pipeline(
         "k_phys": k_phys,
         "P_S": P_S,
         "n_s": n_s,
+        "ns_meta": ns_meta,
+        "k_pivot": pivot_k,
+        "ns_window": None,
         "A_s_cmb": A_s_cmb,
         "N_total": N_total,
         "end_idx": end_idx,
@@ -409,6 +402,25 @@ if __name__ == "__main__":
     p.add_argument("--tag", type=str, default=None,
                     help="Prefix for output filenames (e.g. 'rank07')")
     p.add_argument("--no-plot", action="store_true")
+    p.add_argument(
+        "--k-pivot",
+        type=float,
+        default=0.05,
+        help="Pivot k_pivot_phys (Mpc^-1) — drives BOTH As normalization and "
+             "n_s extraction. Planck default 0.05; Higgs low-ell 0.002.",
+    )
+    p.add_argument(
+        "--ns-window",
+        type=float,
+        default=3.0,
+        help="Fit half-width for lsq method [k_pivot/w, k_pivot*w] (ignored for derivative)",
+    )
+    p.add_argument(
+        "--ns-method",
+        choices=["lsq", "derivative"],
+        default="lsq",
+        help="n_s extraction method: lsq=window fit (default), derivative=log-derivative at k_pivot",
+    )
 
     pre, _ = p.parse_known_args()
     if pre.config:
@@ -425,6 +437,7 @@ if __name__ == "__main__":
         beta=args.beta, xc=args.xc, c=args.c,
         workers=args.workers, zeta_c_vals=args.zeta_c,
         plot=not args.no_plot, force=args.force,
+        k_pivot=args.k_pivot,
     )
 
     target_dir = os.path.join(ROOT_DIR, args.output_dir)
@@ -462,6 +475,7 @@ if __name__ == "__main__":
                         "model": "EzquiagaCHIModel",
                         "x_c": args.xc, "c": args.c, "beta": args.beta,
                         "chi0": args.chi0, "y0": args.y0, "N_star": args.N_star,
+                        "k_pivot": args.k_pivot, "ns_window": args.ns_window,
                     },
                     "background": {"N_total": ntot, "n_s": ns},
                     "pbh": {"zeta_c": zc, "f_total": ft, "M_present_Msun": M},

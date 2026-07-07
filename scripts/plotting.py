@@ -339,7 +339,7 @@ def plot_ps_sr_ms_comparison(
 
     Returns
     -------
-    dict with keys: k_phys_sr, P_S_sr, k_phys_ms, P_S_ms, n_s_results, N_total
+    dict with keys: k_phys_sr, P_S_sr, k_phys_ms, P_S_ms, n_s_local, N_total
     """
     from inf_dyn_background import run_background_simulation, get_derived_quantities
 
@@ -457,18 +457,18 @@ def plot_ps_sr_ms_comparison(
         if interp_ms_vals is not None and np.isfinite(interp_ms_vals[pi]):
             lp_ms = np.log(np.maximum(interp_ms_vals[pi-d5:pi+d5+1], 1e-300))
             ns_ms_val = 1 + (lp_ms[-1] - lp_ms[0]) / (lk[-1] - lk[0])
-        msg = f"  {label}: n_s(SR)={ns_sr:.4f}"
+        msg = f"  {label}: n_s_local(SR)={ns_sr:.4f}"
         if ns_ms_val is not None:
-            msg += f", n_s(MS)={ns_ms_val:.4f}"
+            msg += f", n_s_local(MS)={ns_ms_val:.4f}"
         print(msg)
-        n_s_results[label] = {"SR": ns_sr, "MS": ns_ms_val}
+        n_s_results[label] = {"SR_local": ns_sr, "MS_local": ns_ms_val}
 
     return {
         "k_phys_sr": k_sr,
         "P_S_sr": Ps_sr,
         "k_phys_ms": k_ms,
         "P_S_ms": Ps_ms,
-        "n_s": n_s_results,
+        "n_s_local": n_s_results,
         "N_total": N_total,
         "end_idx": end_idx,
     }
