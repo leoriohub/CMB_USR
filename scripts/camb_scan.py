@@ -16,6 +16,7 @@ import time
 from datetime import datetime
 
 import numpy as np
+from concurrent.futures import ProcessPoolExecutor
 
 from pspectrum_pipeline import (
     run_pspectrum_pipeline, find_end_of_inflation,
@@ -657,6 +658,14 @@ def setup_args():
                    help="Number of random configs for --phase random")
     p.add_argument("--random-seed", type=int, default=42,
                    help="RNG seed for --phase random")
+
+    # Pivot selection
+    p.add_argument(
+        "--k-pivot", type=float, default=0.002,
+        help="Pivot k_pivot_phys (Mpc^-1) — drives BOTH As normalization and "
+             "n_s extraction (single-pivot invariant). Higgs default 0.002; "
+             "Planck 0.05.",
+    )
     p.add_argument("--nstar-range", nargs=2, type=float, default=[49.0, 62.0],
                    help="N_star range for --phase random")
 
@@ -697,6 +706,14 @@ def setup_args():
 
 def main():
     args = setup_args()
+
+    # Apply the user-selected pivot globally so all bare `k_pivot_phys`
+    # references in this module use it (single-pivot invariant).
+    global k_pivot_phys, As
+    from scripts.constants import As_planck, ns_sr_default
+    k_pivot_phys = args.k_pivot
+    As = As_planck * (args.k_pivot / 0.05) ** (ns_sr_default - 1.0)
+    print(f"  k_pivot = {k_pivot_phys} Mpc^-1   A_s = {As:.3e}")
 
     if args.max_chi2 is None:
         if args.full_chi2:

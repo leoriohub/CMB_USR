@@ -1,0 +1,17 @@
+{
+  "x_c_lo": 0.784,
+  "x_c_hi": 0.785,
+  "n_xc": 2,
+  "c_lo": 0.77,
+  "c_hi": 0.77,
+  "n_c": 1,
+  "beta_vals": [1e-5, 3e-4],
+  "chi0_vals": [8.0],
+  "N_star_vals": [65, 67, 68],
+  "zeta_c_vals": [0.05, 0.077, 0.1],
+  "target": "subsolar",
+  "pivot_k": 0.05,
+  "workers": 4,
+  "f_max": 100,
+  "no_plot": true
+}

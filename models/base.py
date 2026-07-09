@@ -79,3 +79,7 @@ class InflationModel:
         zi = np.sqrt(self.y0**2/6 + (self.v0 * self.f(self.x0) / (3 * self.S**2)))
         Ni = np.log(self.Ai)
         return [self.x0, self.y0, zi, Ni]
+
+    def get_jit_funcs(self):
+        """Returns JIT-compiled (f, dfdx, d2fdx2) functions or (None, None, None)."""
+        return None, None, None

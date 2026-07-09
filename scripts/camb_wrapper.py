@@ -24,7 +24,7 @@ import numpy as np
 from scripts.constants import As, k_pivot_phys, ns_sr_default, CAMB_COSMOLOGY
 from pspectrum_pipeline import load_pspectrum
 from scripts.planck_data import C_ell_to_d_ell
-from scripts.plotting import OUTPUT_DIRS
+from scripts.plotting import OUTPUT_DIRS, make_filename
 
 
 _LCDM_CACHE = {}

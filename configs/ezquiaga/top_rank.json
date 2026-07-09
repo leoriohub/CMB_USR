@@ -1,0 +1,34 @@
+{
+  "description": "Ezquiaga CHI top-ranked PBH config (\u03b2=3e-5, \u03c7\u2080=8.0, N_star=65)",
+  "model": "EzquiagaCHIModel",
+  "model_params": {
+    "lambda_0": 2.23e-07,
+    "xi_0": 7.55,
+    "c": 0.77,
+    "n_grid": 5000
+  },
+  "inflection": {
+    "x_c": 0.784,
+    "beta": 3e-05
+  },
+  "ics": {
+    "x0": 8.0,
+    "y0": -0.0001
+  },
+  "pipeline": {
+    "phi0": null,
+    "y0": null,
+    "N_star": 65,
+    "k_start_factor": 100.0,
+    "ms_steps": 5000,
+    "k_min": 1e-10,
+    "k_max": 1e+28,
+    "num_k": 500,
+    "k_pivot_phys": 0.05,
+    "n_workers": 8,
+    "normalize": false,
+    "no_plot": true,
+    "save": true,
+    "ns_window": 3.0
+  }
+}

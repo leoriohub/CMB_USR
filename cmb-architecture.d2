@@ -1,0 +1,93 @@
+direction: right
+
+Configs: configs/ {
+  shape: package
+  style.fill: "#FFF3CD"
+  style.font-size: 18
+}
+
+Models: Models {
+  shape: code
+  style.fill: "#D4EDDA"
+  style.font-size: 18
+}
+
+Background: Background ODE {
+  shape: rectangle
+  style.fill: "#CCE5FF"
+  style.font-size: 18
+}
+
+MS_Solver: Mukhanov-Sasaki {
+  shape: rectangle
+  style.fill: "#CCE5FF"
+  style.font-size: 18
+}
+
+Numba: numba JIT {
+  shape: rectangle
+  style.fill: "#E8DAEF"
+  style.font-size: 18
+}
+
+Pipeline: Pipeline {
+  shape: rectangle
+  style.fill: "#D1ECF1"
+  style.font-size: 18
+}
+
+PSpec: P_S(k) JSON {
+  shape: cylinder
+  style.fill: "#F8D7DA"
+  style.font-size: 17
+}
+
+Observables: Observables {
+  shape: rectangle
+  style.fill: "#D4EDDA"
+  style.font-size: 18
+}
+
+CAMB: CAMB C_ell {
+  shape: rectangle
+  style.fill: "#CCE5FF"
+  style.font-size: 18
+}
+
+PlanckData: Planck 2018 {
+  shape: document
+  style.fill: "#FFF3CD"
+  style.font-size: 17
+}
+
+Cell: C_ell JSON {
+  shape: cylinder
+  style.fill: "#F8D7DA"
+  style.font-size: 17
+}
+
+Plotting: Plotting {
+  shape: rectangle
+  style.fill: "#D1ECF1"
+  style.font-size: 18
+}
+
+Plots: Plots {
+  shape: package
+  style.fill: "#F8D7DA"
+  style.font-size: 18
+}
+
+Configs -> Models: loads
+Models -> Background: solve
+Background -> MS_Solver: feeds
+Numba -> MS_Solver: JIT accel
+MS_Solver -> Pipeline: integrates
+Pipeline -> PSpec: saves
+Pipeline -> Observables: n_s / PBH
+PSpec -> CAMB: inject P_S(k)
+PlanckData -> CAMB: CMB data
+CAMB -> Cell: saves
+Observables -> Plotting: metrics
+CAMB -> Plotting: spectra
+Plotting -> Plots: outputs

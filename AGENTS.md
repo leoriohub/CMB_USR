@@ -113,10 +113,10 @@ Only mark a run/config as "good" when the user explicitly says so (e.g. "this ru
 
 ### 2. Publication-Ready Plots
 All plots must be ready for two-column publication format:
-- Big fonts: axis labels ≥14pt, tick labels ≥12pt, legend ≥11pt, title ≥16pt
 - 300 DPI minimum
 - Proper aspect ratio: ~3.25-3.5in wide (single-column) or ~7in (full width)
-- Colorblind-friendly palette (e.g., Tol, Wong, viridis)
+- Colorblind-friendly palette: TOL colors from `scripts.plotting.TOL`
+- Font sizes: use `scripts.plotting.PAPER_RCPARAMS` (9pt labels, 8pt ticks, 7pt legend)
 - Minimal whitespace, tight bounding box
 - Export PNG only (no PDF)
 
@@ -275,6 +275,54 @@ the sign of the residual: use `D_err_upper` if model > data, `D_err_lower`
 if model < data. This is already correct in `camb_wrapper.py` and
 `check_full_dell.py`.
 
+### 10.5 Pivot Convention — Single k_pivot for As and n_s
+
+The project has **one pivot** — `k_pivot_phys` — that drives BOTH the A_s
+normalization (`P_S(k_pivot) = A_s`) AND the n_s extraction (least-squares
+fit of ln P_S vs ln k over `[k_pivot/ns_window, k_pivot*ns_window]`). The
+fit half-width `ns_window` is the only separate knob.
+
+**Two workflows, two defaults, both user-selectable:**
+
+| Workflow | Default k_pivot | Default ns_window | Fit window |
+|----------|---------------|------------------|------------|
+| Higgs / power suppression | 0.002 Mpc⁻¹ | 4.0 | [5×10⁻⁴, 8×10⁻³] |
+| Ezquiaga / PBH | 0.05 Mpc⁻¹ | 3.0 | [0.017, 0.15] |
+
+**CLI flags (on every script that uses the pivot):**
+```
+--k-pivot FLOAT                   # drives BOTH As normalization and n_s extraction
+--ns-window FLOAT                 # n_s fit half-width [k_pivot/w, k_pivot*w]
+--ns-method {lsq,derivative}      # n_s extraction method: lsq=window fit (default), derivative=log-derivative at k_pivot
+```
+`sweep_pbh_params.py` also keeps `--pivot-k` as a deprecated back-compat
+alias for `--k-pivot`.
+
+**Config JSON** (optional, in the `pipeline` block):
+```json
+"pipeline": { "k_pivot_phys": 0.05, "ns_window": 3.0, ... }
+```
+
+**Precedence:** `--k-pivot` CLI > config `pipeline.k_pivot_phys` > script default.
+
+> **ns_method default:** `lsq` (window-averaged fit over `[k_pivot/ns_window, k_pivot*ns_window]`). Use `derivative` for the logarithmic derivative at k_pivot, which is more sensitive to local features.
+
+**Single-pivot invariant:** the SAME `k_pivot` value feeds both the pipeline
+call (`k_pivot_phys=...`) and `extract_ns(k_pivot=...)`. Never normalize A_s
+at one k and extract n_s at another in the same run.
+
+**n_s extraction lives in `scripts/observables.py`:**
+- `extract_ns(k_phys, P_S, k_pivot, ns_window)` — the MS-based n_s (uses P_S)
+- `extract_pbh_peak(k_phys, P_S)` — PBH peak (small scales, NOT an n_s)
+- SR algebraic n_s (`1 + 2η_H − 4ε_H` at N_pivot, in `background_scan.py` as
+  `n_s_sr_formula`) is a DIFFERENT observable — it does not use P_S(k)
+
+**Output JSON records the pivot:** every n_s-bearing output carries
+`{k_pivot, ns_window, n_modes, k_range, method}` in metadata. JSONL scan
+logs include `k_pivot` and `ns_window` per record.
+
+**Refactor design doc:** `docs/ns_extraction_refactor.md`
+
 ### 11. Core Solver Architecture — DO NOT MODIFY
 The root-level solver files (`inf_dyn_background.py`, `inf_dyn_MS_full.py`, `pspectrum_pipeline.py`) are the physics core of the project. Do NOT move, rename, refactor, or modify these files unless explicitly asked by the user. They contain the ODE integration, Mukhanov-Sasaki solver, and pipeline orchestration that every downstream script depends on. Changes to these files can silently break every consumer without visible errors in the modified file itself.
 
@@ -342,13 +390,237 @@ With χ₀=8.0, k=0.05 (Planck pivot) at χ≈6.8 gives n_s=0.952 — exact matc
 **SR vs MS comparison**: `scripts.plotting.plot_ps_sr_ms_comparison()` — P_S(k) overlay with ratio panel.
 Pivot found by k=a·H.
 
-**Key contrast**: Standard Higgs USR = initial-condition effect (tune `y₀`). Ezquiaga USR = structural (near-inflection from RG running). PBH-focused — the peak is at small scales (k∼10¹⁴ Mpc⁻¹) for PBH formation (0.01-100 M_⊙). CMB-scale n_s ≈ 0.952 for χ₀≥8.0.
+**Key contrast**: Standard Higgs USR = initial-condition effect (tune `y₀`). Ezquiaga USR = structural (near-inflection from RG running). PBH-focused — the peak is at small scales (k∼10¹⁴ Mpc⁻¹) for PBH formation (0.01-100 M_⊙).### 15. MS n_s Oscillation vs Smooth SR — Physics, Not Numerical
 
-### 14. pspectrum_pipeline scope — P_S(k) only
+When sweeping x₀ at fixed y₀, SR n_s varies **monotonically** while MS n_s shows
+a small **oscillation** (~0.008 amplitude, ~0.004 x₀ period). This is real
+physics, not a solver artifact.
 
-`pspectrum_pipeline.py` computes and plots P_S(k) only. It does NOT run CAMB,
-compute D_ℓ, plot backgrounds, or do power-loss analysis. Those belong in
-`camb_wrapper.py`, `run_full_analysis.py`, and `check_full_dell.py`.
+**Cause**: SR evaluates n_s = 1 + 2η_H − 4ε_H at a **single N** (N_pivot).
+MS fits the slope of P_S(k) across ~11 k-modes spanning ~1 decade. Each k-mode
+freezes at a different N_exit. As x₀ shifts N_pivot, the mapping between
+physical k and N_exit shifts — the same k-range samples a slightly different
+N-range. The spectral index has running (α_s = dn_s/d ln k), so the average
+slope across the window varies. In the transient region (near the breakdown of
+SR), α_s ≈ O(0.5), producing the observed oscillation.
 
-Auto-plotting (`--no-plot` to skip) saves P_S(k) plots to
-`outputs/plots/pspectra/` — NOT `outputs/plots/powerloss/`.
+SR never sees this: it samples one N, one formula, no running.
+
+**Numerical sanity checks (all negative)**:
+- `k_start_factor` variation (10, 100, 1000) → identical n_s (BD error negligible)
+- CubicSpline vs quintic z-spline → same oscillation (not from z''/z kinks)
+- CubicSpline vs linear interp → oscillation disappears but so does sensitivity
+  to real P_S variations (linear is too insensitive)
+- Natural vs not-a-knot BC → same oscillation (not from boundary conditions)
+- bg_steps 1000 vs 10000 → same oscillation (not from grid resolution)
+- Perfectly reproducible: same x₀ gives same n_s to float64 precision
+
+### 16. Figure 3 Reproduction — PBH Abundance (1705.04861)
+
+**Config:** `configs/ezquiaga_fig3.json`
+**Plot:** `outputs/plots/pbh/pbh_phi8.00_y0-0.000_nstar87.4.png`
+**Run:** `python scripts/pspectrum_pipeline.py --config configs/ezquiaga_fig3.json && python scripts/pbh_abundance.py --ms-json outputs/simulations/pspectra/ps_phi8.00_y0-0.000_nstar65.0.json --zeta-c 0.077`
+
+**All Ezquiaga-related outputs archived in:** `outputs/Ezquiaga/` (with README)
+
+**Parameter comparison vs paper reference:**
+
+| Parameter | Paper Ref | Our Fig3 Config | Δ |
+|-----------|-----------|-----------------|---|
+| **x_c** (critical point) | 0.784 | 0.784 | — |
+| **c** (ξ₀κ²μ²) | 0.77 | 0.77 | — |
+| **β** (deviation from inflection) | 10⁻⁵ | 10⁻⁵ | — |
+| **χ₀** (initial field) | 8.0 | 8.0 | — |
+| **y₀** (initial velocity) | ~0 | -10⁻⁴ | — |
+| **λ₀** | 2.23×10⁻⁷ | 2.23×10⁻⁷ | — |
+| **ζ_c** (collapse threshold) | 0.052 | **0.077** | +48% |
+| **γ** (efficiency) | 0.4 | 0.4 | — |
+| **Accretion factor** | 3×10⁷ | 3×10⁷ | — |
+| **N_star** | **65** | **65** | ✓ (same) |
+| **k_pivot** | **0.05 Mpc⁻¹** | **0.05 Mpc⁻¹** | ✓ (same) |
+
+**Result comparison:**
+
+| Metric | Paper Ref | Our code | Δ |
+|--------|-----------|----------|---|
+| **Ω_PBH^eq** | **0.42** | **0.27** | 1.6× |
+| **μ (peak M_present)** | **~11 M_⊙** | **0.4 M_⊙** | 28× |
+| **P_S_peak** | **4.8×10⁻⁵** | **1.04×10⁻⁴** | 2.2× |
+| **P_S_peak/As** | **2.3×10⁴** | **5.0×10⁴** | 2.2× |
+
+**Key notes:**
+- The paper's **rounded** parameters (a=5.381, b=1.523) give β≈-0.018 (bump, not inflection → field stalls, N_total=182). All runs use `inflection_parameters()` for self-consistent (a, b).
+- Our MS solver with the same stated parameters gives the same P_S amplitude (1.04×10⁻⁴ peak) but places the peak at k ≈ 3×10¹⁰ Mpc⁻¹, not k ≈ 6×10⁹. This is a solver implementation difference.
+- ζ_c=0.077 is within the paper's stated uncertainty range ζ_c ∈ (0.05, 1) [Sec III].
+- Archive at `outputs/Ezquiaga/` contains configs, plots, MS outputs, sweep logs.
+
+### 17. No Inline Python Code
+
+**NEVER** run inline `python -c "..."` or `python <<EOF` for physics analysis. It is non-reproducible, un-tracked, and un-reviewable. Use one of:
+- **Config file** + `pspectrum_pipeline.py` for MS computation
+- **`scripts/pbh_abundance.py --ms-json`** for PBH abundance
+- **`scripts/sweep_pbh_params.py`** for parameter sweeps
+- **`scripts/plotting.py`** for plotting
+
+The one exception: short (≤5 line) diagnostics to check file contents or list directories. Any physics computation must use the proper scripts.
+
+### 18. Ezquiaga PBH Mass Shift — LIGO Constraint
+
+The Ezquiaga CHI paper's reference configuration (x_c=0.784, c=0.77, β=10⁻⁵) produces PBHs with present-day mass ~0.4-11 M_⊙ (stellar range), which is **ruled out by LIGO** bounds on PBH dark matter in the 1-100 M_⊙ range.
+
+**Primary project goal for Ezquiaga:** Find parameters that shift the PBH mass distribution to **lower masses** (higher k_peak), targeting the sub-solar gap [10⁻⁶, 10⁻²] M_⊙ or the asteroid gap [10⁻¹⁷, 10⁻¹⁵] M_⊙. These mass ranges are not ruled out by current observations.
+
+**n_s compatibility with Planck is secondary.** The priority is mass range placement, not spectral index fitting.
+
+**Mass ↔ k_peak mapping** (with accretion factor 3×10⁷):
+
+| Target | M_present [M_⊙] | k_peak [Mpc⁻¹] |
+|--------|-----------------|----------------|
+| LIGO range (ruled out) | 0.1-100 | 2×10⁹–6×10¹⁰ |
+| Sub-solar gap | 10⁻⁶–10⁻² | 2×10¹¹–2×10¹³ |
+| Asteroid gap | 10⁻¹⁷–10⁻¹⁵ | 6×10¹⁷–6×10¹⁸ |
+
+### 19. Empirical Results from Systematic Sweeps
+
+#### Parameter trends
+
+| Trend | Effect on k_peak | Effect on n_s |
+|-------|-----------------|---------------|
+| ↑ xc | ↑ higher k (lower M, left) | ↑ bluer |
+| ↓ xc | ↓ lower k (higher M, right) | ↓ redder (fails near b<0 bound) |
+| ↑ c | ↑ higher k (lower M, left) | ↓ redder (asymptotes ~1.018) |
+| ↑ β | ↓ lower k (higher M, right) or kills peak | ↓ redder |
+| ↑ N_star | ↑ higher k (lower M, left) | ↑ bluer |
+| ↑ χ₀ | saturates for N_total > 165 | tiny effect |
+
+#### Note on x_c effect
+
+At first glance, higher x_c should mean the inflection is reached **sooner** (fewer e-folds from start), so the scales exiting at the inflection should be **larger** (higher mass). However, our sweeps show higher x_c → **higher k (lower mass)**. This is because changing x_c also changes `a` and `b` via `inflection_parameters(x_c, c, beta)`, which redesigns the entire potential — not just shifts the inflection position. The plateau gets qualitatively longer/steeper at higher x_c, which dominates over the simple field-position argument. Two competing effects:
+
+1. *Naive effect:* Higher x_c → inflection reached sooner → larger scales (higher M)
+2. *Potential reshaping effect:* Higher x_c → (a, b) change → plateau stretches → more e-folds → smaller scales (lower M)
+
+Effect 2 dominates in our model.
+
+#### USR peak existence criterion
+
+A real USR peak (k_peak > 1e6) appears when **BOTH** conditions hold:
+1. N_total > 165 (sufficient e-folds)
+2. β < β_critical ≈ 4×10⁻⁴ (at c=1.86, xc=0.79), where β_critical depends on (xc, c)
+
+The physical threshold is the residual slope V'(x_c) at the inflection:
+- V'(xc) < ~5×10⁻⁵ → USR peak forms
+- V'(xc) > ~7×10⁻⁵ → no USR peak
+
+β controls this slope linearly: V'(xc) ≈ 1.4 × 10⁻⁴ × (β/9×10⁻⁴) at (xc=0.79, c=1.86).
+
+#### High-c, high-β regime
+
+At c=1.86, the plateau is very stretched and the inflection is at a different position in field space. This gave the first **resolved** (non-grid-boundary) peak at k=9.12×10¹⁷ with:
+- β=3e-4 → n_s=1.012, asteroid peak at k=9.1e17, M=4.7e-16 M_⊙
+- β=5e-4 → n_s=1.000, no USR peak
+- β=9e-4 → n_s=0.966, no USR peak
+
+#### What β actually does
+
+β creates a **positive slope** at the inflection point x_c in the potential V(x):
+- β=0: V'(xc) ≈ 0 (exact inflection, field stalls → strong USR → asteroid peak)
+- β=3e-4: V'(xc) ≈ +4.2×10⁻⁵ (weak USR → weak peak at k=9e17)
+- β=9e-4: V'(xc) ≈ +1.25×10⁻⁴ (no USR → no peak, field rolls through)
+
+The potential value V(x_c) changes by only 0.02% across the full β range. The slope at x_c is the key parameter.
+
+**N_star is the dominant knob for PBH mass targeting.** β controls USR strength (peak amplitude), but N* shifts the entire P_S(k) along the k-axis via the k↔N pivot mapping. δ(N*) = +1 shifts k_peak by ×e ≈ ×2.7. The difference between sub-solar (k~10¹¹) and asteroid (k~10¹⁸) masses is δ(N*) ≈ +6 at fixed β. β fine-tunes which specific mass bin within the target regime — N* selects the regime.
+
+### 20. Ezquiaga SM-Allowed Parameter Ranges (from 1705.04861)
+
+From paper lines 302-303 (ΔN ∈ (30,35) for viable PBH production):
+
+| Parameter | Paper Ref | SM-Allowed Range | Derived |
+|-----------|-----------|------------------|---------|
+| λ₀ | 2.23×10⁻⁷ | (0.01–8)×10⁻⁷ | Higgs quartic at critical scale |
+| ξ₀ | 7.55 | **0.5–15** | Non-minimal coupling |
+| κ²μ² | 0.102 | **0.05–1.2** | Critical scale squared |
+| b_λ | 1.2×10⁻⁶ | (0.008–4)×10⁻⁶ | β_λ running coefficient |
+| b_ξ | 11.5 | **1–18** | β_ξ running coefficient |
+| **c = ξ₀·κ²μ²** | **0.77** | **[0.025, 18]** | Combined: 0.5×0.05 ≤ c ≤ 15×1.2 |
+| β | 10⁻⁵ | **(0.1–9)×10⁻⁴** | From Fig 2 (n_s, r plane) |
+| ΔN | 33.5 | **10–45** | From Fig 2 right panel |
+
+**Note:** The paper constrains these to ΔN ∈ (30,35) for "large PBH production." Our solver shows viable USR peaks at lower ΔN as well, so this range is a guide, not a hard limit.
+
+**Sweep coverage of allowed parameter space:**
+
+| Parameter | Allowed | Swept | Fraction |
+|-----------|---------|-------|----------|
+| c | [0.025, 18] | [0.5, 10] | ~50% |
+| β | [10⁻⁶, 9×10⁻⁴] | [10⁻⁶, 9×10⁻⁴] | **100%** |
+| x_c | ~[0.75, 0.85] | [0.75, 0.85] | **100%** |
+| χ₀ | > x_c | [4.0, 8.0] | partial |
+| N_star | [50, 70] | [50, 70] | **100%** |
+
+**Empirical from our sweeps (updated):**
+- USR peak appears only when N_total > 165 AND β < β_critical (depends on xc, c)
+- n_s asymptotes toward ~1.018 for very high c (5.0+), never crossing below 1
+- n_s can cross below 1 only when USR peak is absent (β > β_critical)
+- k_peak = 1e18 (asteroid) is stable across c ∈ [0.77, 5.0] at xc≥0.79 (grid boundary)
+- First resolved (non-grid-boundary) peak at k=9.1×10¹⁷ at c=1.86, β=3e-4, xc=0.79
+- The search plan is documented in `docs/pbh_search_plan.md`
+
+### 21. Best PBH Configs — Sub-solar & Asteroid
+
+Two independently-verified configs producing real (non-boundary) USR peaks with
+clean observational-constraint fits, companion JSONs auto-generated on plot output:
+
+| Region | Config | M_peak [M⊙] | f_total | ζ_c | n_s | File |
+|--------|--------|-------------|---------|-----|-----|------|
+| **Sub-solar** | β=2e-5, N*=66 | 1.97e-05 | 0.183 | 0.0765 | 0.9501 | `configs/subsolar_pbh.json` |
+| **Asteroid** | β=1.8e-4, N*=72 | 1.29e-16 | 0.128 | 0.0488 | 0.9663 | `configs/asteroid_pbh.json` |
+
+Both at χ₀=8.0, x_c=0.784, c=0.77. Reproduce with:
+```bash
+python scripts/full_pbh_pipeline.py --config configs/subsolar_pbh.json --tag rank02
+python scripts/full_pbh_pipeline.py --config configs/asteroid_pbh.json --tag rank07
+```
+
+### 22. Ezquiaga Parameter Relationships & Config Structure
+
+**Fundamental potential parameters:**
+- `a = b_λ / λ₀`, `b = b_ξ / ξ₀` — dimensionless RG ratios. These define the potential shape.
+- `λ₀`, `ξ₀` — absolute scale. `λ₀=2.23e-7, ξ₀=7.55` are fixed from SM RG running (paper values).
+- `c = ξ₀·κ²μ²` — plateau width. This is the tunable scale parameter.
+- `V₀ = λ₀·μ⁴/4` — overall potential energy scale.
+
+**Two ways to specify a config:**
+
+1. **Raw RG coefficients** (`paper.json`): store `b_λ, b_ξ, λ₀, ξ₀, c` directly. Constructor computes `a=b_λ/λ₀`, `b=b_ξ/ξ₀`. No inflection block. This is what the paper literally published — the numbers produce a local minimum (β≈−0.018), not an inflection. Field stalls at N≈182.
+
+2. **Inflection parametrization** (all other configs): store `x_c, c, β`. Pipeline calls `inflection_parameters(x_c, c, β)` which computes the exact `a, b` that satisfy V'(x_c)=V''(x_c)=0 (for β=0) or a controlled deviation (β>0). These override whatever the constructor computed from `b_λ`/`b_ξ`. The `b_λ`/`b_ξ` defaults are irrelevant in this path.
+
+**Key consequence:** The `inflection` parametrization assumes `a = a_exact(x_c,c)`. It ONLY varies `b` via `b = (1-β)·b_exact`. If both `a` and `b` are wrong (as in the paper's published numbers), this parametrization cannot represent them — you need the raw RG path instead.
+
+**Config directory structure:**
+- `configs/ezquiaga/` — single-run configs, all in canonical nested format.
+  - `paper.json` — raw RG path (NO inflection block). Stalls. Documents the paper's literal published numbers.
+  - All others — inflection path (HAS inflection block). Produce USR. Differ only in `c` and `β`.
+- `configs/sweeps/pbh/` — grid sweep configs for `sweep_pbh_params.py` (different flat schema).
+
+**What actually varies across working configs:**
+| Config | c | β | a_eff | b_eff | b_λ_eff | b_ξ_eff |
+|--------|---|---|---|---|---|---|
+| beta1e-5 | 0.77 | 1e-5 | 5.335304 | 1.519325 | 1.190e-6 | 11.471 |
+| perfect | 0.77 | 0 | 5.335304 | 1.519340 | 1.190e-6 | 11.471 |
+| tweaked | 0.771 | 4e-5 | 5.330933 | 1.517840 | 1.189e-6 | 11.460 |
+| subsolar | 0.77 | 2e-5 | 5.335304 | 1.519339 | 1.190e-6 | 11.471 |
+| asteroid | 0.77 | 1.8e-4 | 5.335304 | 1.519334 | 1.190e-6 | 11.471 |
+
+`λ₀=2.23e-7, ξ₀=7.55` are universal across all. `a_eff` barely varies (only via `c`). The radical physics differences come from `b_eff` at the 6th decimal (controlled by `β`).
+
+### 23. Fortran MS Solver Backend
+
+The Hot Path comoving MS grid integration is ported to native Fortran 90 (`fortran/ms_solver.f90`) with OpenMP multi-threaded parallelization over comoving modes.
+- Python bridge: `fortran_ms_solver.py` converts background splines to Fortran memory order (`order='F'`) and calls the library.
+- Compilation: Compiled via `f2py` with Meson/Ninja toolchain in `cmb-anomaly` conda env. Make command: `cd fortran && make`.
+- Linking: Requires `LDFLAGS="-fopenmp"` to resolve OpenMP runtime linker symbols.
+- Execution: Activated via `--backend fortran` flag in `pspectrum_pipeline.py`.
+- Validation: `fortran/test_vs_numba.py` checks single-mode trajectory correctness, full comoving grid agreement across three key configurations (within relative difference < 1e-4), and CAMB observable compatibility.

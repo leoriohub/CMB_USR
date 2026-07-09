@@ -10,7 +10,7 @@ All functions follow publication-ready conventions:
 - Two-column format (~3.25-3.5in wide single, ~7in full)
 - 300 DPI minimum
 - Colorblind-friendly palette (Tol 2012)
-- Big fonts: axis >= 14pt, ticks >= 12pt, legend >= 11pt
+- Font sizes set by PAPER_RCPARAMS (importable constant)
 - Export PNG only
 """
 import os
@@ -23,7 +23,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from scipy.interpolate import interp1d
+from scipy.interpolate import CubicSpline
 
 from scripts.constants import As, k_pivot_phys, T_cmb, ROOT_DIR
 
@@ -37,10 +37,51 @@ TOL = {
     "grey": "#666666",
     "dark": "#222222",
 }
+# Color convention across all plots:
+#   TOL["red"]   — model/main data line
+#   TOL["blue"]  — secondary/reference data (e.g. CAMB full)
+#   TOL["dark"]  — Planck data points / LCDM baseline
+#   TOL["grey"]  — reference lines, grid, annotations
+#   TOL["green"] — feature markers (pivot, inflection)
 
 COLORS = ["#CC3311", "#EE8866", "#44BB99", "#AA3377",
           "#4477AA", "#228833", "#DDCC77", "#88CCEE"]
 
+PAPER_RCPARAMS = {
+    "font.size": 8,
+    "axes.labelsize": 9,
+    "axes.titlesize": 11,
+    "xtick.labelsize": 8,
+    "ytick.labelsize": 8,
+    "legend.fontsize": 7,
+    "figure.dpi": 300,
+    "savefig.dpi": 300,
+    "savefig.bbox": "tight",
+    "font.family": "serif",
+    "axes.grid": False,
+}
+
+MARKER_RCPARAMS = {
+    "marker_size": 2.5,
+    "marker_edge_width": 0.4,
+    "line_width": 0.8,
+    "reference_line_style": "--",
+    "reference_line_width": 0.6,
+}
+
+# COLOR_MAP: standard role-based color assignment for comparison plots.
+# Plot philosophy — data-first, minimal clutter:
+#   No annotation boxes, reference lines, or decorations unless explicitly
+#   requested. Let the data speak. Add elements only when they serve a
+#   specific expository purpose.
+COLOR_MAP = {
+    "primary": TOL["red"],      # main model / SR approximation
+    "secondary": TOL["blue"],   # reference / exact numerical (MS)
+    "derived": TOL["purple"],   # residuals, derived quantities
+    "reference": TOL["grey"],   # reference lines, zero lines
+    "data": TOL["dark"],        # observational data (Planck)
+    "feature": TOL["green"],    # pivot markers, inflection points
+}
 
 # ── Module-level workers (must be top-level for pickle) ─────────────────────
 
@@ -64,6 +105,7 @@ OUTPUT_DIRS = {
     "configs": os.path.join(ROOT_DIR, "outputs/simulations/configs"),
     "logs": os.path.join(ROOT_DIR, "outputs/simulations/logs"),
     "scans": os.path.join(ROOT_DIR, "outputs/simulations/scans"),
+    "pbh": os.path.join(ROOT_DIR, "outputs/plots/pbh"),
 }
 
 
@@ -180,7 +222,7 @@ def compute_ps_sr(bg_sol, end_idx):
 
 
 def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
-                               pivot_k=0.002, suffix=""):
+                               pivot_k=0.002, suffix="", N_star=None):
     """
     3-panel Ezquiaga diagnostics: N vs chi, V/V0 vs x, P_S vs N.
 
@@ -193,6 +235,7 @@ def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
     chi0 : float, initial field value
     pivot_k : float, CMB pivot scale in Mpc^-1
     suffix : str, appended to filenames (e.g. "_chi8")
+    N_star : float or None, e-folds before end for pivot exit
     """
     epsH = derived["epsH"]
     N = derived["N"]
@@ -205,7 +248,7 @@ def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
     start_N = N_std[int(np.where(epsH[:end_idx + 1] > 1e-6)[0][0])] if np.any(epsH[:end_idx + 1] > 1e-6) else N_std[0]
 
     fig_n, ax_n = plt.subplots(figsize=(3.35, 2.6))
-    ax_n.plot(chi[:end_idx + 1], N_std[:end_idx + 1], "-", color=TOL["blue"], lw=1.3)
+    ax_n.plot(chi[:end_idx + 1], N_std[:end_idx + 1], "-", color=TOL["red"], lw=1.3)
     ax_n.plot(chi[pivot_idx], N_std[pivot_idx], "o", color=TOL["green"], ms=4)
     ax_n.annotate("pivot", xy=(chi[pivot_idx], N_std[pivot_idx]),
                   fontsize=8, color=TOL["green"])
@@ -214,37 +257,42 @@ def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
     ax_n.set_xlim(0, chi0 + 0.5)
     ax_n.tick_params(labelsize=12)
     fig_n.tight_layout()
-    save_fig(fig_n, f"ezquiaga_Nchi{suffix}", "diagnostics")
+    fname_nchi = make_filename("ezquiaga_Nchi", model.x0, model.y0, N_star, ext="") if N_star is not None else f"ezquiaga_Nchi{suffix}"
+    save_fig(fig_n, fname_nchi, "diagnostics")
 
-    x_end = model._x_of_chi(float(chi[end_idx]))
-    x_pivot = model._x_of_chi(float(chi[pivot_idx]))
-    x_max = model._x_of_chi(float(chi[0]))
-    x_grid = np.linspace(0.05, 15, 3000)
+    x_end = float(model._x_of_chi(float(chi[end_idx])))
+    x_pivot = float(model._x_of_chi(float(chi[pivot_idx])))
+    x_max = float(model._x_of_chi(float(chi[0])))
+    x_plot_max = max(x_max * 1.15, 8.0)
+    x_grid = np.linspace(0.05, x_plot_max, 3000)
     f_vals = np.array([model._V(float(x)) for x in x_grid])
 
     fig_v, ax_v = plt.subplots(figsize=(3.35, 2.6))
-    ax_v.plot(x_grid, f_vals, "-", color=TOL["blue"], lw=1.3)
-    ax_v.axvline(x_end, color=TOL["grey"], ls="--", lw=0.8, alpha=0.5)
-    ax_v.annotate("end", xy=(x_end, ax_v.get_ylim()[1]),
-                  xytext=(5, 5), textcoords="offset points", fontsize=8, color=TOL["grey"])
-    ax_v.axvline(x_pivot, color=TOL["green"], ls="-.", lw=0.8, alpha=0.5)
-    ax_v.annotate("pivot", xy=(x_pivot, ax_v.get_ylim()[1]),
-                  xytext=(5, 5), textcoords="offset points", fontsize=8, color=TOL["green"])
-    ax_v.axvspan(0, x_max, alpha=0.08, color=TOL["blue"])
-    ax_v.set_xlim(0, 12)
-    ax_v.set_xticks([0, 2, 4, 6, 8, 10, 12])
+    ax_v.plot(x_grid, f_vals, "-", color=TOL["red"], lw=1.3)
+    if np.isfinite(x_end):
+        ax_v.axvline(x_end, color=TOL["grey"], ls="--", lw=0.8, alpha=0.5)
+        ax_v.annotate("end", xy=(x_end, ax_v.get_ylim()[1]),
+                      xytext=(5, 5), textcoords="offset points", fontsize=8, color=TOL["grey"])
+    if np.isfinite(x_pivot):
+        ax_v.axvline(x_pivot, color=TOL["green"], ls="-.", lw=0.8, alpha=0.5)
+        ax_v.annotate("pivot", xy=(x_pivot, ax_v.get_ylim()[1]),
+                      xytext=(5, 5), textcoords="offset points", fontsize=8, color=TOL["green"])
+    ax_v.axvspan(0, x_max, alpha=0.08, color=TOL["red"])
+    ax_v.set_xlim(0, x_plot_max)
+    ax_v.set_xticks(np.linspace(0, x_plot_max, 7))
     ax_v.set_xlabel(r"$x = \phi/\mu$", fontsize=14)
     ax_v.set_ylabel(r"$V/V_0$", fontsize=14)
     ax_v.tick_params(labelsize=12)
     fig_v.tight_layout()
-    save_fig(fig_v, f"ezquiaga_Vshape{suffix}", "diagnostics")
+    fname_v = make_filename("ezquiaga_Vshape", model.x0, model.y0, N_star, ext="") if N_star is not None else f"ezquiaga_Vshape{suffix}"
+    save_fig(fig_v, fname_v, "diagnostics")
 
     epsH_clip = np.clip(epsH[:end_idx + 1], 1e-30, None)
     P_S_sr = (S_CODE * z_bg[:end_idx + 1])**2 / (8 * np.pi**2 * epsH_clip)
     mask_ps = N_std <= start_N
 
     fig_ps, ax_ps = plt.subplots(figsize=(3.35, 2.6))
-    ax_ps.semilogy(N_std[:end_idx + 1][mask_ps], P_S_sr[mask_ps], "-", color=TOL["blue"], lw=1.3)
+    ax_ps.semilogy(N_std[:end_idx + 1][mask_ps], P_S_sr[mask_ps], "-", color=TOL["red"], lw=1.3)
     ax_ps.axvline(N_std[pivot_idx], color=TOL["green"], ls="-.", lw=0.8, alpha=0.4)
     ax_ps.annotate("pivot", xy=(N_std[pivot_idx], ax_ps.get_ylim()[0]),
                    xytext=(5, 10), textcoords="offset points", fontsize=8, color=TOL["green"])
@@ -253,7 +301,8 @@ def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
     ax_ps.tick_params(labelsize=12)
     ax_ps.set_xlim(0, max(N_std[0] + 2, 70))
     fig_ps.tight_layout()
-    save_fig(fig_ps, f"ezquiaga_PS_N{suffix}", "diagnostics")
+    fname_ps = make_filename("ezquiaga_PS_N", model.x0, model.y0, N_star, ext="") if N_star is not None else f"ezquiaga_PS_N{suffix}"
+    save_fig(fig_ps, fname_ps, "diagnostics")
 
 
 def plot_ps_sr_ms_comparison(
@@ -290,7 +339,7 @@ def plot_ps_sr_ms_comparison(
 
     Returns
     -------
-    dict with keys: k_phys_sr, P_S_sr, k_phys_ms, P_S_ms, n_s_results, N_total
+    dict with keys: k_phys_sr, P_S_sr, k_phys_ms, P_S_ms, n_s_local, N_total
     """
     from inf_dyn_background import run_background_simulation, get_derived_quantities
 
@@ -356,12 +405,14 @@ def plot_ps_sr_ms_comparison(
     interp_ms_vals = None
     if ms_enabled and np.any(ok_ms):
         ps_ok = Ps_ms[ok_ms]
-        order = min(3, len(k_ok) - 1)
-        spl = interp1d(np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
-                       kind="cubic" if order >= 3 else "linear",
-                       bounds_error=False, fill_value=np.nan)
         k_line = np.logspace(np.log10(k_ok[0]), np.log10(k_ok[-1]), 500)
-        ps_line = np.exp(spl(np.log(k_line)))
+        if len(k_ok) >= 4:
+            spl = CubicSpline(np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
+                              bc_type='not-a-knot', extrapolate=False)
+            ps_line = np.exp(spl(np.log(k_line)))
+        else:
+            ps_line = np.exp(np.interp(np.log(k_line), np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
+                                       left=np.nan, right=np.nan))
         ax1.loglog(k_line, ps_line, "-", color=TOL["red"], lw=1.2,
                    alpha=0.7, label=f"MS solver ({len(ps_ok)}/{len(Ps_ms)})")
         ax1.loglog(k_ok, ps_ok, "o", color=TOL["red"], ms=2, alpha=0.4)
@@ -406,18 +457,18 @@ def plot_ps_sr_ms_comparison(
         if interp_ms_vals is not None and np.isfinite(interp_ms_vals[pi]):
             lp_ms = np.log(np.maximum(interp_ms_vals[pi-d5:pi+d5+1], 1e-300))
             ns_ms_val = 1 + (lp_ms[-1] - lp_ms[0]) / (lk[-1] - lk[0])
-        msg = f"  {label}: n_s(SR)={ns_sr:.4f}"
+        msg = f"  {label}: n_s_local(SR)={ns_sr:.4f}"
         if ns_ms_val is not None:
-            msg += f", n_s(MS)={ns_ms_val:.4f}"
+            msg += f", n_s_local(MS)={ns_ms_val:.4f}"
         print(msg)
-        n_s_results[label] = {"SR": ns_sr, "MS": ns_ms_val}
+        n_s_results[label] = {"SR_local": ns_sr, "MS_local": ns_ms_val}
 
     return {
         "k_phys_sr": k_sr,
         "P_S_sr": Ps_sr,
         "k_phys_ms": k_ms,
         "P_S_ms": Ps_ms,
-        "n_s": n_s_results,
+        "n_s_local": n_s_results,
         "N_total": N_total,
         "end_idx": end_idx,
     }
@@ -490,8 +541,8 @@ def plot_ps(k_phys, P_S, label="Higgs USR", filename="ps", category="powerloss",
     """
     mask = np.isfinite(P_S)
     if np.sum(mask) > 5:
-        logk_interp = interp1d(np.log(k_phys[mask]), P_S[mask], kind="cubic",
-                               bounds_error=False, fill_value="extrapolate")
+        logk_interp = CubicSpline(np.log(k_phys[mask]), P_S[mask],
+                                  bc_type='not-a-knot', extrapolate=True)
         k_dense = np.logspace(np.log10(k_phys[mask].min()), np.log10(k_phys[mask].max()), 1000)
         ps_dense = np.clip(logk_interp(np.log(k_dense)), 0, None)
     else:
@@ -552,14 +603,22 @@ def plot_dell(ells, D_ell_model, planck_ells=None, D_planck=None,
                     label=r"Planck 2018 low-$\ell$ TT")
 
     ell_dense = np.linspace(ells.min(), min(ells.max(), ell_max), 200)
-    D_interp = interp1d(ells, D_ell_model, kind="cubic")(ell_dense)
+    if len(ells) >= 4:
+        D_interp = CubicSpline(ells, D_ell_model, bc_type='not-a-knot', extrapolate=True)(ell_dense)
+    else:
+        D_interp = np.interp(ell_dense, ells, D_ell_model)
     ax.plot(ell_dense, D_interp, "-", color=TOL["red"], lw=1.5, label=model_label)
 
     if ells_lcdm is not None and D_ell_lcdm is not None:
         mask = ells_lcdm <= ell_max
-        D_lcdm_interp = interp1d(ells_lcdm[mask], D_ell_lcdm[mask], kind="cubic")(ell_dense)
-    ax.plot(ell_dense, D_lcdm_interp, "--", color=TOL["grey"], lw=1.2,
-            alpha=0.6, label=r"$\Lambda$CDM")
+        ells_l_mask = ells_lcdm[mask]
+        D_l_mask = D_ell_lcdm[mask]
+        if len(ells_l_mask) >= 4:
+            D_lcdm_interp = CubicSpline(ells_l_mask, D_l_mask, bc_type='not-a-knot', extrapolate=True)(ell_dense)
+        else:
+            D_lcdm_interp = np.interp(ell_dense, ells_l_mask, D_l_mask)
+        ax.plot(ell_dense, D_lcdm_interp, "--", color=TOL["grey"], lw=1.2,
+                alpha=0.6, label=r"$\Lambda$CDM")
 
     ax.set_xlabel(r"$\ell$", fontsize=14)
     ax.set_ylabel(r"$D_\ell^{TT}\ [\mu{\rm K}^2]$", fontsize=14)
@@ -1063,6 +1122,256 @@ def _cli_compare_configs(phi0_str="", y0_str="", nstar_str="",
     ax.set_xlim(1.5, 31)
     fig.tight_layout()
     save_fig(fig, f"dell_comparison_{suffix}", "diagnostics")
+
+
+# ── PBH abundance plot ────────────────────────────────────────────────────
+
+
+def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
+                       model_label="PBH-CHI", filename="pbh_abundance",
+                       category="pbh", use_old_bounds=False, smooth_bounds=False):
+    """
+    Plot Ω_PBH/Ω_DM vs M/M_⊙ (Figure 3 style).
+
+    log-log, solid TOL line, paper-style legend.
+    Observational constraint overlays included from bradkav/PBHbounds.
+    """
+    mask = np.isfinite(M) & np.isfinite(f_pbh) & (M > 0) & (f_pbh > 0)
+    M, f_pbh = M[mask], f_pbh[mask]
+    if len(M) < 3:
+        print("  WARNING: too few valid points for PBH abundance plot")
+        return
+
+    with plt.rc_context(PAPER_RCPARAMS):
+        fig, ax = plt.subplots(figsize=(4.5, 3.5))
+        
+        bounds_dir = os.path.join(ROOT_DIR, "data", "PBHbounds", "bounds")
+        
+        # Define a unique color for each constraint dataset to avoid repeats (Paul Tol colorblind-safe)
+        colors_dict = {
+            "EGB": "#EE7733",            # Orange
+            "femto-lensing": "#EEDD88",  # Sand/Yellow
+            "GRB-parallax": "#FFAABB",   # Rose
+            "HSC": "#44BB99",            # Teal
+            "Kepler": "#AA3377",         # Purple
+            "MACHO": "#666666",          # Grey
+            "EROS": "#4477AA",           # Blue
+            "LIGO": "#33BBEE",           # Cyan
+            "Eri-II": "#228833",         # Green
+            "Planck": "#222222"          # Dark
+        }
+        
+        if use_old_bounds:
+            datasets = [
+                # (label, filename, color, alpha, (x, y, rotation))
+                ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (2e-18, 2e-2, 65)),
+                ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 2.5e-1, 0)),
+                ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (6e-14, 7e-2, 0)),
+                ("HSC", "old_bounds/HSC_original.txt", TOL["teal"], 0.08, (1e-10, 2e-2, 0)),
+                ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 2e-1, 0)),
+                ("MACHO", "M.txt", TOL["grey"], 0.08, (1e-5, 2e-1, 0)),
+                ("EROS", "EROS.txt", TOL["blue"], 0.08, (1e-2, 5e-2, 0)),
+                ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (3e3, 1.5e-1, -55)),
+                ("Planck", "old_bounds/CMB_withoutDM.txt", TOL["dark"], 0.08, (1e3, 3e-3, -40))
+            ]
+        else:
+            datasets = [
+                # (label, filename, color, alpha, (x, y, rotation))
+                ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (2e-18, 2e-2, 65)),
+                ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 2.5e-1, 0)),
+                ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (6e-14, 7e-2, 0)),
+                ("HSC", "HSC.txt", TOL["teal"], 0.08, (1e-10, 6e-3, 0)),
+                ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 2e-1, 0)),
+                ("MACHO", "M.txt", TOL["grey"], 0.08, (1e-5, 2e-1, 0)),
+                ("EROS", "EROS.txt", TOL["blue"], 0.08, (1e-2, 5e-2, 0)),
+                ("LIGO", "LIGO.txt", TOL["purple"], 0.08, (8.0, 8e-3, -55)),
+                ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (1.5e3, 6e-2, -50)),
+                ("Planck", "CMB.txt", TOL["dark"], 0.08, (4.5e1, 2e-2, -82))
+            ]
+        
+        if os.path.exists(bounds_dir):
+            for label, fname, color_default, alpha, pos in datasets:
+                color = colors_dict.get(label, color_default)
+                path = os.path.join(bounds_dir, fname)
+                if os.path.exists(path):
+                    try:
+                        data = np.loadtxt(path, comments='#')
+                        m_b, f_b = data[:, 0], data[:, 1]
+                        
+                        # Sort to ensure monotonic mass coordinates
+                        sort_idx = np.argsort(m_b)
+                        m_b, f_b = m_b[sort_idx], f_b[sort_idx]
+                        
+                        # Extend boundaries to prevent visual clipping/patchiness
+                        if label == "EGB":
+                            # Discard the first two points which are flat digitization artifacts along the bottom axis
+                            m_b = m_b[2:]
+                            f_b = f_b[2:]
+                            if len(m_b) < 2:
+                                continue
+                            # Extrapolate to the left plot limit (1e-19) following the log-log slope of the first two points
+                            log_m1, log_m2 = np.log10(m_b[0]), np.log10(m_b[1])
+                            log_f1, log_f2 = np.log10(f_b[0]), np.log10(f_b[1])
+                            slope = (log_f2 - log_f1) / (log_m2 - log_m1)
+                            
+                            log_m_left = np.log10(1e-19)
+                            log_f_left = log_f1 + slope * (log_m_left - log_m1)
+                            f_left = 10**log_f_left
+                            
+                            m_b = np.insert(m_b, 0, 1e-19)
+                            f_b = np.insert(f_b, 0, f_left)
+                        elif label == "Eri-II" and m_b[-1] < 1e8:
+                            if len(m_b) < 2:
+                                continue
+                            # Extrapolate to the right plot limit (1e8) following the log-log slope of the last two points
+                            log_m1, log_m2 = np.log10(m_b[-2]), np.log10(m_b[-1])
+                            log_f1, log_f2 = np.log10(f_b[-2]), np.log10(f_b[-1])
+                            slope = (log_f2 - log_f1) / (log_m2 - log_m1)
+                            
+                            log_m_right = np.log10(1e8)
+                            log_f_right = log_f2 + slope * (log_m_right - log_m2)
+                            f_right = 10**log_f_right
+                            
+                            m_b = np.append(m_b, 1e8)
+                            f_b = np.append(f_b, f_right)
+
+                        
+                        # Apply shape-preserving interpolation if smoothing is requested
+                        if smooth_bounds and len(m_b) > 3:
+                            from scipy.interpolate import PchipInterpolator
+                            log_m = np.log10(m_b)
+                            log_f = np.log10(f_b)
+                            log_m, unique_idx = np.unique(log_m, return_index=True)
+                            log_f = log_f[unique_idx]
+                            
+                            if len(log_m) > 3:
+                                interp = PchipInterpolator(log_m, log_f)
+                                m_dense = np.logspace(log_m.min(), log_m.max(), 300)
+                                f_dense = np.clip(10**interp(np.log10(m_dense)), 1e-30, 10.0)
+                                m_b, f_b = m_dense, f_dense
+
+                        ax.plot(m_b, f_b, color=color, lw=0.8)
+                        ax.fill_between(m_b, f_b, 10.0, color=color, alpha=alpha, lw=0)
+                        tx, ty, rot = pos
+                        ax.text(tx, ty, label, color=color, fontsize=6, 
+                                rotation=rot, ha='center', va='center', zorder=10)
+                    except Exception as e:
+                        print(f"  WARNING: Failed to load {fname}: {e}")
+        else:
+            print("  WARNING: PBHbounds data not found at", bounds_dir)
+
+        # Plot our model's PBH abundance curve
+        ax.loglog(M, f_pbh, "-.", color=TOL["red"], lw=1.5, label=model_label)
+        
+        ax.set_xlabel(r"$M / M_\odot$")
+        ax.set_ylabel(r"$\Omega_{\mathrm{PBH}} / \Omega_{\mathrm{DM}}$")
+        ax.set_xlim(1e-19, 1e8)
+        ax.set_ylim(1e-4, 1.0)
+        ax.legend(loc="lower right", fontsize=7)
+        # Use a gray grid
+        ax.grid(True, alpha=0.2, color='gray', which="both", ls='--')
+        fig.tight_layout()
+        save_fig(fig, filename, category)
+
+
+# ── Inflection potential zoom plot (Ezquiaga CHI) ─────────────────────────
+
+
+def _V_shape(x, a, b, c=0.77):
+    x = np.asarray(x, dtype=float)
+    lnx = np.log(np.maximum(x, 1e-30))
+    num = (1 + a * lnx**2) * x**4
+    den = (1 + c * (1 + b * lnx) * x**2)**2
+    return num / den
+
+
+def plot_inflection_zoom(parameter_sets, x_range=(0.7, 0.9),
+                         layout="split", filename="inflection_zoom",
+                         category="pbh"):
+    """
+    Two-panel zoom of V(x) near the inflection point, comparing paper vs exact.
+
+    Parameters
+    ----------
+    parameter_sets : dict of label -> dict
+        Each entry: {"a": float, "b": float, "c": float, "color": str, "ls": str}.
+        Typically two entries: paper params and exact/self-consistent.
+    x_range : (float, float)
+        Linear x range for the zoom.
+    layout : "split" or "separate"
+        "split": single 2-panel figure (paper left, exact right).
+        "separate": two individual figures with _paper, _exact suffixes.
+    filename : str
+        Base filename (no extension).
+    category : str
+        OUTPUT_DIRS key for save_fig.
+    """
+    x_grid = np.linspace(x_range[0], x_range[1], 2000)
+
+    def _filter_params(params):
+        return {k: params[k] for k in ("a", "b", "c") if k in params}
+
+    labels = list(parameter_sets.keys())
+    colors = [parameter_sets[l].get("color", TOL["red"]) for l in labels]
+    lss = [parameter_sets[l].get("ls", "-") for l in labels]
+
+    with plt.rc_context(PAPER_RCPARAMS):
+        if layout == "split":
+            fig, axes = plt.subplots(1, 2, figsize=(7, 2.8))
+            for ax, label, color, ls in zip(axes, labels, colors, lss):
+                fp = _filter_params(parameter_sets[label])
+                ax.plot(x_grid, _V_shape(x_grid, **fp),
+                        color=color, ls=ls, lw=1.2)
+                ax.axvline(0.784, color=TOL["grey"], ls=":", lw=0.8, alpha=0.5)
+                ax.set_xlabel(r"$x = \phi/\mu$")
+                ax.set_ylabel(r"$\hat{V}(x)$")
+                ax.set_xlim(*x_range)
+                ax.grid(True, alpha=0.2)
+            fig.tight_layout()
+            save_fig(fig, filename, category)
+            plt.close(fig)
+
+        elif layout == "separate":
+            for label in labels:
+                fig, ax = plt.subplots(figsize=(3.5, 2.5))
+                fp = _filter_params(parameter_sets[label])
+                color = parameter_sets[label].get("color", TOL["red"])
+                ls = parameter_sets[label].get("ls", "-")
+                ax.plot(x_grid, _V_shape(x_grid, **fp),
+                        color=color, ls=ls, lw=1.2)
+                ax.axvline(0.784, color=TOL["grey"], ls=":", lw=0.8, alpha=0.5)
+                ax.set_xlabel(r"$x = \phi/\mu$")
+                ax.set_ylabel(r"$\hat{V}(x)$")
+                ax.set_xlim(*x_range)
+                ax.grid(True, alpha=0.2)
+                fig.tight_layout()
+                save_fig(fig, f"{filename}_{label.lower().replace(' ', '_')}",
+                         category)
+                plt.close(fig)
+
+
+def plot_full_potential(a, b, c=0.77, x_range=(0.01, 10),
+                        filename="full_potential", category="pbh",
+                        color=None):
+    """
+    Single-curve linear plot of V(x) over a wide x range.
+
+    Shows the overall potential shape from small x to plateau,
+    with a vertical marker at x_c.
+    """
+    x_grid = np.logspace(np.log10(x_range[0]), np.log10(x_range[1]), 5000)
+
+    with plt.rc_context(PAPER_RCPARAMS):
+        fig, ax = plt.subplots(figsize=(3.5, 2.5))
+        ax.plot(x_grid, _V_shape(x_grid, a, b, c),
+                color=color or TOL["blue"], lw=1.2)
+        ax.axvline(0.784, color=TOL["grey"], ls=":", lw=0.8, alpha=0.7)
+        ax.set_xlabel(r"$x = \phi/\mu$")
+        ax.set_ylabel(r"$\hat{V}(x)$")
+        ax.set_xlim(*x_range)
+        fig.tight_layout()
+        save_fig(fig, filename, category)
+        plt.close(fig)
 
 
 def main():
