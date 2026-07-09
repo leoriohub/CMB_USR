@@ -5,7 +5,6 @@ Provides:
   compute_epsilon2          ε₂ = 2ε₁ - 2η_H
   measure_usr_duration      integrate dN where ε₂ < threshold
   compute_xcmb              field value at pivot exit N* e-folds before end
-  plot_defaults             publication-ready rcParams
 """
 import numpy as np
 from models import HiggsModel
@@ -29,9 +28,10 @@ def measure_usr_duration(N, epsH, eps2, threshold=-5.5):
       3. Truncate to inflationary segment.
       4. Sum dN where eps2 < threshold.
     """
-    if np.all(epsH >= 1.0):
+    finite_eps = epsH[np.isfinite(epsH)]
+    if len(finite_eps) == 0 or np.all(finite_eps >= 1.0):
         return 0.0
-    start = int(np.where(epsH < 1.0)[0][0])
+    start = int(np.where(finite_eps < 1.0)[0][0])
     post = epsH[start:] >= 1.0
     if np.any(post):
         cutoff = start + int(np.where(post)[0][0])
@@ -93,26 +93,5 @@ def compute_xcmb(x0=5.7, y0_sr=-1e-6, N_star=60, lam=lam_default, xi=xi_default,
     return x_cmb, N_total
 
 
-def set_paper_style(use_tex=False):
-    """Apply publication-ready matplotlib rcParams."""
-    import matplotlib.pyplot as plt
-    plt.rcParams.update({
-        "font.size": 14,
-        "axes.labelsize": 16,
-        "axes.titlesize": 18,
-        "xtick.labelsize": 14,
-        "ytick.labelsize": 14,
-        "legend.fontsize": 12,
-        "figure.dpi": 300,
-        "savefig.dpi": 300,
-        "savefig.bbox": "tight",
-        "font.family": "serif",
-        "axes.grid": True,
-        "grid.alpha": 0.3,
-        "grid.linestyle": ":",
-    })
-    if use_tex:
-        plt.rcParams.update({
-            "text.usetex": True,
-            "font.family": "serif",
-        })
+# set_paper_style removed because it was unused dead code.
+# Codebase styling defaults are managed via PAPER_RCPARAMS in scripts/plotting.py.

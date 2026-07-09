@@ -1,0 +1,28 @@
+{
+  "model": "EzquiagaCHIModel",
+  "model_params": {
+    "lambda_0": 2.23e-07,
+    "xi_0": 7.55,
+    "c": 0.771
+  },
+  "inflection": {
+    "x_c": 0.784,
+    "beta": 4e-05
+  },
+  "ics": {
+    "x0": 8.0,
+    "y0": -0.0001
+  },
+  "pipeline": {
+    "N_star": 65,
+    "k_min": 1e-10,
+    "k_max": 1e+28,
+    "num_k": 501,
+    "k_pivot_phys": 0.05,
+    "n_cores": 8,
+    "no_plot": true,
+    "normalize_to_As": false,
+    "output_dir": "outputs/simulations/pspectra",
+    "ns_window": 3.0
+  }
+}

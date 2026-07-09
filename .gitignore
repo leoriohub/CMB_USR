@@ -13,7 +13,6 @@ __pycache__/
 .env
 .venv
 venv/
-.envrc
 
 # Environment-specific scripts
 setup_win_env.ps1
@@ -24,17 +23,37 @@ Thumbs.db
 
 # Local docs
 docs/
-
 .vscode/
 .opencode/
-.agents/
+.omo/
+.agents/plans/
 paper/
 skills-lock.json
 .worktrees/
 cmb_anomaly.egg-info/
-
+paper.bak/
 # Notebooks with paper-figure exploration code (project-internal, not for version control)
 notebooks/*.ipynb
+node_modules/
 
-# Notebooks with paper-figure exploration code
-notebooks/*.ipynb
+# One-off analysis scripts (non-reproducible)
+scripts/legacy/
+
+# Ezquiaga inflection parameters manuscript (root-level manuscript + outputs)
+/ezquiaga/
+outputs/Ezquiaga/
+
+# Project-level AI assistant config (local workflow preferences)
+opencode.json
+
+# Node.js dependencies (MCP tooling — not part of physics project)
+package.json
+package-lock.json
+
+# Stray log files at project root (one-off run outputs)
+/*.log
+
+# Compiled binary extensions
+*.so
+*.mod
+*.o

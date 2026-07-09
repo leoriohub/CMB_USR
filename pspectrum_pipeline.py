@@ -35,7 +35,7 @@ from scripts.plotting import make_filename
 import inf_dyn_background as bg_solver
 import inf_dyn_MS_full as ms_solver
 from models import HiggsModel, FullHiggsModel, PunctuatedInflationModel, EzquiagaCHIModel, inflection_parameters
-from numba_ms_solver import numba_run_ms, build_numba_splines
+from numba_ms_solver import numba_run_ms, build_numba_splines, numba_run_ms_grid, _find_crossing_index
 
 # Fast CubicSpline-based interpolator (avoids interp1d overhead for per-step calls)
 from scipy.interpolate import CubicSpline
@@ -125,24 +125,23 @@ def ensure_k_pivot(k_grid, k_pivot_phys, rtol=1e-6):
     return k_grid, pivot_idx
 
 
-def build_weighted_kgrid(k_min, k_max, k_pivot_phys, dense_zone=(1e-4, 1e-2), n_dense=120, n_outer=60):
+def build_weighted_kgrid(k_min, k_max, k_pivot_phys, dense_min=1e-4, dense_max=1e-2, n_dense=120, n_outer=60):
     """
-    Build a k-grid with dense logarithmic sampling in the USR dip zone.
+    Build a k-grid with dense logarithmic sampling in a specified zone.
 
-    The USR feature typically appears at k ~ 10^-4 to 10^-2 Mpc^-1.
-    Standard uniform log-spacing would undersample this region.
-    This grid concentrates ~2/3 of modes there for adequate resolution.
+    Concentrates ~2/3 of modes in [dense_min, dense_max] for adequate resolution
+    of spectral features (CMB USR dip at 1e-4..1e-2 for Higgs, PBH peak at 1e9..1e14 for Ezquiaga).
     """
-    k_low = np.logspace(np.log10(k_min), np.log10(dense_zone[0]), n_outer // 2)
-    k_dense = np.logspace(np.log10(dense_zone[0]), np.log10(dense_zone[1]), n_dense)
-    k_high = np.logspace(np.log10(dense_zone[1]), np.log10(k_max), n_outer // 2)
+    k_low = np.logspace(np.log10(k_min), np.log10(dense_min), n_outer // 2)
+    k_dense = np.logspace(np.log10(dense_min), np.log10(dense_max), n_dense)
+    k_high = np.logspace(np.log10(dense_max), np.log10(k_max), n_outer // 2)
     k_grid = np.unique(np.concatenate([k_low, k_dense, k_high]))
     if not np.any(np.isclose(k_grid, k_pivot_phys)):
         k_grid = np.sort(np.append(k_grid, k_pivot_phys))
     return k_grid
 
 
-def get_k_pivot_code(bg_sol, derived_bg, end_idx, N_star):
+def get_k_pivot_code(bg_sol, derived_bg, end_idx, N_star, N_total=None):
     """
     Find the code-unit wavenumber k_code at pivot exit.
 
@@ -150,17 +149,25 @@ def get_k_pivot_code(bg_sol, derived_bg, end_idx, N_star):
     k_code = a_pivot * z_pivot (dimensionless code units),
     used to scale all physical k-modes into the MS solver.
 
+    If N_total is None, uses derived_bg["N"][end_idx] (integer index).
+    Pass an interpolated N_total for smooth (jump-free) behavior.
+
     Returns (k_pivot_code, pivot_bg_idx, N_total) or (None, None, None)
     if total e-folds are insufficient for N_star.
     """
-    N_total = derived_bg["N"][end_idx]
+    if N_total is None:
+        N_total = derived_bg["N"][end_idx]
     if N_total < N_star:
         return None, None, None
     N_pivot = N_total - N_star
-    pivot_idx = int(np.argmin(np.abs(derived_bg["N"][:end_idx] - N_pivot)))
-    z_pivot = bg_sol[2][pivot_idx]
-    a_pivot = np.exp(bg_sol[3][pivot_idx])
+    # Linear interpolation on full arrays (local, no spline ringing from post-inflation data)
+    N_arr = derived_bg["N"]
+    z_arr = bg_sol[2]
+    n_arr = bg_sol[3]
+    z_pivot = float(np.interp(N_pivot, N_arr, z_arr))
+    a_pivot = float(np.exp(np.interp(N_pivot, N_arr, n_arr)))
     k_pivot_code = a_pivot * z_pivot
+    pivot_idx = int(np.argmin(np.abs(N_arr - N_pivot)))
     return k_pivot_code, pivot_idx, N_total
 
 
@@ -170,21 +177,32 @@ def extract_mode_initial_conditions(bg_sol, T_span_bg, end_idx, k_code, k_start_
 
     Finds the time when k/(aH) = k_start_factor (typically 100), i.e.
     sufficiently deep inside the horizon for vacuum initial conditions.
-    Uses the background trajectory to locate this crossing.
+    Uses linear interpolation on the background trajectory to avoid step discretization.
     """
     n_bg = bg_sol[3]
     z_bg = bg_sol[2]
-    log_az = n_bg + np.log(z_bg)
+    log_az = n_bg + np.log(np.maximum(z_bg, 1e-300))
     target_start = np.log(k_code) - np.log(k_start_factor)
-    start_idx = int(np.argmin(np.abs(log_az[:end_idx] - target_start)))
-    start_idx = max(start_idx, 0)
-    xi = bg_sol[0][start_idx]
-    y0 = bg_sol[1][start_idx]
-    zi = bg_sol[2][start_idx]
-    ni = bg_sol[3][start_idx]
-    t_start = T_span_bg[start_idx]
+    
+    # log_az is monotonic, find the enclosing interval
+    idx = np.searchsorted(log_az[:end_idx], target_start) - 1
+    idx = max(0, min(idx, end_idx - 2))
+    
+    denom = log_az[idx+1] - log_az[idx]
+    if abs(denom) > 1e-15:
+        frac = (target_start - log_az[idx]) / denom
+    else:
+        frac = 0.0
+    frac = max(0.0, min(1.0, frac))
+    
+    xi = float(bg_sol[0][idx] + frac * (bg_sol[0][idx+1] - bg_sol[0][idx]))
+    y0 = float(bg_sol[1][idx] + frac * (bg_sol[1][idx+1] - bg_sol[1][idx]))
+    zi = float(bg_sol[2][idx] + frac * (bg_sol[2][idx+1] - bg_sol[2][idx]))
+    ni = float(bg_sol[3][idx] + frac * (bg_sol[3][idx+1] - bg_sol[3][idx]))
+    t_start = float(T_span_bg[idx] + frac * (T_span_bg[idx+1] - T_span_bg[idx]))
     t_end = T_span_bg[end_idx]
-    return xi, y0, zi, ni, t_start, t_end, start_idx
+    
+    return xi, y0, zi, ni, t_start, t_end, idx
 
 
 def _compute_mode_batch(args):
@@ -248,6 +266,7 @@ def run_pspectrum_pipeline(
     use_numba=True,
     executor=None,
     ms_method='dp5',
+    backend='numba',
 ):
     """
     Compute P_S(k) for a grid of k-modes for a given inflation model.
@@ -309,7 +328,18 @@ def run_pspectrum_pipeline(
         # Fallback: use last index (field trapped at inflection, USR-only trajectory)
         end_idx = len(derived_bg["epsH"]) - 1
 
-    k_pivot_code, pivot_bg_idx, N_total = get_k_pivot_code(bg_sol, derived_bg, end_idx, N_star)
+    # Interpolate N_total at fractional crossing of eps_H = 1 for smoothness
+    epsH = derived_bg["epsH"]
+    N = derived_bg["N"]
+    N_total_frac = float(N[end_idx])
+    if 0 < end_idx < len(epsH) and epsH[end_idx] > 1.0 >= epsH[end_idx - 1]:
+        f = (1.0 - epsH[end_idx - 1]) / (epsH[end_idx] - epsH[end_idx - 1])
+        if 0 <= f <= 1:
+            N_total_frac = float(N[end_idx - 1] + f * (N[end_idx] - N[end_idx - 1]))
+
+    k_pivot_code, pivot_bg_idx, N_total = get_k_pivot_code(
+        bg_sol, derived_bg, end_idx, N_star, N_total=N_total_frac
+    )
     if k_pivot_code is None:
         return {
             "status": "error",
@@ -443,57 +473,91 @@ def run_pspectrum_pipeline(
             failed_modes.append(idx)
             errors.append(f"mode {idx} (k={k_code_grid[idx]:.4e}): non-finite P_S={ps}")
 
-    if n_workers > 1:
-        from concurrent.futures import             ProcessPoolExecutor, as_completed
-        import multiprocessing
-        n_actual = min(n_workers, n_modes, multiprocessing.cpu_count())
-        print(f"  Computing {n_modes} k-modes on {n_actual} workers...")
-
-        # Batch: one IPC round-trip per worker instead of per mode
-        indices = list(range(n_modes))
-        chunks = []
-        for w in range(n_actual):
-            ci = indices[w::n_actual]
-            ck = [k_code_grid[i] for i in ci]
-            chunks.append((ci, ck, bg_sol, T_span_bg, end_idx,
-                           k_start_factor, ms_steps, model, use_numba, ms_method))
-
-        done_count = 0
-        pool = executor if executor is not None else ProcessPoolExecutor(max_workers=n_actual)
+    if backend == 'fortran':
+        from fortran_ms_solver import fortran_run_ms_grid
         try:
-            futures = {pool.submit(_compute_mode_batch, c): c[0][0] for c in chunks}
-            for future in as_completed(futures):
-                for idx, ps, pt, si, err in future.result():
-                    done_count += 1
-                    record_result(idx, ps, pt, si, err)
-                if done_count % checkpoint_interval == 0:
-                    elapsed = time.time() - t_start_all
-                    rate = done_count / max(elapsed, 0.01)
-                    eta = (n_modes - done_count) / rate
-                    print(f"    {done_count}/{n_modes} modes  "
-                          f"[{elapsed:.0f}s<{eta:.0f}s, {rate:.1f}mode/s]",
-                          flush=True)
-                    save_checkpoint(done_count)
-        finally:
-            if executor is None:
-                pool.shutdown()
+            P_S_raw, P_T_raw, start_indices = fortran_run_ms_grid(
+                bg_sol, T_span_bg, end_idx, k_code_grid, model,
+                k_start_factor=k_start_factor
+            )
+            failed_modes = []
+            errors = []
+            for idx in range(n_modes):
+                ps = P_S_raw[idx]
+                if not (np.isfinite(ps) and ps > 0):
+                    failed_modes.append(idx)
+                    errors.append(f"mode {idx} (k={k_code_grid[idx]:.4e}): non-finite P_S={ps}")
+        except Exception as e:
+            print(f"Fortran execution failed: {e}")
+            raise e
     else:
-        try:
-            from tqdm import tqdm
-            iterator = tqdm(enumerate(k_code_grid), total=n_modes,
-                            desc="  k-modes", unit="mode",
-                            mininterval=1.0)  # 1s update for SSH
-        except ImportError:
-            iterator = enumerate(k_code_grid)
-            print(f"  Computing {n_modes} k-modes (serial)...", flush=True)
-
-        for idx, k_code in iterator:
-            ps, pt, si, err = _solve_one_mode_fast(idx, k_code)
-            record_result(idx, ps, pt, si, err)
+        use_numba_parallel_success = False
+        if use_numba and n_workers > 1:
+            print(f"  Computing {n_modes} k-modes using Numba parallel grid solver...")
             try:
-                save_checkpoint(idx + 1)
-            except Exception:
-                pass
+                P_S_arr, P_T_arr, start_idx_arr = numba_run_ms_grid(
+                    bg_sol, T_span_bg, end_idx, k_code_grid, model,
+                    k_start_factor=k_start_factor, bg_coefs=bg_coefs, method=ms_method
+                )
+                for idx in range(n_modes):
+                    record_result(idx, P_S_arr[idx], P_T_arr[idx], start_idx_arr[idx], None)
+                use_numba_parallel_success = True
+            except Exception as e:
+                print(f"  Numba parallel solver failed: {e}. Falling back to multiprocessing pool...")
+                use_numba_parallel_success = False
+
+        if not use_numba_parallel_success:
+            if n_workers > 1:
+                from concurrent.futures import ProcessPoolExecutor, as_completed
+                import multiprocessing
+                n_actual = min(n_workers, n_modes, multiprocessing.cpu_count())
+                print(f"  Computing {n_modes} k-modes on {n_actual} workers...")
+
+                # Batch: one IPC round-trip per worker instead of per mode
+                indices = list(range(n_modes))
+                chunks = []
+                for w in range(n_actual):
+                    ci = indices[w::n_actual]
+                    ck = [k_code_grid[i] for i in ci]
+                    chunks.append((ci, ck, bg_sol, T_span_bg, end_idx,
+                                   k_start_factor, ms_steps, model, use_numba, ms_method))
+
+                done_count = 0
+                pool = executor if executor is not None else ProcessPoolExecutor(max_workers=n_actual)
+                try:
+                    futures = {pool.submit(_compute_mode_batch, c): c[0][0] for c in chunks}
+                    for future in as_completed(futures):
+                        for idx, ps, pt, si, err in future.result():
+                            done_count += 1
+                            record_result(idx, ps, pt, si, err)
+                        if done_count % checkpoint_interval == 0:
+                            elapsed = time.time() - t_start_all
+                            rate = done_count / max(elapsed, 0.01)
+                            eta = (n_modes - done_count) / rate
+                            print(f"    {done_count}/{n_modes} modes  "
+                                  f"[{elapsed:.0f}s<{eta:.0f}s, {rate:.1f}mode/s]",
+                                  flush=True)
+                            save_checkpoint(done_count)
+                finally:
+                    if executor is None:
+                        pool.shutdown()
+            else:
+                try:
+                    from tqdm import tqdm
+                    iterator = tqdm(enumerate(k_code_grid), total=n_modes,
+                                    desc="  k-modes", unit="mode",
+                                    mininterval=1.0)  # 1s update for SSH
+                except ImportError:
+                    iterator = enumerate(k_code_grid)
+                    print(f"  Computing {n_modes} k-modes (serial)...", flush=True)
+
+                for idx, k_code in iterator:
+                    ps, pt, si, err = _solve_one_mode_fast(idx, k_code)
+                    record_result(idx, ps, pt, si, err)
+                    try:
+                        save_checkpoint(idx + 1)
+                    except Exception:
+                        pass
 
     elapsed = time.time() - t_start_all
     n_ok = n_modes - len(failed_modes)
@@ -674,12 +738,15 @@ def parse_args():
                         help="dense sampling in USR zone 1e-4..1e-2")
     parser.add_argument("--n-dense", type=int, default=None, help="k-modes in dense zone")
     parser.add_argument("--n-outer", type=int, default=None, help="k-modes outside dense zone")
+
     parser.add_argument("--normalize-to-As", action="store_true", default=None)
     parser.add_argument("--As", type=float, default=None)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--no-save", action="store_true")
     parser.add_argument("--no-plot", action="store_true", default=None,
                         help="Skip auto-plotting P_S(k)")
+    parser.add_argument("--backend", default=None, choices=["numba", "fortran"],
+                        help="Solver backend (numba or fortran)")
     return parser.parse_args()
 
 
@@ -714,6 +781,13 @@ def main():
     pipe_cfg = config.get("pipeline", {}) if config else {}
     phi0 = args.phi0 if args.phi0 is not None else (config.get("ics", {}).get("phi0") if config else None)
     y0 = args.y0 if args.y0 is not None else (config.get("ics", {}).get("y0") if config else None)
+
+    # Convert Jordan frame phi0 to chi0 for Ezquiaga model
+    if "Ezquiaga" in model.name and phi0 is not None:
+        x_jordan = phi0 / model.mu
+        chi0 = float(model._chi_spline(x_jordan))
+        print(f"  --phi0={phi0} M_P → x={x_jordan:.4f} → chi0={chi0:.4f}")
+        model.x0 = chi0
     N_star = _resolve("N_star", args.N_star, config) or N_star_default
     k_min = _resolve("k_min", args.k_min, config) or 1e-5
     k_max = _resolve("k_max", args.k_max, config) or 1.0
@@ -721,7 +795,11 @@ def main():
     use_weighted = _resolve_bool("use_weighted", args.use_weighted, config)
     n_dense = _resolve("n_dense", args.n_dense, config) or 120
     n_outer = _resolve("n_outer", args.n_outer, config) or 60
+    dense_min = _resolve("dense_min", None, config) or 1e-4
+    dense_max = _resolve("dense_max", None, config) or 1e-2
     n_cores = _resolve("n_cores", args.n_cores, config)
+    if n_cores is None:
+        n_cores = _resolve("n_cores", args.n_workers, config)
     n_workers = n_cores if n_cores is not None else 1
     normalize_to_As = _resolve_bool("normalize_to_As", args.normalize_to_As, config)
     As_target = _resolve("As", args.As, config) or As
@@ -730,11 +808,13 @@ def main():
     ms_steps = _resolve("ms_steps", args.ms_steps, config) or 5000
     output_dir = _resolve("output_dir", args.output_dir, config) or "outputs/simulations/pspectra"
     k_start_factor = _resolve("k_start_factor", args.k_start_factor, config) or 100.0
+    backend = _resolve("backend", args.backend, config) or "numba"
 
     k_grid = None
     if use_weighted:
         k_grid = build_weighted_kgrid(
-            k_min, k_max, k_pivot_phys,
+            k_min, k_max, k_pivot_phys or k_pivot_phys,
+            dense_min=dense_min, dense_max=dense_max,
             n_dense=n_dense, n_outer=n_outer,
         )
 
@@ -758,6 +838,7 @@ def main():
         As=As_target,
         output_dir=output_dir,
         save_outputs=not args.no_save,
+        backend=backend,
     )
 
     if result["status"] != "success":
@@ -783,6 +864,7 @@ def main():
         plot_ezquiaga_diagnostics(
             model, result["bg_sol"], result["derived_bg"],
             result["end_idx"], float(meta["x0"]),
+            N_star=float(meta["N_star"]),
         )
 
 

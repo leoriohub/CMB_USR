@@ -1,0 +1,12 @@
+{
+  "x_c_lo": 0.785,
+  "x_c_hi": 0.790,
+  "n_xc": 6,
+  "beta_vals": [3e-5, 5e-5, 7e-5, 1e-4, 1.5e-4],
+  "N_star_vals": [50, 55, 60, 65],
+  "zeta_c_vals": [0.05, 0.055, 0.06, 0.065, 0.068, 0.07, 0.072, 0.075, 0.077, 0.078, 0.08, 0.083, 0.085, 0.1],
+  "target": "subsolar",
+  "workers": 8,
+  "no_plot": true,
+  "log": "outputs/simulations/logs/sweep_ns_mass_balance.jsonl"
+}
