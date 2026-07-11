@@ -21,8 +21,10 @@ class HiggsModel(InflationModel):
 
         # Inflation ends at T ~ 472 for xi=15000 (SR), but USR configs
         # with small y0 need longer integration (up to ~1500).
+        # bg_steps set to 50000 to resolve the USR dip in the P_S(k) spline
+        # interpolation — cost is negligible (~3ms) since odeint is adaptive.
         self.T_max = 2000.0
-        self.bg_steps = 1000
+        self.bg_steps = 50000
 
     def f(self, x):
         return (1 - np.exp(-self.alpha * x))**2
