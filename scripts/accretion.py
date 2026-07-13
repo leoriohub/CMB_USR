@@ -12,7 +12,7 @@ from typing import Final, TypedDict
 
 from scripts.constants import (
     CAMB_COSMOLOGY, T_cmb, ACCRETION,
-    G, M_SUN, MPC_CM, K_B, M_P, KM_PER_S, C_LIGHT, SIGMA_SB, A_R, GAMMA_B, MU, N_EFF
+    G, M_SUN, MPC_CM, K_B, M_P, KM_PER_S, C_LIGHT, A_R, GAMMA_B, MU, N_EFF
 )
 
 DEFAULT_COSMOLOGY: Final[dict[str, float]] = {
@@ -287,12 +287,16 @@ class ChisholmAccretion(PBHAccretion):
     ) -> tuple[np.ndarray, np.ndarray]:
         if M_form <= 0.0:
             raise PBHAccretionError(f'M_form must be > 0, got {M_form}')
+        if n_steps <= 2:
+            raise PBHAccretionError(f'n_steps must be > 2, got {n_steps}')
         if z_form is None:
             z_form = 3400.0
-        if z_final == 0.0:
-            return (np.array([M_form, M_form * self._CHISHOLM_FACTOR]),
-                    np.array([z_form, 0.0]))
-        return (np.array([M_form, M_form]), np.array([z_form, z_final]))
+        z_span = np.linspace(z_form, z_final, n_steps)
+        M_hist = np.array([
+            M_form * self._CHISHOLM_FACTOR if np.isclose(zi, 0.0) else M_form
+            for zi in z_span
+        ])
+        return M_hist, z_span
 
     def mass_growth_factor(self, M_form: float, z_obs: float,
                            z_form: float | None = None) -> float:
@@ -390,15 +394,8 @@ class EddingtonAccretion(PBHAccretion):
         M_val = M.item() if hasattr(M, 'item') else float(M)
         z_val = z.item() if hasattr(z, 'item') else float(z)
 
-        cosmo = _cosmology_arrays(np.array([z_val]), self._cosmology)
-        rho_gas = float(cosmo['rho_gas'][0])
-        c_s = float(cosmo['c_s'][0])
-        v_pbh = float(cosmo['v_PBH'][0])
-        v_eff = float(np.sqrt(c_s**2 + v_pbh**2))
-        M_bhl = (
-            4.0 * np.pi * self._lambda * G**2 * (M_val * M_SUN)**2
-            * rho_gas / v_eff**3
-        )
+        # Call parent BHL accretion rate directly
+        M_bhl = super().accretion_rate(M_val, z_val)
 
         # Halo density enhancement (mass-dependent)
         boost = self._f_boost * (M_val / self._M_pivot) ** self._boost_index
@@ -471,8 +468,11 @@ class MergerAccretion(PBHAccretion):
     ) -> float:
         if M_form <= 0.0:
             raise PBHAccretionError(f'M_form must be > 0, got {M_form}')
-        # Merger growth is instantaneous at formation and persists to z=0
-        return M_form * self.growth_factor(M_form)
+        if z_form is None:
+            z_form = 3400.0
+        if z_obs >= z_form:
+            return M_form
+        return M_form * self.mass_growth_factor(M_form, z_obs, z_form)
 
     def evolve(  # noqa: PLR0913
         self, M_form: float, z_form: float | None = None,
@@ -480,14 +480,16 @@ class MergerAccretion(PBHAccretion):
     ) -> tuple[np.ndarray, np.ndarray]:
         if M_form <= 0.0:
             raise PBHAccretionError(f'M_form must be > 0, got {M_form}')
+        if n_steps <= 2:
+            raise PBHAccretionError(f'n_steps must be > 2, got {n_steps}')
         if z_form is None:
             z_form = 3400.0
-        M_merged = M_form * self.growth_factor(M_form)
-        if z_final < z_form:
-            return (np.full(n_steps, M_merged),
-                    np.linspace(z_form, z_final, n_steps))
-        return (np.full(n_steps, M_form),
-                np.linspace(z_form, z_final, n_steps))
+        z_span = np.linspace(z_form, z_final, n_steps)
+        M_hist = np.array([
+            M_form * self.mass_growth_factor(M_form, zi, z_form)
+            for zi in z_span
+        ])
+        return M_hist, z_span
 
     def mass_growth_factor(self, M_form: float, z_obs: float,
                            z_form: float | None = None) -> float:

@@ -183,14 +183,14 @@ class TestChisholmAccretion:
     def test_Chisholm_evolve(self) -> None:
         """Chisholm evolve(1e-10, z_form=3000) → M_final = 3e-3 (sub-solar)."""
         acc = ChisholmAccretion()
-        M_hist, z_hist = acc.evolve(1e-10, z_form=3000.0)
+        M_hist, z_hist = acc.evolve(1e-10, z_form=3000.0, n_steps=100)
 
         # Final mass = M_form × 3×10⁷ = 1e-10 × 3e7 = 3e-3
         assert M_hist[-1] == pytest.approx(3e-3)
         assert z_hist[-1] == pytest.approx(0.0)
 
-        # Two-element output at z_final=0: [M_form, M_form × factor]
-        assert len(M_hist) == 2
+        # Respects n_steps grid
+        assert len(M_hist) == 100
         assert M_hist[0] == pytest.approx(1e-10)
 
     def test_mass_growth_factor(self) -> None:
@@ -211,7 +211,7 @@ class TestChisholmAccretion:
         assert z_hist[-1] == pytest.approx(100.0)
 
     def test_Chisholm_validation(self) -> None:
-        """Chisholm raises PBHAccretionError for non-positive M_form."""
+        """Chisholm raises PBHAccretionError for invalid inputs."""
         acc = ChisholmAccretion()
         with pytest.raises(PBHAccretionError, match="M_form"):
             acc.M_of_redshift(M_form=0.0, z_obs=0.0)
@@ -219,6 +219,8 @@ class TestChisholmAccretion:
             acc.M_of_redshift(M_form=-5.0, z_obs=0.0)
         with pytest.raises(PBHAccretionError, match="M_form"):
             acc.evolve(M_form=0.0)
+        with pytest.raises(PBHAccretionError, match="n_steps"):
+            acc.evolve(M_form=1.0, n_steps=2)
 
 
 # ── Eddington-limited accretion ───────────────────────────────────────────────
@@ -348,14 +350,20 @@ class TestMergerAccretion:
             MergerAccretion(A=-1.0)
         with pytest.raises(PBHAccretionError, match="gamma must"):
             MergerAccretion(gamma=-1.0)
+        with pytest.raises(PBHAccretionError, match="n_steps"):
+            MergerAccretion().evolve(M_form=1.0, n_steps=2)
 
     def test_merger_evolve(self) -> None:
-        """evolve returns constant merged mass across all redshifts."""
+        """evolve respects z_cutoff and tracks mass transition correctly."""
         m = MergerAccretion(A=0.5, gamma=0.5)
-        M_hist, z_hist = m.evolve(M_form=100.0, n_steps=20)
+        M_hist, z_hist = m.evolve(M_form=100.0, n_steps=100)
         expected = 100.0 * m.growth_factor(100.0)
-        assert np.allclose(M_hist, expected)
-        assert len(z_hist) == 20
+        
+        # At early times (z >= 10.0), no mergers should have occurred
+        assert M_hist[0] == pytest.approx(100.0)
+        # At late times (z = 0.0), full merger growth is applied
+        assert M_hist[-1] == pytest.approx(expected)
+        assert len(z_hist) == 100
 
     def test_merger_mass_growth_factor(self) -> None:
         """mass_growth_factor at z=0 equals growth_factor(M_form)."""
