@@ -670,7 +670,7 @@ def _compaction_chunk(args: tuple) -> tuple:
          M_pbh_chunk, beta_f_chunk)
     """
     (k_full, P_S_full, k_inds, r_profile, ln_k, w,
-     zeta_c, gamma, epoch) = args
+     zeta_c, gamma, epoch, beta_f_method) = args
 
     chunk_size = len(k_inds)
     C_max_c = np.empty(chunk_size)
@@ -712,7 +712,10 @@ def _compaction_chunk(args: tuple) -> tuple:
             M_pbh_c[j] = 0.0
 
         # 6. formation fraction via Gaussian approximation
-        sigma_C = np.sqrt(P_S_full[idx])
+        if beta_f_method == "sigma0":
+            sigma_C = np.sqrt(sigma0_sq)
+        else:
+            sigma_C = np.sqrt(P_S_full[idx])
         beta_f_c[j] = erfc(C_c / (np.sqrt(2.0) * sigma_C))
 
     return (C_max_c, alpha_c, C_c_c, M_H_c, M_pbh_c, beta_f_c, sigma0_sq)
@@ -916,7 +919,10 @@ def beta_f_compaction(
                 M_pbh[i] = 0.0
 
             # 6. formation fraction
-            sigma_C = np.sqrt(P_S_k[i])
+            if beta_f_method == "sigma0":
+                sigma_C = np.sqrt(sigma0_sq)
+            else:
+                sigma_C = np.sqrt(P_S_k[i])
             beta_f[i] = erfc(C_c / (np.sqrt(2.0) * sigma_C))
 
         meta = {
@@ -933,7 +939,7 @@ def beta_f_compaction(
     chunks = [c for c in chunks if len(c) > 0]
 
     args_list = [
-        (k_arr, P_S_k, chunk, r_profile, ln_k, w, zeta_c, gamma, epoch)
+        (k_arr, P_S_k, chunk, r_profile, ln_k, w, zeta_c, gamma, epoch, beta_f_method)
         for chunk in chunks
     ]
 
