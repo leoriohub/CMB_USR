@@ -10,6 +10,8 @@ import numpy as np
 from scipy.integrate import solve_ivp
 from typing import Final, TypedDict
 
+from scripts.constants import CAMB_COSMOLOGY, T_cmb, ACCRETION
+
 # ── Physical constants (cgs) ──────────────────────────────────────────────
 
 G: Final[float] = 6.67430e-8
@@ -26,7 +28,10 @@ MU: Final[float] = 1.22
 N_EFF: Final[float] = 3.046
 
 DEFAULT_COSMOLOGY: Final[dict[str, float]] = {
-    'H0': 67.66, 'ombh2': 0.02242, 'omch2': 0.11933, 'T_cmb': 2.725,
+    'H0': CAMB_COSMOLOGY['H0'],
+    'ombh2': CAMB_COSMOLOGY['ombh2'],
+    'omch2': CAMB_COSMOLOGY['omch2'],
+    'T_cmb': T_cmb,
 }
 
 
@@ -279,7 +284,7 @@ class ChisholmAccretion(PBHAccretion):
     At z=0 mass is multiplied by 3×10⁷; elsewhere no growth.
     """
 
-    _CHISHOLM_FACTOR: Final[float] = 3.0e7
+    _CHISHOLM_FACTOR: Final[float] = ACCRETION
 
     def M_of_redshift(  # noqa: PLR0913
         self, M_form: float, z_obs: float, z_form: float | None = None,
