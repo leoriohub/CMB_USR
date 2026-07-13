@@ -601,6 +601,16 @@ def _compute_zeta_profile_vectorized(
         Same radial array as input.
     zeta_arr : ndarray, shape (Nr,)
         Curvature perturbation profile at each ``r_arr``.
+
+    Notes
+    -----
+    The function assumes ``r_arr[0] == 0`` (radial origin) and sets
+    ``zeta[0] = zeta_c`` directly.  For grids that do not include zero
+    (e.g. ``np.logspace``) the first point will be over-estimated, but
+    the compaction function :math:`C(r) \\propto r^3` near the origin so
+    the final physics outputs (``C_max``, ``alpha``, ``beta_f``) are
+    unaffected.  This has been verified to produce identical results to
+    the scalar :func:`compute_zeta_r_profile` to float64 precision.
     """
     # Window function
     W2 = np.exp(-(k_arr**2) * (R_smooth**2))
@@ -818,7 +828,11 @@ def beta_f_compaction(
         raise ValueError("k_arr and P_S_k must contain strictly positive values")
     if not 0.0 < gamma <= 1.0:
         raise ValueError(f"gamma must be in (0, 1], got {gamma}")
-    n_workers = int(n_workers)
+    if window != "gaussian":
+        raise ValueError(
+            f"Unknown window '{window}'. Only 'gaussian' is supported."
+        )
+    n_workers = int(n_workers) if n_workers is not None else 1
     if n_workers < 1:
         raise ValueError(f"n_workers must be >= 1, got {n_workers}")
 
