@@ -663,7 +663,8 @@ def _compaction_chunk(args: tuple) -> tuple:
     Parameters
     ----------
     args : tuple
-        (k_full, P_S_full, k_inds, r_profile, ln_k, w, zeta_c, gamma, epoch)
+        (k_full, P_S_full, k_inds, r_profile, ln_k, w, zeta_c, gamma,
+         epoch, beta_f_method)
 
     Returns
     -------
@@ -871,7 +872,7 @@ def beta_f_compaction(
     w = _simpson_weights(ln_k)
 
     # --- profile radial grid (log-spaced for adequate resolution) ---
-    r_profile = np.logspace(-3.0, 1.5, 500)
+    r_profile = np.concatenate([[0.0], np.logspace(-3.0, 1.5, 499)])
 
     # --- set peak normalisation ---
     zeta_c: float = 1.0 if mu is None else float(mu)
