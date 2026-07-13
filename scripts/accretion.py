@@ -10,22 +10,10 @@ import numpy as np
 from scipy.integrate import solve_ivp
 from typing import Final, TypedDict
 
-from scripts.constants import CAMB_COSMOLOGY, T_cmb, ACCRETION
-
-# ── Physical constants (cgs) ──────────────────────────────────────────────
-
-G: Final[float] = 6.67430e-8
-M_SUN: Final[float] = 1.98892e33
-MPC_CM: Final[float] = 3.085677581e24
-K_B: Final[float] = 1.380649e-16  # erg/K
-M_P: Final[float] = 1.6735575e-24
-KM_PER_S: Final[float] = 1.0e5
-C_LIGHT: Final[float] = 2.99792458e10
-SIGMA_SB: Final[float] = 5.670374419e-5
-A_R: Final[float] = 4.0 * SIGMA_SB / C_LIGHT  # erg/cm³/K⁴
-GAMMA_B: Final[float] = 5.0 / 3.0
-MU: Final[float] = 1.22
-N_EFF: Final[float] = 3.046
+from scripts.constants import (
+    CAMB_COSMOLOGY, T_cmb, ACCRETION,
+    G, M_SUN, MPC_CM, K_B, M_P, KM_PER_S, C_LIGHT, SIGMA_SB, A_R, GAMMA_B, MU, N_EFF
+)
 
 DEFAULT_COSMOLOGY: Final[dict[str, float]] = {
     'H0': CAMB_COSMOLOGY['H0'],
