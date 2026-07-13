@@ -57,7 +57,9 @@ def _bench_scalar_zeta_profile(
     from scripts.compaction import compute_zeta_r_profile
 
     n_modes = len(k_modes)
-    n_runs = min(20, max(3, 2000 // n_modes))
+    # Cap total runs to ~5s worth of computation
+    n_runs = max(1, min(5, 500 // (n_modes * 30)))  # ~30ms/mode for scalar
+    n_runs = max(1, n_runs)
     t0 = time.perf_counter()
     for _ in range(n_runs):
         for ki in k_modes:
@@ -82,7 +84,9 @@ def _bench_vectorized_zeta_profile(
     from scripts.compaction import _compute_zeta_profile_vectorized
 
     n_modes = len(k_modes)
-    n_runs = min(50, max(3, 5000 // n_modes))
+    # Cap total runs to ~3s worth of computation  
+    n_runs = max(1, min(10, 300 // (n_modes * 15)))  # ~15ms/mode for vectorized
+    n_runs = max(1, n_runs)
     t0 = time.perf_counter()
     for _ in range(n_runs):
         for ki in k_modes:
