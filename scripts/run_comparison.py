@@ -41,7 +41,7 @@ import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from scripts.accretion import ChisholmAccretion, EddingtonAccretion, PBHAccretion, PR_Accretion
 from scripts.full_pbh_pipeline import beta_equality, beta_f_press_schechter, mass_from_k
-from scripts.compaction import compute_C_profile, compute_zeta_r_profile, C_critical
+from scripts.compaction import beta_f_compaction
 from scripts.constraint_mapping import (
     BOUND_REGISTRY, load_bound_dataset, map_constraint_to_present,
 )
@@ -75,22 +75,18 @@ print(f"PS: {len(Mf_ps)} modes, M ∈ [{Mf_ps.min():.2e}, {Mf_ps.max():.2e}]")
 # ── Pre-compute Compaction formation ──────────────────────────────────
 print("Compaction metrics ...", flush=True)
 t0 = time.time()
-_K, _GC, r_pf = 4.0, 0.36, np.logspace(-3, 1.5, 200)
-Mf_cp, fp_cp = np.zeros(len(k_phys)), np.zeros(len(k_phys))
-for i in range(0, len(k_phys), 5):
-    ki = k_phys[i]
-    _, zr = compute_zeta_r_profile(k_phys, P_S, r_pf, R_smooth=1.0/ki)
-    cr = compute_C_profile(r_pf, zr)
-    C_c = C_critical(cr["alpha"])
-    if cr["C_max"] > C_c:
-        MH = GAMMA * M_EQ * (K_EQ / ki) ** 2
-        Mf_cp[i] = _K * MH * (cr["C_max"] - C_c) ** _GC
-        beta_i = beta_f_press_schechter(np.array([P_S[i]]), zeta_c=C_c)
-        fp_cp[i] = f_pbh_from_beta(beta_i, ki)[0]
+subsample = slice(None, None, 5)
+k_sub = k_phys[subsample]
+ps_sub = P_S[subsample]
+beta_cp, Mf_cp, _ = beta_f_compaction(k_sub, ps_sub, beta_f_method="sigma0")
+fp_cp = beta_equality(beta_cp, k_sub, K_EQ)
 ok_cp = (Mf_cp > 0) & (fp_cp > 0) & (fp_cp <= 1)
-Mf_cp, fp_cp, k_cp = Mf_cp[ok_cp], fp_cp[ok_cp], k_phys[ok_cp]
-print(f"Compaction: {len(Mf_cp)} modes, M ∈ [{Mf_cp.min():.2e}, {Mf_cp.max():.2e}] "
-      f"({time.time()-t0:.1f}s)")
+Mf_cp, fp_cp, k_cp = Mf_cp[ok_cp], fp_cp[ok_cp], k_sub[ok_cp]
+if len(Mf_cp):
+    print(f"Compaction: {len(Mf_cp)} modes, M ∈ [{Mf_cp.min():.2e}, {Mf_cp.max():.2e}] "
+          f"({time.time()-t0:.1f}s)")
+else:
+    print(f"Compaction: 0 modes — no collapsing profiles ({time.time()-t0:.1f}s)")
 
 # ── Plot ──────────────────────────────────────────────────────────────
 from scripts.plotting import TOL, PAPER_RCPARAMS, get_path, save_fig
