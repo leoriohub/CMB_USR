@@ -861,6 +861,7 @@ def beta_f_compaction(
 
     if n_workers == 1:
         # --- Serial path (no multiprocessing overhead) ---
+        # Per-mode logic must match _compaction_chunk() (parallel path)
         beta_f = np.empty(n_k)
         M_pbh = np.empty(n_k)
         C_max_arr = np.empty(n_k)
