@@ -57,10 +57,10 @@ def _cosmology_arrays(z_arr: np.ndarray, cosmology: dict[str, float]) -> Cosmolo
     CosmologyArrays
         ``rho_gas``, ``c_s``, ``v_PBH``, ``H``, ``rho_crit``.
     """
-    H0 = cosmology.get('H0', 67.66)
-    ombh2 = cosmology.get('ombh2', 0.02242)
-    omch2 = cosmology.get('omch2', 0.11933)
-    T_cmb = cosmology.get('T_cmb', 2.725)
+    H0 = cosmology.get('H0', CAMB_COSMOLOGY['H0'])
+    ombh2 = cosmology.get('ombh2', CAMB_COSMOLOGY['ombh2'])
+    omch2 = cosmology.get('omch2', CAMB_COSMOLOGY['omch2'])
+    T_cmb_val = cosmology.get('T_cmb', T_cmb)
 
     h = H0 / 100.0
     H0_cgs = H0 * KM_PER_S / MPC_CM
@@ -68,14 +68,14 @@ def _cosmology_arrays(z_arr: np.ndarray, cosmology: dict[str, float]) -> Cosmolo
     Omega_b = ombh2 / h**2
 
     rho_crit_0 = 3.0 * H0_cgs**2 / (8.0 * np.pi * G)
-    Omega_gamma = (A_R * T_cmb**4 / C_LIGHT**2) / rho_crit_0
+    Omega_gamma = (A_R * T_cmb_val**4 / C_LIGHT**2) / rho_crit_0
     Omega_r = Omega_gamma * (1.0 + 0.2271 * N_EFF)
     Omega_L = 1.0 - Omega_m - Omega_r
 
     z = np.asarray(z_arr, dtype=np.float64)
     H_z = H0_cgs * np.sqrt(Omega_m * (1.0 + z)**3 + Omega_r * (1.0 + z)**4 + Omega_L)
     rho_gas = Omega_b * rho_crit_0 * (1.0 + z)**3
-    T_gas = T_cmb * (1.0 + z)
+    T_gas = T_cmb_val * (1.0 + z)
     c_s = np.sqrt(GAMMA_B * K_B * T_gas / (MU * M_P))
     v_PBH = 10.0 * (1.0 + z / 1000.0)**0.5 * KM_PER_S
 
