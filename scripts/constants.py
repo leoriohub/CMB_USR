@@ -29,6 +29,20 @@ ns_method_default = "lsq"  # n_s extraction: "lsq" (least-squares fit) or "sr" (
 r_ls = 14000.0  # Mpc, comoving distance to last scattering
 T_cmb = 2.7255  # K, CMB temperature
 
+# ── Physical constants (cgs) ──────────────────────────────────────────────
+G = 6.67430e-8
+M_SUN = 1.98892e33
+MPC_CM = 3.085677581e24
+K_B = 1.380649e-16  # erg/K
+M_P = 1.6735575e-24
+KM_PER_S = 1.0e5
+C_LIGHT = 2.99792458e10
+SIGMA_SB = 5.670374419e-5
+A_R = 4.0 * SIGMA_SB / C_LIGHT  # erg/cm³/K⁴
+GAMMA_B = 5.0 / 3.0
+MU = 1.22
+N_EFF = 3.046
+
 # ── Planck 2018 ΛCDM cosmology (TT+lowE best fit) ───────────────────────────
 # Used by CAMB for both ΛCDM baseline and custom P_S(k) C_ell computations.
 # Values from Aghanim et al. 2020, Table 2 (TT+lowE column).
