@@ -563,6 +563,72 @@ def compute_zeta_r_profile(
     return r_arr.copy(), zeta_arr
 
 
+def _compute_zeta_profile_vectorized(
+    ln_k: np.ndarray,
+    w: np.ndarray,
+    k_arr: np.ndarray,
+    P_S_k: np.ndarray,
+    r_arr: np.ndarray,
+    R_smooth: float,
+    zeta_c: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    r"""Radial curvature profile :math:`\zeta(r)` — vectorized evaluation.
+
+    Same physics as :func:`compute_zeta_r_profile` but evaluates all radial
+    points simultaneously via matrix operations rather than a Python for-loop.
+
+    Parameters
+    ----------
+    ln_k : ndarray, shape (Nk,)
+        Log-wavenumber grid.
+    w : ndarray, shape (Nk,)
+        Simpson integration weights (from :func:`_simpson_weights`).
+    k_arr : ndarray, shape (Nk,)
+        Wavenumbers.
+    P_S_k : ndarray, shape (Nk,)
+        Primordial scalar power spectrum.
+    r_arr : ndarray, shape (Nr,)
+        Radial coordinates (must include 0 as first element).
+    R_smooth : float
+        Smoothing radius.
+    zeta_c : float
+        Collapse threshold normalisation.
+
+    Returns
+    -------
+    r_arr : ndarray, shape (Nr,)
+        Same radial array as input.
+    zeta_arr : ndarray, shape (Nr,)
+        Curvature perturbation profile at each ``r_arr``.
+    """
+    # Window function
+    W2 = np.exp(-(k_arr**2) * (R_smooth**2))
+
+    # sigma0^2 = ∫ P_S(k) W^2(kR) d(ln k)
+    sigma0_sq = np.dot(P_S_k * W2, w)
+
+    zeta_arr = np.empty_like(r_arr)
+
+    # r = 0: zeta(0) = zeta_c  (since xi(0) = sigma0^2)
+    zeta_arr[0] = zeta_c
+
+    if len(r_arr) > 1:
+        # Vectorised sinc kernel: kr_matrix[i, j] = k_i * r_j  (r_j > 0)
+        kr_matrix = np.outer(k_arr, r_arr[1:])          # (Nk, Nr-1)
+        sinc_matrix = np.sinc(kr_matrix / np.pi)         # (Nk, Nr-1)
+
+        # integrand = P_S(k) * W^2(kR) * sinc(kr)
+        integrand = (P_S_k * W2)[:, None] * sinc_matrix  # (Nk, Nr-1)
+
+        # xi(r) = ∫ integrand d(ln k)  — one dot product per column
+        xi_vec = np.dot(w, integrand)                     # (Nr-1,)
+
+        # zeta(r) = zeta_c * xi(r) / sigma0^2
+        zeta_arr[1:] = zeta_c * xi_vec / sigma0_sq
+
+    return r_arr.copy(), zeta_arr
+
+
 # ---------------------------------------------------------------------------
 # PBH formation fraction via compaction function formalism
 # ---------------------------------------------------------------------------
