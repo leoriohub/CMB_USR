@@ -11,12 +11,16 @@ import warnings
 
 import numpy as np
 import pytest
+from scipy.integrate import simpson
 
 from scripts.compaction import (
     C_critical,
+    _compute_zeta_profile_vectorized,
+    _simpson_weights,
     beta_f_compaction,
     compute_C_profile,
     compute_zeta_r_profile,
+    timer,
 )
 
 # ===========================================================================
@@ -479,3 +483,127 @@ class TestBetaFCompaction:
         assert np.all(np.isfinite(M_pbh))
         for key in ("C_max_arr", "alpha_arr", "C_c_arr", "M_H_arr"):
             assert np.all(np.isfinite(meta[key]))
+
+    def test_parallel_workers_match_serial(self, power_law_ps) -> None:
+        """beta_f_compaction with n_workers > 1 matches n_workers=1."""
+        k, ps = power_law_ps
+        b1, m1, meta1 = beta_f_compaction(k, ps, n_workers=1)
+        b2, m2, meta2 = beta_f_compaction(k, ps, n_workers=2)
+        b4, m4, meta4 = beta_f_compaction(k, ps, n_workers=4)
+        assert np.allclose(b1, b2, rtol=1e-12)
+        assert np.allclose(b1, b4, rtol=1e-12)
+        assert np.allclose(m1, m2, rtol=1e-12, atol=1e-30)
+        assert np.allclose(meta1["C_max_arr"], meta2["C_max_arr"], rtol=1e-12)
+        assert np.allclose(meta1["C_max_arr"], meta4["C_max_arr"], rtol=1e-12)
+
+    def test_nworkers_none_defaults_to_one(self, power_law_ps) -> None:
+        """n_workers=None is accepted and behaves like n_workers=1."""
+        k, ps = power_law_ps
+        b1, m1, _ = beta_f_compaction(k, ps, n_workers=1)
+        bn, mn, _ = beta_f_compaction(k, ps, n_workers=None)
+        assert np.allclose(b1, bn, rtol=1e-12)
+
+    def test_nworkers_zero_raises(self, power_law_ps) -> None:
+        """n_workers=0 raises ValueError."""
+        k, ps = power_law_ps
+        with pytest.raises(ValueError, match="n_workers"):
+            beta_f_compaction(k, ps, n_workers=0)
+
+    def test_non_gaussian_window_raises(self, power_law_ps) -> None:
+        """Non-gaussian window raises ValueError in beta_f_compaction."""
+        k, ps = power_law_ps
+        with pytest.raises(ValueError, match="Unknown window"):
+            beta_f_compaction(k, ps, window="tophat")
+
+
+# ===========================================================================
+# _simpson_weights — precomputed Simpson integration weights
+# ===========================================================================
+
+
+class TestSimpsonWeights:
+    """Simpson integration weight precomputation."""
+
+    def test_uniform_grid_matches_scipy(self) -> None:
+        """Weights on uniform grid produce same integral as scipy."""
+        ln_k = np.linspace(0, 10, 101)
+        w = _simpson_weights(ln_k)
+        f = np.sin(ln_k)
+        assert np.dot(f, w) == pytest.approx(
+            simpson(f, x=ln_k), abs=1e-12
+        )
+
+    def test_nonuniform_grid_matches_scipy(self) -> None:
+        """Weights on non-uniform grid produce same integral as scipy."""
+        rng = np.random.default_rng(42)
+        ln_k = np.sort(rng.uniform(0, 10, 100))
+        w = _simpson_weights(ln_k)
+        f = np.exp(-0.5 * ln_k)
+        assert np.dot(f, w) == pytest.approx(
+            simpson(f, x=ln_k), abs=1e-12
+        )
+
+
+# ===========================================================================
+# _compute_zeta_profile_vectorized — vectorized profile evaluation
+# ===========================================================================
+
+
+class TestVectorizedZetaProfile:
+    """Vectorized zeta profile matches scalar version."""
+
+    @pytest.fixture
+    def setup(self) -> tuple:
+        """Standard test arrays."""
+        k = np.logspace(-4, 4, 500)
+        ps = 2.1e-9 * (k / 0.05) ** (0.965 - 1)
+        r = np.logspace(-3.0, 1.5, 500)
+        r_with_zero = np.concatenate([[0.0], r])
+        ln_k = np.log(k)
+        w = _simpson_weights(ln_k)
+        return k, ps, r_with_zero, ln_k, w
+
+    def test_vectorized_equals_scalar(self, setup) -> None:
+        """Vectorized and scalar zeta profiles match for all R_smooth."""
+        k, ps, r, ln_k, w = setup
+        for R_val in [0.1, 1.0, 10.0]:
+            _, z_s = compute_zeta_r_profile(k, ps, r, R_smooth=R_val)
+            _, z_v = _compute_zeta_profile_vectorized(
+                ln_k, w, k, ps, r, R_val, 1.0,
+            )
+            assert np.allclose(z_s, z_v, rtol=1e-12, atol=1e-15)
+
+    def test_center_value_equals_zeta_c(self) -> None:
+        """zeta(r=0) always equals zeta_c."""
+        k = np.logspace(-2, 2, 200)
+        ps = np.exp(-0.5 * (np.log(k) / 0.5) ** 2)
+        r = np.linspace(0, 10, 50)
+        ln_k = np.log(k)
+        w = _simpson_weights(ln_k)
+        for zeta_c in [0.5, 1.0, 2.0]:
+            _, zeta = _compute_zeta_profile_vectorized(
+                ln_k, w, k, ps, r, 1.0, zeta_c,
+            )
+            assert zeta[0] == pytest.approx(zeta_c, abs=1e-10)
+
+
+# ===========================================================================
+# timer — elapsed time context manager
+# ===========================================================================
+
+
+class TestTimer:
+    """Timer context manager prints elapsed time."""
+
+    def test_timer_context_manager(self) -> None:
+        """Timer works as context manager and prints time."""
+        import io
+        import time
+        buf = io.StringIO()
+        import contextlib
+        with contextlib.redirect_stdout(buf):
+            with timer("test"):
+                time.sleep(0.05)
+        output = buf.getvalue().strip()
+        assert "test" in output
+        assert "0.05" in output or "0.06" in output or "0.04" in output
