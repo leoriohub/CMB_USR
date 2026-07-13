@@ -22,6 +22,8 @@ import time
 
 import numpy as np
 
+from scripts.constants import gamma_default, k_eq_default, M_eq_default
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -116,9 +118,7 @@ def _bench_press_schechter(
     """Run Press-Schechter abundance once and return total time."""
     from scripts.full_pbh_pipeline import compute_pbh_abundance
 
-    gamma_default = 0.4
-    k_eq_default = 0.0104
-    M_eq_default = 3.0e17
+    # Defaults imported from scripts.constants
 
     t0 = time.perf_counter()
     compute_pbh_abundance(

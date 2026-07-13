@@ -9,7 +9,12 @@ Uses cached P_S(k) — no MS solver re-run.
 import json, os, sys, time
 import numpy as np
 
-GAMMA, K_EQ, M_EQ, ZETA_C = 0.4, 0.0104, 3.0e17, 0.077
+from scripts.constants import k_eq_default, M_eq_default, gamma_default
+
+GAMMA = gamma_default
+K_EQ = k_eq_default
+M_EQ = M_eq_default
+ZETA_C = 0.077
 
 # ── Load cached P_S(k) ──────────────────────────────────────────────────
 candidates = [

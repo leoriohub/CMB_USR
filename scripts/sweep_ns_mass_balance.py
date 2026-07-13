@@ -11,10 +11,12 @@ import time
 import argparse
 import numpy as np
 from scipy.special import erfc
-from scripts.constants import ROOT_DIR
+from scripts.constants import ROOT_DIR, k_eq_default, M_eq_default, gamma_default, ACCRETION
 from scripts.observables import extract_ns, interpolate_As, extract_pbh_peak
 
-ACCRETION = 3e7; K_EQ = 0.0104; M_EQ = 3.0e17; GAMMA = 0.4
+K_EQ = k_eq_default
+M_EQ = M_eq_default
+GAMMA = gamma_default
 C = 0.77
 
 ZETA_C_VALS = [0.05, 0.055, 0.06, 0.065, 0.068, 0.07, 0.072,
