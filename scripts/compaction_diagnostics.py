@@ -14,8 +14,10 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from scipy.special import erfc
 
 from scripts.compaction import beta_f_compaction
+from scripts.full_pbh_pipeline import beta_f_press_schechter
 from scripts.plotting import TOL, PAPER_RCPARAMS, get_path, save_fig
 
 
@@ -45,45 +47,75 @@ def compute_compaction_data(ps_path: str) -> dict:
     sigma0_all = np.interp(k_phys, k_sub, sigma0_sub)
     s2_all = sigma0_all ** 2
 
+    # Interpolate C_c to full k grid
+    C_c_sub = meta["C_c_arr"]
+    C_c_all = np.interp(k_phys, k_sub, C_c_sub)
+
+    # Formation fractions
+    ZETA_C = 0.077
+    beta_ps = beta_f_press_schechter(P_S, zeta_c=ZETA_C)
+    beta_comp = erfc(C_c_all / (np.sqrt(2.0) * sigma0_all))
+
     return {
         "k": k_phys, "ps": P_S, "k_sub": k_sub, "ps_sub": ps_sub,
         "s2_all": s2_all, "beta_f": beta_f, "M_pbh": M_pbh,
         "C_max": meta["C_max_arr"], "C_c": meta["C_c_arr"],
         "M_H": meta["M_H_arr"],
         "sigma0": np.sqrt(np.maximum(meta.get("sigma0_arr", np.zeros_like(beta_f)), 1e-300)),
+        "sigma0_all": sigma0_all,
+        "C_c_all": C_c_all,
+        "beta_ps": beta_ps,
+        "beta_comp": beta_comp,
     }
 
 
-# ── Plot 1: Smoothing penalty ────────────────────────────────────────────
+# ── Plot 1: β_PS vs β_comp comparison ────────────────────────────────────
 
 
-def plot_smoothing_penalty(data: dict, save_path: str) -> None:
-    """Log-log: P_S(k) vs σ₀²(R) showing smoothing suppression."""
-    k, ps = data["k"], data["ps"]
-    s2 = data["s2_all"]
-    sub_idx = np.arange(0, len(k), 5)
-    valid = (s2[sub_idx] > 0) & (ps[sub_idx] > 0)
-    ratio = np.where(valid, ps[sub_idx] / s2[sub_idx], 1.0)
-    mr = float(np.nanmax(ratio))
-    mr_k = float(k[sub_idx][np.argmax(ratio)])
+def plot_formation_comparison(data: dict, save_path: str) -> None:
+    """Semi-log: β_PS(k) vs β_comp(k) showing why compaction gives ≈0."""
+    k = data["k"]
+    beta_ps = data["beta_ps"]
+    beta_comp = data["beta_comp"]
+
+    # Find the peak of β_PS and the corresponding β_comp
+    peak_idx = int(np.argmax(beta_ps))
+    k_peak = k[peak_idx]
+    ps_val = beta_ps[peak_idx]
+    comp_val = beta_comp[peak_idx]
+    ratio_val = ps_val / max(comp_val, 1e-300)
+    log10_ratio = np.log10(ratio_val)
 
     with plt.rc_context(PAPER_RCPARAMS):
         fig, ax = plt.subplots(figsize=(3.5, 2.8))
-        ax.loglog(k, ps, "-", color=TOL["blue"], lw=0.8, alpha=0.7,
-                  label=r"$\mathcal{P}_{\mathcal{S}}(k)$", zorder=3)
-        ax.loglog(k, s2, "--", color=TOL["red"], lw=1.5,
-                  label=r"$\sigma_0^2(R)$", zorder=4)
-        ax.scatter(k[sub_idx], s2[sub_idx], s=6, color=TOL["red"], alpha=0.5, zorder=5)
+
+        ax.semilogy(k, beta_ps, "-", color=TOL["blue"], lw=1.0,
+                    label=r"$\beta_{\mathrm{PS}}(\zeta_c=0.077)$", zorder=3)
+        ax.semilogy(k, beta_comp, "--", color=TOL["red"], lw=1.0,
+                    label=r"$\beta_{\mathrm{comp}}(C_{\mathrm{c}}\approx 0.44)$", zorder=4)
+
+        # Observable threshold
+        ax.axhline(1e-10, color=TOL["grey"], ls="--", lw=0.8, zorder=2,
+                   label="Observable PBH threshold")
+
+        # CMB band
         ax.axvspan(3e-4, 0.1, alpha=0.06, color=TOL["grey"], zorder=0)
-        ax.annotate(rf"$\sigma_0^2$ suppression $\sim 10^{{{int(np.log10(mr))}}}\times$",
-                    xy=(mr_k, s2[sub_idx][np.argmax(ratio)]),
-                    xytext=(0.45, 0.65), textcoords="axes fraction",
-                    fontsize=6.5, color=TOL["dark"],
-                    arrowprops=dict(arrowstyle="->", color=TOL["dark"], lw=0.8))
+
+        # Annotation: ratio arrow from β_PS peak down to β_comp
+        ax.annotate(
+            rf"$\beta_{{\mathrm{{PS}}}}/\beta_{{\mathrm{{comp}}}} \sim 10^{{{log10_ratio:.0f}}}$",
+            xy=(k_peak, comp_val),
+            xytext=(k_peak * 2.5, ps_val * 0.3),
+            fontsize=6.5, color=TOL["dark"],
+            arrowprops=dict(arrowstyle="->", color=TOL["dark"], lw=0.8),
+            zorder=10,
+        )
+
         ax.set_xlabel(r"$k$ [Mpc$^{-1}$]")
-        ax.set_ylabel(r"$\mathcal{P}_{\mathcal{S}}(k)$ and $\sigma_0^2(R=1/k)$")
-        ax.legend(loc="lower left", fontsize=6.5)
+        ax.set_ylabel(r"$\beta$ (formation fraction)")
+        ax.set_xscale("log")
         ax.set_xlim(k.min(), k.max())
+        ax.legend(loc="upper right", fontsize=6.5)
         save_fig(fig, save_path)
 
 
@@ -148,7 +180,7 @@ def plot_collapse_barriers(data: dict, save_path: str) -> None:
 
 def main() -> None:
     data = compute_compaction_data("outputs/simulations/pspectra/ps_Ezquiaga_dense700.json")
-    plot_smoothing_penalty(data, get_path("diagnostics", "compaction_smoothing_penalty.png"))
+    plot_formation_comparison(data, get_path("diagnostics", "compaction_formation_comparison.png"))
     plot_collapse_barriers(data, get_path("diagnostics", "compaction_collapse_barriers.png"))
 
 
