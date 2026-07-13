@@ -901,7 +901,6 @@ def beta_f_compaction(
     chunks = np.array_split(all_inds, n_workers)
     # Filter out empty chunks
     chunks = [c for c in chunks if len(c) > 0]
-    n_chunks = len(chunks)
 
     args_list = [
         (k_arr, P_S_k, chunk, r_profile, ln_k, w, zeta_c, gamma, epoch)

@@ -419,11 +419,15 @@ def run_modern_pbh_pipeline(
             # Convert to equality-normalised DM fraction
             f_pbh = _f_pbh_from_beta(beta_f, k_phys)
 
-            # Apply accretion to each mode that collapsed
+            # Only apply accretion to modes with non-zero formation fraction.
+            # beta_f (Gaussian erfc) and M_pbh (critical scaling) use different
+            # thresholds; zero out masses where formation is negligible to avoid
+            # numerical overflow from unphysically large horizon masses.
+            M_pbh_ok = np.where(beta_f > 0, M_pbh_form, 0.0)
             M_present = np.array([
                 accretion.M_of_redshift(float(m), 0.0)
                 if m > 1e-300 else 0.0
-                for m in M_pbh_form
+                for m in M_pbh_ok
             ])
 
         # Filter finite / positive
