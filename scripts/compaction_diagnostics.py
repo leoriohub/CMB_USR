@@ -105,15 +105,19 @@ def plot_formation_comparison(data: dict, save_path: str) -> None:
         ax.annotate(
             rf"$\beta_{{\mathrm{{PS}}}}/\beta_{{\mathrm{{comp}}}} \sim 10^{{{log10_ratio:.0f}}}$",
             xy=(k_peak, comp_val),
-            xytext=(k_peak * 2.5, ps_val * 0.3),
-            fontsize=6.5, color=TOL["dark"],
+            xytext=(k_peak * 5, ps_val * 0.1),
+            fontsize=7, color=TOL["dark"],
             arrowprops=dict(arrowstyle="->", color=TOL["dark"], lw=0.8),
             zorder=10,
         )
 
+        ax.text(0.5, 0.05, r"$\beta_{\mathrm{comp}} \approx 0$ (astronomically rare)",
+                transform=ax.transAxes, fontsize=6, color=TOL["dark"], alpha=0.6,
+                ha="center", va="bottom")
         ax.set_xlabel(r"$k$ [Mpc$^{-1}$]")
         ax.set_ylabel(r"$\beta$ (formation fraction)")
         ax.set_xscale("log")
+        ax.set_ylim(1e-30, 1)
         ax.set_xlim(k.min(), k.max())
         ax.legend(loc="upper right", fontsize=6.5)
         save_fig(fig, save_path)
