@@ -601,6 +601,9 @@ def _compute_zeta_profile_vectorized(
         Same radial array as input.
     zeta_arr : ndarray, shape (Nr,)
         Curvature perturbation profile at each ``r_arr``.
+    sigma0_sq : float
+        Variance :math:`\\sigma_0^2(R)` of the smoothed density field at
+        the smoothing scale ``R_smooth``.
 
     Notes
     -----
@@ -637,7 +640,7 @@ def _compute_zeta_profile_vectorized(
         # zeta(r) = zeta_c * xi(r) / sigma0^2
         zeta_arr[1:] = zeta_c * xi_vec / sigma0_sq
 
-    return r_arr.copy(), zeta_arr
+    return r_arr.copy(), zeta_arr, sigma0_sq
 
 
 # ---------------------------------------------------------------------------
@@ -682,7 +685,7 @@ def _compaction_chunk(args: tuple) -> tuple:
         R = 1.0 / ki
 
         # 1. curvature profile at smoothing scale R (vectorized)
-        _, zeta_r = _compute_zeta_profile_vectorized(
+        _, zeta_r, sigma0_sq = _compute_zeta_profile_vectorized(
             ln_k, w, k_full, P_S_full, r_profile, R, zeta_c,
         )
 
@@ -712,7 +715,7 @@ def _compaction_chunk(args: tuple) -> tuple:
         sigma_C = np.sqrt(P_S_full[idx])
         beta_f_c[j] = erfc(C_c / (np.sqrt(2.0) * sigma_C))
 
-    return (C_max_c, alpha_c, C_c_c, M_H_c, M_pbh_c, beta_f_c)
+    return (C_max_c, alpha_c, C_c_c, M_H_c, M_pbh_c, beta_f_c, sigma0_sq)
 
 
 def beta_f_compaction(
@@ -723,6 +726,7 @@ def beta_f_compaction(
     window: str = "gaussian",
     epoch: str = "radiation",
     n_workers: int = 1,
+    beta_f_method: str = "sigma0",
 ) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray]]:
     r"""PBH formation fraction via compaction function formalism.
 
@@ -773,6 +777,12 @@ def beta_f_compaction(
         Number of parallel worker processes for k-mode evaluation
         (default ``1``).  Set > 1 to use
         :class:`~concurrent.futures.ProcessPoolExecutor`.  Must be >= 1.
+    beta_f_method : str, optional
+        Method for the erfc formation fraction calculation (default
+        ``"sigma0"``).  ``"sigma0"`` uses the smoothed variance
+        :math:`\\sigma_0(R = 1/k)` from the profile computation;
+        ``"ps"`` uses :math:`\\sqrt{\\mathcal{P}_\\mathcal{S}(k)}`
+        (the legacy approach).
 
     Returns
     -------
@@ -836,6 +846,11 @@ def beta_f_compaction(
     if n_workers < 1:
         raise ValueError(f"n_workers must be >= 1, got {n_workers}")
 
+    if beta_f_method not in ("sigma0", "ps"):
+        raise ValueError(
+            f"beta_f_method must be 'sigma0' or 'ps', got {beta_f_method!r}"
+        )
+
     n_k = len(k_arr)
     if n_k == 0:
         empty_meta: dict[str, np.ndarray] = {
@@ -874,7 +889,7 @@ def beta_f_compaction(
             R = 1.0 / ki
 
             # 1. curvature profile at smoothing scale R (vectorized)
-            _, zeta_r = _compute_zeta_profile_vectorized(
+            _, zeta_r, sigma0_sq = _compute_zeta_profile_vectorized(
                 ln_k, w, k_arr, P_S_k, r_profile, R, zeta_c,
             )
 
@@ -940,7 +955,7 @@ def beta_f_compaction(
             chunk_idx = fut_map[fut]
             chunk_inds = chunks[chunk_idx]
             (C_max_c, alpha_c, C_c_c, M_H_c,
-             M_pbh_c, beta_f_c) = fut.result()
+             M_pbh_c, beta_f_c, _) = fut.result()
 
             C_max_arr[chunk_inds] = C_max_c
             alpha_arr[chunk_inds] = alpha_c

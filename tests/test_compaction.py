@@ -568,7 +568,7 @@ class TestVectorizedZetaProfile:
         k, ps, r, ln_k, w = setup
         for R_val in [0.1, 1.0, 10.0]:
             _, z_s = compute_zeta_r_profile(k, ps, r, R_smooth=R_val)
-            _, z_v = _compute_zeta_profile_vectorized(
+            _, z_v, _ = _compute_zeta_profile_vectorized(
                 ln_k, w, k, ps, r, R_val, 1.0,
             )
             assert np.allclose(z_s, z_v, rtol=1e-12, atol=1e-15)
@@ -581,7 +581,7 @@ class TestVectorizedZetaProfile:
         ln_k = np.log(k)
         w = _simpson_weights(ln_k)
         for zeta_c in [0.5, 1.0, 2.0]:
-            _, zeta = _compute_zeta_profile_vectorized(
+            _, zeta, _ = _compute_zeta_profile_vectorized(
                 ln_k, w, k, ps, r, 1.0, zeta_c,
             )
             assert zeta[0] == pytest.approx(zeta_c, abs=1e-10)
