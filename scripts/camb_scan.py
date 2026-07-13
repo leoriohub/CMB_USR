@@ -25,13 +25,11 @@ from pspectrum_pipeline import (
 from scripts.camb_wrapper import compute_cl_camb_powerlaw, compute_cl_full_camb
 from scripts.planck_data import get_planck_data_asymmetric, C_ell_to_d_ell
 from scripts.optimizer_utils import find_k_dip, _write_log
-from scripts.constants import As, k_pivot_phys
+from scripts.constants import As, k_pivot_phys, T_cmb
 from scripts.plotting import get_path
 from scripts.chi2_analysis import chi2_model_lcdm
 from models import HiggsModel
 import inf_dyn_background as bg_solver
-
-T_cmb = 2.7255
 K_DIP_MIN = 5e-5
 K_DIP_MAX = 2.1e-3
 CHI2_LCDM = 20.47
