@@ -412,8 +412,9 @@ def run_modern_pbh_pipeline(
             from scripts.compaction import beta_f_compaction
             # mu = zeta_c — sets the profile normalisation for the
             # compaction function (peak height parameter)
+            nw = max(1, workers)
             beta_f, M_pbh_form, meta_comp = beta_f_compaction(
-                k_phys, P_S, gamma=gamma_default, mu=zc,
+                k_phys, P_S, gamma=gamma_default, mu=zc, n_workers=nw,
             )
             # Convert to equality-normalised DM fraction
             f_pbh = _f_pbh_from_beta(beta_f, k_phys)
@@ -576,7 +577,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--workers", type=int, default=8,
-        help="MS solver parallel workers (default: 8)",
+        help="Parallel workers for MS solver and compaction (default: 8)",
     )
     parser.add_argument(
         "--no-plot", action="store_true",
