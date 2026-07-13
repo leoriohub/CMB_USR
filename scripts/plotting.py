@@ -131,21 +131,124 @@ def save_fig(fig, filename, category="diagnostics", dpi=300):
     plt.close(fig)
 
 
-def make_filename(name, phi0=None, y0=None, nstar=None, ext=".json"):
+def make_filename(
+    name,
+    phi0=None,
+    y0=None,
+    nstar=None,
+    ext=".json",
+    formation=None,
+    accretion=None,
+    **extra,
+):
     """Generate standardized output filename.
 
-    Pattern: {name}_phi{phi0:.2f}_y0{y0:+.3f}_nstar{nstar:.1f}{ext}
+    Base pattern: {name}_phi{phi0:.2f}_y0{y0:+.3f}_nstar{nstar:.1f}{ext}
     If phi0 is None, returns {name}{ext} (for special files like camb_lcdm).
 
+    When *formation* and/or *accretion* are provided, a suffix
+    ``_{formation}_{accretion}`` is appended after ``nstar``.
+    When ``**extra`` has keys, additional ``_{key}{value}`` segments
+    are appended, e.g. ``_beta2e-05_zc0.077``.
+
     Examples:
-        make_filename("ps", 6.60, -0.736, 52.6)         → "ps_phi6.60_y0-0.736_nstar52.6.json"
-        make_filename("camb", 6.60, -0.736, 52.6)        → "camb_phi6.60_y0-0.736_nstar52.6.json"
-        make_filename("camb_lcdm")                        → "camb_lcdm.json"
-        make_filename("planck", 6.60, -0.736, 52.6, ".png") → "planck_phi6.60_y0-0.736_nstar52.6.png"
+        make_filename("ps", 6.60, -0.736, 52.6)                        → "ps_phi6.60_y0-0.736_nstar52.6.json"
+        make_filename("camb", 6.60, -0.736, 52.6)                       → "camb_phi6.60_y0-0.736_nstar52.6.json"
+        make_filename("camb_lcdm")                                       → "camb_lcdm.json"
+        make_filename("planck", 6.60, -0.736, 52.6, ".png")              → "planck_phi6.60_y0-0.736_nstar52.6.png"
+        make_filename("ps", 8.0, -1e-4, 72.0, formation="cmp", accretion="PR") → "ps_phi8.00_y0-0.000_nstar72.0_cmp_PR.json"
+        make_filename("ps", 8.0, -1e-4, 72.0, formation="cmp", accretion="PR", beta=2e-5, zc=0.077) → "ps_phi8.00_y0-0.000_nstar72.0_cmp_PR_beta2e-05_zc0.077.json"
     """
     if phi0 is not None:
-        return f"{name}_phi{phi0:.2f}_y0{y0:+.3f}_nstar{nstar:.1f}{ext}"
-    return f"{name}{ext}"
+        base = f"{name}_phi{phi0:.2f}_y0{y0:+.3f}_nstar{nstar:.1f}"
+    else:
+        base = name
+
+    if formation is not None or accretion is not None:
+        f_str = formation if formation else ""
+        a_str = accretion if accretion else ""
+        if f_str and a_str:
+            base = f"{base}_{f_str}_{a_str}"
+        elif f_str:
+            base = f"{base}_{f_str}"
+        elif a_str:
+            base = f"{base}_{a_str}"
+
+    for k, v in extra.items():
+        base = f"{base}_{k}{v}"
+
+    return f"{base}{ext}"
+
+
+# ── PBH filename helper ──────────────────────────────────────────────────
+
+_FORMATION_CODES: dict[str, str] = {
+    "compaction": "cmp",
+    "press_schechter": "psch",
+}
+_ACCRETION_CODES: dict[str, str] = {
+    "PR": "PR",
+    "BHL": "BHL",
+    "Eddington": "Edd",
+    "Chisholm": "Chs",
+    "Merger": "Mrg",
+}
+
+
+def make_pbh_filename(
+    name,
+    phi0,
+    y0,
+    nstar,
+    formation=None,
+    accretion=None,
+    ext=".png",
+    **extra,
+):
+    """PBH-specific filename with short code mapping.
+
+    Wraps :func:`make_filename` by mapping human-readable formation/accretion
+    names to their short codes (e.g. ``"compaction"`` → ``"cmp"``).
+
+    Parameters
+    ----------
+    name : str
+        File prefix (e.g. ``'pbh'``, ``'rank02'``).
+    phi0 : float
+        Initial field value.
+    y0 : float
+        Initial field velocity.
+    nstar : float
+        Number of e-folds.
+    formation : str or None
+        Formation model name (``'compaction'`` or ``'press_schechter'``).
+        Mapped to short code.  Unknown names pass through unchanged.
+    accretion : str or None
+        Accretion model name (``'PR'``, ``'BHL'``, ``'Eddington'``,
+        ``'Chisholm'``, ``'Merger'``).  Mapped to short code.
+        Unknown names pass through unchanged.
+    ext : str
+        File extension (default ``'.png'``).
+    **extra
+        Additional key-value pairs appended to the filename.
+
+    Returns
+    -------
+    str
+        Standardised PBH filename.
+    """
+    f_code = _FORMATION_CODES.get(formation, formation)
+    a_code = _ACCRETION_CODES.get(accretion, accretion)
+    return make_filename(
+        name,
+        phi0=phi0,
+        y0=y0,
+        nstar=nstar,
+        ext=ext,
+        formation=f_code,
+        accretion=a_code,
+        **extra,
+    )
 
 
 def find_ps(phi0, y0, nstar, tolerance=3.0):

@@ -341,7 +341,7 @@ def run_full_pbh_pipeline(
 
     # ── 7. Plot ─────────────────────────────────────────────────────────
     if plot and zeta_c_best is not None and len(M_best) > 0:
-        from scripts.plotting import plot_pbh_abundance
+        from scripts.plotting import plot_pbh_abundance, make_pbh_filename
 
         plot_pbh_abundance(
             M_best,
@@ -349,7 +349,11 @@ def run_full_pbh_pipeline(
             zeta_c=zeta_c_best,
             gamma=gamma_default,
             model_label=f"Ezquiaga CHI χ₀={chi0}, β={beta:.0e}, ζ_c={zeta_c_best}",
-            filename=f"pbh_chi{chi0}_beta{beta:.0e}_zc{zeta_c_best:.3f}",
+            filename=make_pbh_filename(
+                "pbh", chi0, y0, N_total,
+                formation="press_schechter", accretion="Chisholm",
+                beta=beta, zc=zeta_c_best,
+            ),
             category="pbh",
             use_old_bounds=use_old_bounds,
             smooth_bounds=smooth_bounds,
@@ -454,21 +458,26 @@ if __name__ == "__main__":
         print(f"ζ_c={zc:.4f}  f_total={ft:.4e}  M_peak={M:.4e}")
 
         if not args.no_plot and ft > 0:
-            from scripts.plotting import plot_pbh_abundance
+            from scripts.plotting import plot_pbh_abundance, make_pbh_filename
             tag = f"{args.tag}_" if args.tag else ""
-            pid = f"{tag}beta{args.beta:.1e}_Nstar{args.N_star:.0f}_zcz{zc:.4f}"
+            plot_name = args.tag if args.tag else "pbh"
+            pid = make_pbh_filename(
+                plot_name, args.chi0, args.y0, result["N_total"],
+                formation="press_schechter", accretion="Chisholm",
+                beta=args.beta, zc=zc,
+            )
             plot_pbh_abundance(
                 zc_data["M"], zc_data["f_pbh"],
                 zeta_c=zc, gamma=0.4,
                 model_label=f"β={args.beta:.1e}, N*={args.N_star:.0f}, ζ_c={zc:.4f} (f={ft:.3e})",
                 filename=pid, category="pbh",
             )
-            src = os.path.join(ROOT_DIR, "outputs/plots/pbh", pid + ".png")
-            dst = os.path.join(target_dir, pid + ".png")
+            src = os.path.join(ROOT_DIR, "outputs/plots/pbh", pid)
+            dst = os.path.join(target_dir, pid)
             if os.path.exists(src):
                 shutil.move(src, dst)
                 comp = {
-                    "plot_file": pid + ".png",
+                    "plot_file": pid,
                     "generated": datetime.now().isoformat(),
                     "pipeline": "full_pbh_pipeline CLI",
                     "config": {
