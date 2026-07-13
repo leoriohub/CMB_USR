@@ -15,11 +15,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from scripts.compaction import (
-    _compute_zeta_profile_vectorized,
-    _simpson_weights,
-    beta_f_compaction,
-)
+from scripts.compaction import beta_f_compaction
 from scripts.plotting import TOL, PAPER_RCPARAMS, get_path, save_fig
 
 
@@ -44,17 +40,10 @@ def compute_compaction_data(ps_path: str) -> dict:
     print("  Compaction (sigma0 method)...", flush=True)
     beta_f, M_pbh, meta = beta_f_compaction(k_sub, ps_sub, beta_f_method="sigma0")
 
-    print("  σ₀² for full k-grid...", flush=True)
-    ln_k = np.log(k_phys)
-    w = _simpson_weights(ln_k)
-    rp = np.concatenate([[0.0], np.logspace(-3.0, 1.5, 499)])
-    s2_all: np.ndarray = np.empty(len(k_phys))
-    for i in range(0, len(k_phys), 5):
-        _, _, s2 = _compute_zeta_profile_vectorized(ln_k, w, k_phys, P_S, rp, 1.0 / k_phys[i], 1.0)
-        s2_all[i] = s2
-    mask = s2_all > 0
-    if mask.sum() > 1:
-        s2_all = np.where(mask, s2_all, np.interp(k_phys, k_phys[mask], s2_all[mask]))
+    print("  σ₀² from compaction meta...", flush=True)
+    sigma0_sub = np.sqrt(np.maximum(meta.get("sigma0_arr", np.zeros_like(beta_f)), 1e-300))
+    sigma0_all = np.interp(k_phys, k_sub, sigma0_sub)
+    s2_all = sigma0_all ** 2
 
     return {
         "k": k_phys, "ps": P_S, "k_sub": k_sub, "ps_sub": ps_sub,
@@ -124,14 +113,14 @@ def plot_collapse_barriers(data: dict, save_path: str) -> None:
             ax.text(0.05, 0.95, r"$\checkmark$ All $C_{\max} \gg C_{\mathrm{c}}$",
                     transform=ax.transAxes, fontsize=7, color=TOL["dark"], va="top")
         ax.set_xscale("log")
+        ax.set_yscale("log")
         ax.set_xlabel(r"$M_H$ [$M_\odot$]")
         ax.set_ylabel(r"$C_{\max} / C_{\mathrm{c}}(\alpha)$")
-        ym = max(np.nanmax(ratio) * 1.15, 2.0)
         ax.set_xlim(M_H.min() * 0.9, M_H.max() * 1.1)
-        ax.set_ylim(0, ym)
+        ax.set_ylim(0.5, max(np.nanmax(ratio) * 1.15, 10.0))
         ax.legend(loc="lower right", fontsize=6.5)
-        ax.text(M_H.min() * 1.1, ym * 0.95, "(a)", fontsize=8, fontweight="bold",
-                color=TOL["dark"], va="top")
+        ax.text(M_H.min() * 1.1, max(np.nanmax(ratio) * 0.95, 8.0), "(a)",
+                fontsize=8, fontweight="bold", color=TOL["dark"], va="top")
 
         ax = axes[1]
         ax.axhline(4.42, color=TOL["yellow"], ls="--", lw=1.0, label=r"$\beta \approx 10^{-5}$")
@@ -139,7 +128,7 @@ def plot_collapse_barriers(data: dict, save_path: str) -> None:
         ax.axhspan(0, 4.0, color=TOL["green"], alpha=0.08, label="Observable PBH")
         ax.scatter(M_H, rarity, s=4, c=TOL["red"], alpha=0.7, zorder=5)
         ax.annotate(rf"min $C_{{\mathrm{{c}}}}/\sigma_0 \approx {mr:.0f}$",
-                    xy=(M_H[mi], rarity[mi]), xytext=(0.45, 0.55),
+                    xy=(M_H[mi], rarity[mi]), xytext=(0.15, 0.35),
                     textcoords="axes fraction", fontsize=6.5, color=TOL["dark"],
                     arrowprops=dict(arrowstyle="->", color=TOL["dark"], lw=0.8))
         ax.set_xscale("log")
