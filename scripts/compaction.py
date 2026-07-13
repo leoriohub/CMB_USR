@@ -35,6 +35,8 @@ import numpy as np
 from scipy.integrate import cumulative_trapezoid, simpson
 from scipy.special import erfc
 
+from scripts.constants import k_eq_default, M_eq_default, gamma_default
+
 # ---------------------------------------------------------------------------
 # Critical threshold parameters
 # ---------------------------------------------------------------------------
@@ -650,8 +652,8 @@ def _compute_zeta_profile_vectorized(
 _K_CRIT = 4.0       # Critical scaling normalisation
 _GAMMA_CRIT = 0.36  # Universal critical exponent (radiation)
 # Horizon mass and equality scales (standard LCDM)
-_M_EQ = 3.0e17      # Horizon mass at equality [M_⊙]
-_K_EQ = 0.0104      # Wavenumber at equality [Mpc⁻¹]
+_M_EQ = M_eq_default      # Horizon mass at equality [M_⊙]
+_K_EQ = k_eq_default      # Wavenumber at equality [Mpc⁻¹]
 
 
 # Module-level worker for ProcessPoolExecutor (must be picklable)
@@ -724,7 +726,7 @@ def _compaction_chunk(args: tuple) -> tuple:
 def beta_f_compaction(
     k_arr: np.ndarray,
     P_S_k: np.ndarray,
-    gamma: float = 0.4,
+    gamma: float = gamma_default,
     mu: float | None = None,
     window: str = "gaussian",
     epoch: str = "radiation",
