@@ -94,14 +94,15 @@ def _bench_vectorized_zeta_profile(
     return dt / n_runs
 
 
-def _bench_beta_f_scalar(
+def _bench_beta_f(
     k_arr: np.ndarray, P_S_k: np.ndarray, zeta_c: float,
+    n_workers: int = 1,
 ) -> float:
-    """Run beta_f_compaction (scalar, no parallel) once and return total time."""
+    """Run beta_f_compaction and return total time."""
     from scripts.compaction import beta_f_compaction
 
     t0 = time.perf_counter()
-    beta_f_compaction(k_arr, P_S_k, mu=zeta_c)
+    beta_f_compaction(k_arr, P_S_k, mu=zeta_c, n_workers=n_workers)
     return time.perf_counter() - t0
 
 
@@ -160,28 +161,45 @@ def main() -> None:
         print(f"  Per-mode speedup (vectorized vs scalar): {speedup_per_mode:.1f}×")
 
     print("\n--- Full pipeline timing ---")
-    t_beta_f = _bench_beta_f_scalar(k_phys, P_S, zeta_c)
-    print(f"  beta_f_compaction (n_workers=1): {t_beta_f:.3f}s")
+    t_beta_1 = _bench_beta_f(k_phys, P_S, zeta_c, n_workers=1)
+    print(f"  beta_f_compaction (n_workers=1):  {t_beta_1:.3f}s")
+
+    t_beta_2 = _bench_beta_f(k_phys, P_S, zeta_c, n_workers=2)
+    print(f"  beta_f_compaction (n_workers=2):  {t_beta_2:.3f}s")
+
+    t_beta_10 = _bench_beta_f(k_phys, P_S, zeta_c, n_workers=10)
+    print(f"  beta_f_compaction (n_workers=10): {t_beta_10:.3f}s")
 
     t_ps = _bench_press_schechter(k_phys, P_S, zeta_c)
-    print(f"  Press-Schechter:                {t_ps:.3f}s")
+    print(f"  Press-Schechter:                  {t_ps:.3f}s")
 
     # Summary table
-    print("\n" + "=" * 75)
-    print(f"{'Method':<35} {'per-mode(ms)':>12} {'total(s)':>10} "
-          f"{'speedup vs PS':>15}")
-    print("-" * 75)
-    print(f"{'Scalar compute_zeta_r_profile':<35} {per_mode_scalar:>12.4f} "
-          f"{t_scalar:>10.4f} {'—':>15}")
-    print(f"{'Vectorized profile (n_workers=1)':<35} {per_mode_vec:>12.4f} "
+    base_for_speedup = t_beta_1 if t_beta_1 > 0 else 1.0
+    print("\n" + "=" * 90)
+    print(f"{'Method':<35} {'n_workers':>10} {'total(s)':>10} "
+          f"{'speedup vs sc':>14} {'speedup vs PS':>14}")
+    print("-" * 90)
+    print(f"{'Scalar compute_zeta_r_profile':<35} {'—':>10} "
+          f"{t_scalar:>10.4f} {'—':>14} {'—':>14}")
+    print(f"{'Vectorized profile':<35} {'—':>10} "
           f"{t_vec:>10.4f} "
-          f"{t_ps / t_vec if t_vec > 0 else float('inf'):>15.1f}×")
-    print(f"{'beta_f_compaction (n_workers=1)':<35} {'—':>12} "
-          f"{t_beta_f:>10.3f} "
-          f"{t_ps / t_beta_f if t_beta_f > 0 else float('inf'):>15.1f}×")
-    print(f"{'Press-Schechter':<35} {'—':>12} "
-          f"{t_ps:>10.3f} {'1.0×':>15}")
-    print("=" * 75)
+          f"{t_scalar / t_vec if t_vec > 0 else float('inf'):>13.1f}× "
+          f"{'—':>14}")
+    print(f"{'beta_f_compaction':<35} {'1':>10} "
+          f"{t_beta_1:>10.3f} "
+          f"{base_for_speedup / t_beta_1:>13.1f}× "
+          f"{t_ps / t_beta_1 if t_beta_1 > 0 else float('inf'):>13.1f}×")
+    print(f"{'beta_f_compaction':<35} {'2':>10} "
+          f"{t_beta_2:>10.3f} "
+          f"{base_for_speedup / t_beta_2:>13.1f}× "
+          f"{t_ps / t_beta_2 if t_beta_2 > 0 else float('inf'):>13.1f}×")
+    print(f"{'beta_f_compaction':<35} {'10':>10} "
+          f"{t_beta_10:>10.3f} "
+          f"{base_for_speedup / t_beta_10:>13.1f}× "
+          f"{t_ps / t_beta_10 if t_beta_10 > 0 else float('inf'):>13.1f}×")
+    print(f"{'Press-Schechter':<35} {'—':>10} "
+          f"{t_ps:>10.3f} {'—':>14} {'1.0×':>14}")
+    print("=" * 90)
 
 
 if __name__ == "__main__":
