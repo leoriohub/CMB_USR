@@ -28,6 +28,7 @@ References
 from __future__ import annotations
 
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from contextlib import contextmanager
 
 import numpy as np
@@ -640,6 +641,70 @@ _M_EQ = 3.0e17      # Horizon mass at equality [M_⊙]
 _K_EQ = 0.0104      # Wavenumber at equality [Mpc⁻¹]
 
 
+# Module-level worker for ProcessPoolExecutor (must be picklable)
+def _compaction_chunk(args: tuple) -> tuple:
+    """Process a chunk of k-modes and return per-mode arrays.
+
+    Parameters
+    ----------
+    args : tuple
+        (k_full, P_S_full, k_inds, r_profile, ln_k, w, zeta_c, gamma, epoch)
+
+    Returns
+    -------
+    tuple of ndarrays
+        (C_max_chunk, alpha_chunk, C_c_chunk, M_H_chunk,
+         M_pbh_chunk, beta_f_chunk)
+    """
+    (k_full, P_S_full, k_inds, r_profile, ln_k, w,
+     zeta_c, gamma, epoch) = args
+
+    chunk_size = len(k_inds)
+    C_max_c = np.empty(chunk_size)
+    alpha_c = np.empty(chunk_size)
+    C_c_c = np.empty(chunk_size)
+    M_H_c = np.empty(chunk_size)
+    M_pbh_c = np.empty(chunk_size)
+    beta_f_c = np.empty(chunk_size)
+
+    for j, idx in enumerate(k_inds):
+        ki = float(k_full[idx])
+        R = 1.0 / ki
+
+        # 1. curvature profile at smoothing scale R (vectorized)
+        _, zeta_r = _compute_zeta_profile_vectorized(
+            ln_k, w, k_full, P_S_full, r_profile, R, zeta_c,
+        )
+
+        # 2. compaction function
+        comp = compute_C_profile(r_profile, zeta_r)
+        C_max = float(comp["C_max"])
+        alpha = float(comp["alpha"])
+
+        # 3. critical threshold
+        C_c = float(C_critical(alpha, epoch=epoch))
+
+        # 4. horizon mass at re-entry
+        M_H = gamma * _M_EQ * (_K_EQ / ki) ** 2
+
+        C_max_c[j] = C_max
+        alpha_c[j] = alpha
+        C_c_c[j] = C_c
+        M_H_c[j] = M_H
+
+        # 5. critical scaling for PBH mass
+        if C_max > C_c:
+            M_pbh_c[j] = _K_CRIT * M_H * (C_max - C_c) ** _GAMMA_CRIT
+        else:
+            M_pbh_c[j] = 0.0
+
+        # 6. formation fraction via Gaussian approximation
+        sigma_C = np.sqrt(P_S_full[idx])
+        beta_f_c[j] = erfc(C_c / (np.sqrt(2.0) * sigma_C))
+
+    return (C_max_c, alpha_c, C_c_c, M_H_c, M_pbh_c, beta_f_c)
+
+
 def beta_f_compaction(
     k_arr: np.ndarray,
     P_S_k: np.ndarray,
@@ -647,13 +712,14 @@ def beta_f_compaction(
     mu: float | None = None,
     window: str = "gaussian",
     epoch: str = "radiation",
+    n_workers: int = 1,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray]]:
     r"""PBH formation fraction via compaction function formalism.
 
     For each mass scale :math:`M(k)` the function:
 
     1. Constructs the radial curvature profile :math:`\zeta(r)` at smoothing
-       scale :math:`R = 1/k`.
+       scale :math:`R = 1/k` (vectorized via :func:`_compute_zeta_profile_vectorized`).
     2. Computes the compaction function :math:`C(r)` and its peak value
        :math:`C_{\max}`.
     3. Determines the profile shape :math:`\alpha` and the scale-dependent
@@ -665,6 +731,10 @@ def beta_f_compaction(
        Gaussian integral :math:`\beta_{\mathrm{f}}(k) =
        \operatorname{erfc}\bigl(C_{\mathrm{c}} / (\sqrt{2} \,
        \sqrt{\mathcal{P}_{\mathcal{S}}(k)})\bigr)`.
+
+    When ``n_workers > 1`` the k-modes are split across worker processes
+    via :class:`~concurrent.futures.ProcessPoolExecutor` for parallel
+    evaluation.
 
     Parameters
     ----------
@@ -689,6 +759,10 @@ def beta_f_compaction(
     epoch : str, optional
         Cosmological epoch passed to :func:`C_critical` (default
         ``'radiation'``).
+    n_workers : int, optional
+        Number of parallel worker processes for k-mode evaluation
+        (default ``1``).  Set > 1 to use
+        :class:`~concurrent.futures.ProcessPoolExecutor`.  Must be >= 1.
 
     Returns
     -------
@@ -710,8 +784,8 @@ def beta_f_compaction(
     TypeError
         If ``k_arr`` or ``P_S_k`` are not 1-D.
     ValueError
-        If array lengths differ, values are non-positive, or ``gamma`` is
-        outside :math:`(0, 1]`.
+        If array lengths differ, values are non-positive, ``gamma`` is
+        outside :math:`(0, 1]`, or ``n_workers`` < 1.
 
     Examples
     --------
@@ -744,6 +818,9 @@ def beta_f_compaction(
         raise ValueError("k_arr and P_S_k must contain strictly positive values")
     if not 0.0 < gamma <= 1.0:
         raise ValueError(f"gamma must be in (0, 1], got {gamma}")
+    n_workers = int(n_workers)
+    if n_workers < 1:
+        raise ValueError(f"n_workers must be >= 1, got {n_workers}")
 
     n_k = len(k_arr)
     if n_k == 0:
@@ -755,13 +832,9 @@ def beta_f_compaction(
         }
         return np.array([]), np.array([]), empty_meta
 
-    # --- pre-allocate output arrays ---
-    beta_f = np.empty(n_k)
-    M_pbh = np.empty(n_k)
-    C_max_arr = np.empty(n_k)
-    alpha_arr = np.empty(n_k)
-    C_c_arr = np.empty(n_k)
-    M_H_arr = np.empty(n_k)
+    # --- pre-compute log-k grid and Simpson weights (once, outside loop) ---
+    ln_k = np.log(k_arr)
+    w = _simpson_weights(ln_k)
 
     # --- profile radial grid (log-spaced for adequate resolution) ---
     r_profile = np.logspace(-3.0, 1.5, 500)
@@ -769,42 +842,98 @@ def beta_f_compaction(
     # --- set peak normalisation ---
     zeta_c: float = 1.0 if mu is None else float(mu)
 
-    for i in range(n_k):
-        ki = float(k_arr[i])
-        R = 1.0 / ki
+    # --- mode index array for chunking ---
+    all_inds = np.arange(n_k, dtype=np.intp)
 
-        # 1. curvature profile at smoothing scale R
-        _, zeta_r = compute_zeta_r_profile(
-            k_arr, P_S_k, r_profile, R_smooth=R, window=window, zeta_c=zeta_c,
-        )
+    if n_workers == 1:
+        # --- Serial path (no multiprocessing overhead) ---
+        beta_f = np.empty(n_k)
+        M_pbh = np.empty(n_k)
+        C_max_arr = np.empty(n_k)
+        alpha_arr = np.empty(n_k)
+        C_c_arr = np.empty(n_k)
+        M_H_arr = np.empty(n_k)
 
-        # 2. compaction function
-        comp = compute_C_profile(r_profile, zeta_r)
-        C_max = float(comp["C_max"])
-        alpha = float(comp["alpha"])
+        for i in range(n_k):
+            ki = float(k_arr[i])
+            R = 1.0 / ki
 
-        # 3. critical threshold
-        C_c = float(C_critical(alpha, epoch=epoch))
+            # 1. curvature profile at smoothing scale R (vectorized)
+            _, zeta_r = _compute_zeta_profile_vectorized(
+                ln_k, w, k_arr, P_S_k, r_profile, R, zeta_c,
+            )
 
-        # 4. horizon mass at re-entry
-        M_H = gamma * _M_EQ * (_K_EQ / ki) ** 2
+            # 2. compaction function
+            comp = compute_C_profile(r_profile, zeta_r)
+            C_max = float(comp["C_max"])
+            alpha = float(comp["alpha"])
 
-        C_max_arr[i] = C_max
-        alpha_arr[i] = alpha
-        C_c_arr[i] = C_c
-        M_H_arr[i] = M_H
+            # 3. critical threshold
+            C_c = float(C_critical(alpha, epoch=epoch))
 
-        # 5. critical scaling for PBH mass
-        if C_max > C_c:
-            M_pbh[i] = _K_CRIT * M_H * (C_max - C_c) ** _GAMMA_CRIT
-        else:
-            M_pbh[i] = 0.0
+            # 4. horizon mass at re-entry
+            M_H = gamma * _M_EQ * (_K_EQ / ki) ** 2
 
-        # 6. formation fraction via Gaussian approximation
-        #     σ_C ≈ √P_S(k) — the compaction variance for a sharply peaked
-        #     spectrum is of order √P_S
-        sigma_C = np.sqrt(P_S_k[i])
-        beta_f[i] = erfc(C_c / (np.sqrt(2.0) * sigma_C))
+            C_max_arr[i] = C_max
+            alpha_arr[i] = alpha
+            C_c_arr[i] = C_c
+            M_H_arr[i] = M_H
+
+            # 5. critical scaling
+            if C_max > C_c:
+                M_pbh[i] = _K_CRIT * M_H * (C_max - C_c) ** _GAMMA_CRIT
+            else:
+                M_pbh[i] = 0.0
+
+            # 6. formation fraction
+            sigma_C = np.sqrt(P_S_k[i])
+            beta_f[i] = erfc(C_c / (np.sqrt(2.0) * sigma_C))
+
+        meta = {
+            "C_max_arr": C_max_arr,
+            "alpha_arr": alpha_arr,
+            "C_c_arr": C_c_arr,
+            "M_H_arr": M_H_arr,
+        }
+        return beta_f, M_pbh, meta
+
+    # --- Parallel path (ProcessPoolExecutor) ---
+    chunks = np.array_split(all_inds, n_workers)
+    # Filter out empty chunks
+    chunks = [c for c in chunks if len(c) > 0]
+    n_chunks = len(chunks)
+
+    args_list = [
+        (k_arr, P_S_k, chunk, r_profile, ln_k, w, zeta_c, gamma, epoch)
+        for chunk in chunks
+    ]
+
+    with ProcessPoolExecutor(max_workers=n_workers) as executor:
+        fut_map = {
+            executor.submit(_compaction_chunk, args): i
+            for i, args in enumerate(args_list)
+        }
+
+        # Pre-allocate
+        beta_f = np.empty(n_k)
+        M_pbh = np.empty(n_k)
+        C_max_arr = np.empty(n_k)
+        alpha_arr = np.empty(n_k)
+        C_c_arr = np.empty(n_k)
+        M_H_arr = np.empty(n_k)
+
+        for fut in as_completed(fut_map):
+            chunk_idx = fut_map[fut]
+            chunk_inds = chunks[chunk_idx]
+            (C_max_c, alpha_c, C_c_c, M_H_c,
+             M_pbh_c, beta_f_c) = fut.result()
+
+            C_max_arr[chunk_inds] = C_max_c
+            alpha_arr[chunk_inds] = alpha_c
+            C_c_arr[chunk_inds] = C_c_c
+            M_H_arr[chunk_inds] = M_H_c
+            M_pbh[chunk_inds] = M_pbh_c
+            beta_f[chunk_inds] = beta_f_c
 
     meta = {
         "C_max_arr": C_max_arr,
