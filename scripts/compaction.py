@@ -889,6 +889,7 @@ def beta_f_compaction(
         alpha_arr = np.empty(n_k)
         C_c_arr = np.empty(n_k)
         M_H_arr = np.empty(n_k)
+        sigma0_arr = np.empty(n_k)
 
         for i in range(n_k):
             ki = float(k_arr[i])
@@ -898,6 +899,7 @@ def beta_f_compaction(
             _, zeta_r, sigma0_sq = _compute_zeta_profile_vectorized(
                 ln_k, w, k_arr, P_S_k, r_profile, R, zeta_c,
             )
+            sigma0_arr[i] = sigma0_sq
 
             # 2. compaction function
             comp = compute_C_profile(r_profile, zeta_r)
@@ -933,6 +935,7 @@ def beta_f_compaction(
             "alpha_arr": alpha_arr,
             "C_c_arr": C_c_arr,
             "M_H_arr": M_H_arr,
+            "sigma0_arr": sigma0_arr,
         }
         return beta_f, M_pbh, meta
 
