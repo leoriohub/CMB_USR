@@ -617,13 +617,17 @@ python scripts/full_pbh_pipeline.py --config configs/ezquiaga/asteroid_pbh.json 
 
 `λ₀=2.23e-7, ξ₀=7.55` are universal across all. `a_eff` barely varies (only via `c`). The radical physics differences come from `b_eff` at the 6th decimal (controlled by `β`).
 
-### 23. Fortran MS Solver Backend
+### 23. Fortran MS Solver Backend — Primary Backend
 
 The Hot Path comoving MS grid integration is ported to native Fortran 90 (`fortran/ms_solver.f90`) with OpenMP multi-threaded parallelization over comoving modes.
+
+**Status: primary backend.** We are committed to using the Fortran solver as the default MS solver. The Python/Numba backends remain available as fallbacks for cross-checking but are no longer the primary target for new work.
+
 - Python bridge: `fortran_ms_solver.py` converts background splines to Fortran memory order (`order='F'`) and calls the library.
 - Compilation: Compiled via `f2py` with Meson/Ninja toolchain in `cmb-anomaly` conda env. Make command: `cd fortran && make`.
 - Linking: Requires `LDFLAGS="-fopenmp"` to resolve OpenMP runtime linker symbols.
-- Execution: Activated via `--backend fortran` flag in `pspectrum_pipeline.py`.
+- Execution: Default backend in `pspectrum_pipeline.py` is `'fortran'`. Use `--backend numba` to fall back for debugging.
+- Old solvers: `inf_dyn_MS_full.py` (Python/scipy) and `numba_ms_solver.py` (Numba) are **not deleted**. They serve as reference implementations and debugging fallbacks.
 - Validation: `fortran/test_vs_numba.py` checks single-mode trajectory correctness, full comoving grid agreement across three key configurations (within relative difference < 1e-4), and CAMB observable compatibility.
 
 ### 24. PBH Config Formation & Accretion Metadata
@@ -647,7 +651,7 @@ which models were used to compute the results:
 **CLI precedence:**
 - `--formation` / `--accretion` CLI flags override config values with a warning
 - Omit the flag to let config value apply
-- When both are absent: `"compaction"` + `"PR"` (modern defaults)
+- When both are absent: `"press_schechter"` + `"PR"` (defaults)
 
 **Filename convention (managed by `scripts.plotting.make_pbh_filename`):**
 Formation codes: `cmp` (compaction), `psch` (press_schechter)
