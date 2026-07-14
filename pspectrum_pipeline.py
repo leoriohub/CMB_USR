@@ -34,7 +34,7 @@ from scripts.plotting import make_filename
 
 import inf_dyn_background as bg_solver
 import inf_dyn_MS_full as ms_solver
-from models import HiggsModel, FullHiggsModel, PunctuatedInflationModel, EzquiagaCHIModel, inflection_parameters
+from models import HiggsModel, FullHiggsModel, PunctuatedInflationModel, EzquiagaCHIModel, StarobinskyModel, inflection_parameters
 from numba_ms_solver import numba_run_ms, build_numba_splines, numba_run_ms_grid, _find_crossing_index
 
 # Fast CubicSpline-based interpolator (avoids interp1d overhead for per-step calls)
@@ -687,6 +687,9 @@ def model_from_config(config):
             model.v0 = model._V0 * model.a / (model.b * model.c)**2
             print(f"  Self-consistent inflection params: a={a_new:.4f}, b={b_new:.6f}")
         model.patch_background_solver()
+    elif model_name == "StarobinskyModel":
+        v0 = params.get("v0", 4.5e-11)
+        model = StarobinskyModel(v0=v0)
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
@@ -715,7 +718,8 @@ def parse_args():
     parser.add_argument("--config", type=str, default=None,
                         help="JSON config file with model params, ICs, and pipeline settings")
     parser.add_argument("--model", default=None, choices=[
-        "HiggsModel", "FullHiggsModel", "PunctuatedInflationModel", "EzquiagaCHIModel"
+        "HiggsModel", "FullHiggsModel", "PunctuatedInflationModel",
+        "EzquiagaCHIModel", "StarobinskyModel"
     ])
     parser.add_argument("--phi0", type=float, default=None)
     parser.add_argument("--y0", type=float, default=None)
