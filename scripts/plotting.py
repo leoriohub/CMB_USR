@@ -15,8 +15,6 @@ All functions follow publication-ready conventions:
 """
 import os
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
-
 import numpy as np
 
 import matplotlib
@@ -25,7 +23,7 @@ import matplotlib.pyplot as plt
 
 from scipy.interpolate import CubicSpline
 
-from scripts.constants import As, k_pivot_phys, T_cmb, ROOT_DIR
+from scripts.constants import As, k_pivot_phys, T_cmb, ROOT_DIR, S
 
 TOL = {
     "blue": "#4477AA",
@@ -301,29 +299,6 @@ def find_ps(phi0, y0, nstar, tolerance=3.0):
 
 # ── Ezquiaga CHI diagnostics & PS comparison ──────────────────────────────
 
-S_CODE = 5e-5
-
-
-def build_usr_weighted_kgrid(k_min, k_max, n_dense=200, n_outer=20):
-    """Build k-grid with dense zone covering the PBH peak (k=1e9 to 1e13)."""
-    k_lo = np.logspace(np.log10(k_min), 9, n_outer)
-    k_dense = np.logspace(9, 13, n_dense)
-    k_hi = np.logspace(13, np.log10(k_max), n_outer)
-    return np.unique(np.concatenate([k_lo, k_dense, k_hi]))
-
-
-def compute_ps_sr(bg_sol, end_idx):
-    """Compute SR-approximation P_S(k) from background solution."""
-    x, y, z, n = bg_sol
-    epsH = y**2 / (2 * z**2)
-    k_phys = np.exp(n[:end_idx+1]) * z[:end_idx+1] * S_CODE
-    e = epsH[:end_idx+1]
-    P_S = np.where(np.isfinite(e) & (e > 0),
-                   (S_CODE * z[:end_idx+1])**2 / (8 * np.pi**2 * e),
-                   np.nan)
-    return k_phys, P_S, e
-
-
 def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
                                pivot_k=0.002, suffix="", N_star=None):
     """
@@ -346,7 +321,7 @@ def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
     z_bg = bg_sol[2]
     N_end_val = float(N[end_idx])
     N_std = N_end_val - N[:end_idx + 1]
-    k_phys = np.exp(bg_sol[3][:end_idx + 1]) * z_bg[:end_idx + 1] * S_CODE
+    k_phys = np.exp(bg_sol[3][:end_idx + 1]) * z_bg[:end_idx + 1] * S
     pivot_idx = int(np.argmin(np.abs(np.log10(k_phys) - np.log10(pivot_k))))
     start_N = N_std[int(np.where(epsH[:end_idx + 1] > 1e-6)[0][0])] if np.any(epsH[:end_idx + 1] > 1e-6) else N_std[0]
 
@@ -391,7 +366,7 @@ def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
     save_fig(fig_v, fname_v, "diagnostics")
 
     epsH_clip = np.clip(epsH[:end_idx + 1], 1e-30, None)
-    P_S_sr = (S_CODE * z_bg[:end_idx + 1])**2 / (8 * np.pi**2 * epsH_clip)
+    P_S_sr = (S * z_bg[:end_idx + 1])**2 / (8 * np.pi**2 * epsH_clip)
     mask_ps = N_std <= start_N
 
     fig_ps, ax_ps = plt.subplots(figsize=(3.35, 2.6))
@@ -412,92 +387,52 @@ def plot_ps_sr_ms_comparison(
     model,
     chi0=None,
     y0=-1e-4,
-    k_min=1e-8,
-    k_max=1e18,
-    n_dense=200,
-    n_outer=20,
-    n_workers=8,
-    ms_enabled=True,
     k_pivots=None,
     filename=None,
     category="diagnostics",
     dpi=200,
+    data=None,
+    force_recompute=False,
 ):
     """
-    Run background, compute SR + MS P_S(k), plot overlay with ratio panel.
+    Plot SR + MS P_S(k) overlay with ratio panel from cached or provided data.
 
     Parameters
     ----------
     model : EzquiagaCHIModel (already configured with inflection params)
-    chi0 : float or None — sets model.x0 if given
-    y0 : float — sets model.y0 (default -1e-4)
-    k_min, k_max : float — k-range in Mpc^-1
-    n_dense, n_outer : int — PBH-weighted k-grid params
-    n_workers : int — parallel workers for MS solver
-    ms_enabled : bool — if True, run MS solver
-    k_pivots : list of (label, k_value) or None (defaults to [(k=0.002,), (k=0.05,)])
-    filename : str or None — plot filename (default: "ps_sr_ms_chi{chi0}")
+        Used only to determine cache filename; if data is provided, model is
+        only used for the default filename.
+    chi0 : float or None — model.x0 value (for cache lookup)
+    y0 : float — model.y0 value (for cache lookup, default -1e-4)
+    k_pivots : list of (label, k_value) or None
+    filename : str or None — plot filename override
     category : str — output subdirectory
     dpi : int — figure resolution
+    data : dict or None — pre-computed data dict with keys
+        k_phys_sr, P_S_sr, k_phys_ms, P_S_ms, n_s_local, N_total.
+        If None, loads from cache via compute_sr_ms.compute_and_save().
+    force_recompute : bool — if True, recompute even if cached
 
     Returns
     -------
     dict with keys: k_phys_sr, P_S_sr, k_phys_ms, P_S_ms, n_s_local, N_total
     """
-    from inf_dyn_background import run_background_simulation, get_derived_quantities
+    from scipy.interpolate import CubicSpline
 
-    if chi0 is not None:
-        model.x0 = chi0
-    model.y0 = y0
+    if data is None:
+        from scripts.compute_sr_ms import compute_and_save
+        data = compute_and_save(
+            model, chi0=chi0, y0=y0, force=force_recompute,
+        )
+        print()
 
-    T = np.linspace(0, model.T_max, model.bg_steps)
-    bg_sol = run_background_simulation(model, T)
-    derived = get_derived_quantities(bg_sol, model)
-
-    epsH = derived["epsH"]
-    eps1_arr = np.where(np.isfinite(epsH) & (epsH >= 1.0))[0]
-    end_idx = int(eps1_arr[0]) if len(eps1_arr) > 0 else len(epsH) - 1
-    N_total = float(derived["N"][end_idx])
-    print(f"  N_total = {N_total:.1f}, end_idx = {end_idx}")
-
-    k_sr, Ps_sr, _ = compute_ps_sr(bg_sol, end_idx)
-    valid = np.where(np.isfinite(Ps_sr) & (Ps_sr > 0))[0]
-    k_sr, Ps_sr = k_sr[valid], Ps_sr[valid]
-
-    k_ms, Ps_ms = None, None
-    n_s_results = {}
-    ok_ms = np.array([], dtype=bool)
-    k_ok = np.array([])
-
-    if ms_enabled:
-        k_grid = build_usr_weighted_kgrid(k_min, k_max, n_dense=n_dense, n_outer=n_outer)
-        n_k = len(k_grid)
-        print(f"  Running MS for {n_k} modes ({n_dense} dense + {n_outer*2} outer) on {n_workers} workers...")
-
-        chunks = np.array_split(k_grid, n_workers)
-        model_params = (model.a, model.b, model.v0, model.x0, model.y0)
-        batch_args = [(ch, bg_sol, T, end_idx, model_params, 'dp5') for ch in chunks]
-
-        Ps_ms_arr = np.full(n_k, np.nan)
-        k_to_result = {kp: i for i, kp in enumerate(k_grid)}
-
-        t0 = time.time()
-        with ProcessPoolExecutor(max_workers=n_workers) as pool:
-            futures = [pool.submit(_solve_ms_batch, ba) for ba in batch_args]
-            done = 0
-            for future in as_completed(futures):
-                for kp, ps in future.result():
-                    if kp in k_to_result and ps is not None:
-                        Ps_ms_arr[k_to_result[kp]] = ps
-                done += 1
-                print(f"    batch {done}/{n_workers}", flush=True)
-
-        elapsed = time.time() - t0
-        n_ok = int(np.sum(np.isfinite(Ps_ms_arr)))
-        print(f"  MS done: {n_ok}/{n_k} OK in {elapsed:.0f}s")
-        k_ms, Ps_ms = k_grid, Ps_ms_arr
-        ok_ms = np.isfinite(Ps_ms)
-        k_ok = k_grid[ok_ms]
+    assert data is not None
+    k_sr = data["k_phys_sr"]
+    Ps_sr = data["P_S_sr"]
+    k_ms = data.get("k_phys_ms")
+    Ps_ms = data.get("P_S_ms")
+    n_s_results = data.get("n_s_local", {})
+    N_total = data.get("N_total", data.get("metadata", {}).get("N_total", 0))
 
     fig, (ax1, ax2) = plt.subplots(
         2, 1, figsize=(7, 6), sharex=True,
@@ -506,20 +441,24 @@ def plot_ps_sr_ms_comparison(
 
     ax1.loglog(k_sr, Ps_sr, "-", color=TOL["blue"], lw=1.5, label="SR approx")
     interp_ms_vals = None
-    if ms_enabled and np.any(ok_ms):
-        ps_ok = Ps_ms[ok_ms]
-        k_line = np.logspace(np.log10(k_ok[0]), np.log10(k_ok[-1]), 500)
-        if len(k_ok) >= 4:
-            spl = CubicSpline(np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
-                              bc_type='not-a-knot', extrapolate=False)
-            ps_line = np.exp(spl(np.log(k_line)))
-        else:
-            ps_line = np.exp(np.interp(np.log(k_line), np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
-                                       left=np.nan, right=np.nan))
-        ax1.loglog(k_line, ps_line, "-", color=TOL["red"], lw=1.2,
-                   alpha=0.7, label=f"MS solver ({len(ps_ok)}/{len(Ps_ms)})")
-        ax1.loglog(k_ok, ps_ok, "o", color=TOL["red"], ms=2, alpha=0.4)
-        interp_ms_vals = np.interp(k_sr, k_ok, ps_ok, left=np.nan, right=np.nan)
+    if k_ms is not None and Ps_ms is not None:
+        ok_ms = np.isfinite(Ps_ms)
+        if np.any(ok_ms):
+            k_ok = k_ms[ok_ms]
+            ps_ok = Ps_ms[ok_ms]
+            k_line = np.logspace(np.log10(k_ok[0]), np.log10(k_ok[-1]), 500)
+            if len(k_ok) >= 4:
+                spl = CubicSpline(np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
+                                  bc_type='not-a-knot', extrapolate=False)
+                ps_line = np.exp(spl(np.log(k_line)))
+            else:
+                ps_line = np.exp(np.interp(np.log(k_line), np.log(k_ok),
+                                           np.log(np.maximum(ps_ok, 1e-300)),
+                                           left=np.nan, right=np.nan))
+            ax1.loglog(k_line, ps_line, "-", color=TOL["red"], lw=1.2,
+                       alpha=0.7, label=f"MS solver ({len(ps_ok)}/{len(Ps_ms)})")
+            ax1.loglog(k_ok, ps_ok, "o", color=TOL["red"], ms=2, alpha=0.4)
+            interp_ms_vals = np.interp(k_sr, k_ok, ps_ok, left=np.nan, right=np.nan)
 
     for label, k_piv in (k_pivots or [("k=0.002", 0.002), ("k=0.05", 0.05)]):
         ax1.axvline(k_piv, color=TOL["grey"], ls=":", lw=0.8, alpha=0.5)
@@ -535,8 +474,10 @@ def plot_ps_sr_ms_comparison(
         ratio = interp_ms_vals / Ps_sr
         ax2.semilogx(k_sr, ratio, "-", color=TOL["blue"], lw=1.2)
         rmin, rmax = np.nanmin(ratio), np.nanmax(ratio)
-        if not np.isfinite(rmin): rmin = 0.5
-        if not np.isfinite(rmax): rmax = 1.5
+        if not np.isfinite(rmin):
+            rmin = 0.5
+        if not np.isfinite(rmax):
+            rmax = 1.5
         ax2.set_ylim(max(0, rmin - 0.2), min(5, rmax + 0.2))
     ax2.axhline(1.0, color=TOL["grey"], ls="--", lw=0.8)
     ax2.set_xlabel(r"$k$ [Mpc$^{-1}$]", fontsize=14)
@@ -548,24 +489,6 @@ def plot_ps_sr_ms_comparison(
     fname = filename or f"ps_sr_ms_chi{model.x0}"
     save_fig(fig, fname, category, dpi=dpi)
 
-    for label, k_piv in (k_pivots or [("k=0.002", 0.002), ("k=0.05", 0.05)]):
-        pi = int(np.argmin(np.abs(k_sr - k_piv)))
-        if pi < 5 or pi > len(k_sr) - 6:
-            continue
-        d5 = 5
-        lk = np.log(k_sr[pi-d5:pi+d5+1])
-        lp_sr = np.log(Ps_sr[pi-d5:pi+d5+1])
-        ns_sr = 1 + (lp_sr[-1] - lp_sr[0]) / (lk[-1] - lk[0])
-        ns_ms_val = None
-        if interp_ms_vals is not None and np.isfinite(interp_ms_vals[pi]):
-            lp_ms = np.log(np.maximum(interp_ms_vals[pi-d5:pi+d5+1], 1e-300))
-            ns_ms_val = 1 + (lp_ms[-1] - lp_ms[0]) / (lk[-1] - lk[0])
-        msg = f"  {label}: n_s_local(SR)={ns_sr:.4f}"
-        if ns_ms_val is not None:
-            msg += f", n_s_local(MS)={ns_ms_val:.4f}"
-        print(msg)
-        n_s_results[label] = {"SR_local": ns_sr, "MS_local": ns_ms_val}
-
     return {
         "k_phys_sr": k_sr,
         "P_S_sr": Ps_sr,
@@ -573,50 +496,8 @@ def plot_ps_sr_ms_comparison(
         "P_S_ms": Ps_ms,
         "n_s_local": n_s_results,
         "N_total": N_total,
-        "end_idx": end_idx,
+        "end_idx": data.get("end_idx"),
     }
-
-
-def _solve_ms_batch(args):
-    """Worker for parallel MS solver — top-level for pickle."""
-    k_phys_batch, bg_sol, T_span_bg, end_idx, model_params, ms_method = args
-    from scipy.interpolate import CubicSpline
-    import inf_dyn_MS_full as ms_solver
-    from numba_ms_solver import numba_run_ms, build_numba_splines
-    from models.ezquiaga_chi import EzquiagaCHIModel
-
-    m = EzquiagaCHIModel()
-    m.a, m.b, m.v0, m.x0, m.y0 = model_params
-    m.patch_background_solver()
-
-    interp = tuple(
-        CubicSpline(T_span_bg, bg_sol[i], bc_type='not-a-knot', extrapolate=True)
-        for i in range(4)
-    )
-    bg_coefs = build_numba_splines(bg_sol, T_span_bg, model=m)
-    n_bg, z_bg = bg_sol[3], bg_sol[2]
-    log_az = n_bg + np.log(np.maximum(z_bg, 1e-300))
-    t_end = T_span_bg[end_idx]
-
-    results = []
-    for kp in k_phys_batch:
-        k_code = kp / S_CODE
-        si = int(np.argmin(np.abs(log_az[:end_idx] - np.log(k_code) + np.log(100.0))))
-        si = max(si, 0)
-        ni = bg_sol[3][si]
-        T_ms = np.linspace(T_span_bg[si], t_end, 5000)
-        try:
-            sol = numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, m,
-                               bg_coefs=bg_coefs, method=ms_method)
-            d = ms_solver.get_ms_derived_quantities_with_bg(sol, interp, T_ms, m, k_code, ni)
-            ps = float(d["P_S"][-1])
-            if np.isfinite(ps) and ps > 0:
-                results.append((kp, ps))
-            else:
-                results.append((kp, None))
-        except Exception:
-            results.append((kp, None))
-    return results
 
 
 def plot_ps(k_phys, P_S, label="Higgs USR", filename="ps", category="powerloss",
