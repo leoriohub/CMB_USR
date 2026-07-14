@@ -26,6 +26,15 @@ from pspectrum_pipeline import load_pspectrum
 from scripts.planck_data import C_ell_to_d_ell
 from scripts.plotting import OUTPUT_DIRS, make_filename
 
+# Monkeypatch CAMB's BBN predictor under NumPy 2.x to avoid TypeError in set_cosmology()
+try:
+    import camb
+    import camb.bbn
+    original_Y_He = camb.bbn.BBNPredictor.Y_He
+    camb.bbn.BBNPredictor.Y_He = lambda self, *args, **kwargs: float(original_Y_He(self, *args, **kwargs)[0])
+except (ImportError, AttributeError):
+    pass
+
 
 _LCDM_CACHE = {}
 _CAMB_PARAMS_CACHE = {}
