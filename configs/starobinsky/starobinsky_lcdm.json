@@ -1,0 +1,18 @@
+{
+  "model": "StarobinskyModel",
+  "model_params": {
+    "v0": 4.5e-11,
+    "T_max": 3000.0,
+    "bg_steps": 50000
+  },
+  "ics": {
+    "x0": 5.5,
+    "y0": -1e-4
+  },
+  "pipeline": {
+    "k_pivot_phys": 0.002,
+    "ns_window": 4.0,
+    "backend": "fortran",
+    "ms_method": "dp5"
+  }
+}
