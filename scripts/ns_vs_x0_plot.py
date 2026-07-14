@@ -11,7 +11,7 @@ Output: diagnostic plot at
     outputs/plots/diagnostics/ns_vs_x0_y0{Y0}_nstar{N*}_{x0min}-{x0max}_n{N}_modes{M}_wf{W}.png
 
 Usage:
-    python scripts/legacy/fig6_ns_vs_x0.py \
+    python scripts/ns_vs_x0_plot.py \
         --y0 -0.10 --N-star 60 \
         --x0-min 5.71 --x0-max 5.80 \
         --n-points 30 --n-cores 8 --n-modes 1000

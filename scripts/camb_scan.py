@@ -244,6 +244,7 @@ def run_phase1(args, completed):
         t0 = time.time()
         results = []
         done = 0
+        N_star_vals = np.linspace(args.nstar_range[0], args.nstar_range[1], 3).tolist()
 
         for phi0 in phi0_vals:
             for y0 in y0_vals:
