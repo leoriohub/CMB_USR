@@ -5,6 +5,8 @@ sys.path.insert(0, ".")
 
 from models.starobinsky import StarobinskyModel
 from inf_dyn_background import run_background_simulation, get_derived_quantities
+from pspectrum_pipeline import run_pspectrum_pipeline
+from scripts.observables import extract_ns
 
 model = StarobinskyModel(v0=4.5e-11)
 model.x0 = 5.5
@@ -34,4 +36,38 @@ if len(cross) > 0:
     N_total = float(N_arr[end])
     print(f"  epsH>=1 at N = {N_total:.1f}, T = {T[end]:.1f}")
 else:
+    N_total = float(N_arr[-1])
     print("  epsH never reaches 1.0 within T_max")
+
+k_pivot = 0.002
+k_min, k_max = 1e-5, 1.0
+n_k = 80
+k_grid = np.logspace(np.log10(k_min), np.log10(k_max), n_k)
+
+result = run_pspectrum_pipeline(
+    model,
+    T_span_bg=T,
+    k_phys_grid=k_grid,
+    k_pivot_phys=k_pivot,
+    N_star=55,
+    normalize_to_As=True,
+    backend="fortran",
+    ms_method="dp5",
+    save_outputs=False,
+)
+
+if result["status"] != "success":
+    print(f"  Pipeline FAILED: {result.get('message', '')}")
+    sys.exit(1)
+
+k_phys = result["k_phys"]
+P_S = result["P_S"]
+
+n_s, ns_meta = extract_ns(k_phys, P_S, k_pivot=k_pivot, ns_window=4.0, method="lsq")
+print(f"n_s(k={k_pivot}) = {n_s:.4f}")
+
+N_pivot_val = N_total - 55
+pivot_idx = int(np.argmin(np.abs(N_arr - N_pivot_val)))
+r_sr = 16.0 * eps1[pivot_idx]
+print(f"r (SR at N_pivot) = {r_sr:.4f}")
+print(f"n_s = {n_s:.4f}, r = {r_sr:.4f}")
