@@ -16,6 +16,10 @@ import os
 import time
 
 import numpy as np
+try:
+    from numpy import trapezoid as trapz
+except ImportError:
+    from numpy import trapz
 from scipy.special import erfc
 
 from scripts.constants import (
@@ -119,6 +123,10 @@ def run_full_pbh_pipeline(
     smooth_bounds=False,
     force=False,
     k_pivot=0.05,
+    ns_window=3.0,
+    ns_method="lsq",
+    formation_model="press_schechter",
+    accretion_model="Chisholm",
 ):
     """Run the full PBH pipeline and produce the abundance plot.
 
@@ -289,36 +297,95 @@ def run_full_pbh_pipeline(
             json.dump(save_rec, f, indent=2)
         print(f"Saved P_S(k): {ps_path}")
 
-    # ── 5. Compute n_s via logarithmic derivative at k_pivot ──────────
-    # n_s - 1 = d ln P_S / d ln k at k = k_pivot (theoretical definition).
+    # ── 5. Compute n_s via logarithmic derivative or LSQ at k_pivot ────
     n_s, ns_meta = extract_ns(k_phys, P_S, k_pivot=pivot_k,
-                              ns_window=args.ns_window if args.ns_method == "lsq" else None,
-                              method=args.ns_method)
+                              ns_window=ns_window if ns_method == "lsq" else None,
+                              method=ns_method)
     A_s_cmb = interpolate_As(k_phys, P_S, pivot_k)
     print(f"  n_s(k={pivot_k}) = {n_s}, A_s = {A_s_cmb}")
 
-    # ── 6. PBH abundance at multiple ζ_c ───────────────────────────────
-    print("\n--- PBH abundance ---")
-    all_results = []
-    for zc in zeta_c_vals:
-        pbh = compute_pbh_abundance(
-            k_phys, P_S, gamma_default, zc, k_eq_default, M_eq_default
-        )
-        M_form, f_pbh = pbh["M"], pbh["f_pbh"]
-        M_present = M_form * ACCRETION
+    # ── 6. Build accretion model ───────────────────────────────────────
+    from scripts.accretion import (
+        ChisholmAccretion, EddingtonAccretion, PBHAccretion, PR_Accretion,
+    )
 
-        f_total = float(np.trapezoid(f_pbh, np.log(np.maximum(M_present, 1e-300))))
-        peak_i = int(np.argmax(f_pbh))
-        M_peak = float(M_present[peak_i]) if len(M_present) > 0 else np.nan
-        all_results.append(
-            {
-                "zeta_c": zc,
-                "f_total": f_total,
-                "M_peak": M_peak,
-                "M": M_present,
-                "f_pbh": f_pbh,
-            }
-        )
+    _ACCRETION_FACTORY = {
+        "PR": PR_Accretion,
+        "BHL": PBHAccretion,
+        "Chisholm": ChisholmAccretion,
+        "Eddington": EddingtonAccretion,
+    }
+
+    if accretion_model not in _ACCRETION_FACTORY:
+        raise ValueError(f"Unknown accretion model '{accretion_model}'. Choose from {sorted(_ACCRETION_FACTORY.keys())}")
+
+    if accretion_model == "BHL":
+        accretion = PBHAccretion(model="BHL", lambda_acc=0.1)
+    else:
+        accretion = _ACCRETION_FACTORY[accretion_model]()
+
+    print(f"\n--- PBH abundance sweep ({formation_model}) ---")
+    print(f"Accretion: {accretion_model}  Formation: {formation_model}")
+    all_results = []
+
+    for zc in zeta_c_vals:
+        if formation_model == "press_schechter":
+            pbh = compute_pbh_abundance(
+                k_phys, P_S, gamma_default, zc, k_eq_default, M_eq_default
+            )
+            M_form = np.asarray(pbh["M"], dtype=float)
+            f_pbh = np.asarray(pbh["f_pbh"], dtype=float)
+
+            # Apply accretion
+            if accretion_model == "Chisholm":
+                M_present = M_form * 3e7
+            else:
+                M_present = np.array([
+                    accretion.M_of_redshift(float(m), 0.0) for m in M_form
+                ])
+        elif formation_model == "compaction":
+            from scripts.compaction import beta_f_compaction
+            nw = max(1, workers)
+            beta_f, M_pbh_form, meta_comp = beta_f_compaction(
+                k_phys, P_S, gamma=gamma_default, mu=zc, n_workers=nw,
+            )
+            # Convert to equality-normalised DM fraction
+            f_pbh = beta_equality(beta_f, k_phys, k_eq_default)
+
+            # Only apply accretion to modes with non-zero formation fraction.
+            M_pbh_ok = np.where(beta_f > 0, M_pbh_form, 0.0)
+            M_present = np.array([
+                accretion.M_of_redshift(float(m), 0.0)
+                if m > 1e-300 else 0.0
+                for m in M_pbh_ok
+            ])
+        else:
+            raise ValueError(f"Unknown formation model '{formation_model}'")
+
+        # Filter finite / positive
+        ok = np.isfinite(M_present) & np.isfinite(f_pbh) & (M_present > 0) & (f_pbh > 0)
+        M_ok = M_present[ok]
+        fp_ok = f_pbh[ok]
+
+        if len(M_ok) == 0:
+            all_results.append({
+                "zeta_c": zc, "f_total": 0.0, "M_peak": np.nan,
+                "M": np.array([]), "f_pbh": np.array([]),
+            })
+            print(f"  ζ_c={zc:.3f}: f_total=0 (no collapse)")
+            continue
+
+        f_total = float(trapz(fp_ok, np.log(np.maximum(M_ok, 1e-300))))
+        peak_i = int(np.argmax(fp_ok))
+        M_peak = float(M_ok[peak_i]) if len(M_ok) > 0 else np.nan
+
+        all_results.append({
+            "zeta_c": zc,
+            "f_total": f_total,
+            "M_peak": M_peak,
+            "M": M_ok,
+            "f_pbh": fp_ok,
+        })
         print(f"  ζ_c={zc:.3f}: f_total={f_total:.4e}, M_peak={M_peak:.3e}")
 
     # Pick best viable (f_total ≤ 1, highest)
@@ -341,23 +408,52 @@ def run_full_pbh_pipeline(
 
     # ── 7. Plot ─────────────────────────────────────────────────────────
     if plot and zeta_c_best is not None and len(M_best) > 0:
-        from scripts.plotting import plot_pbh_abundance, make_pbh_filename
+        from scripts.plotting import make_pbh_filename
 
-        plot_pbh_abundance(
-            M_best,
-            f_pbh_best,
-            zeta_c=zeta_c_best,
-            gamma=gamma_default,
-            model_label=f"Ezquiaga CHI χ₀={chi0}, β={beta:.0e}, ζ_c={zeta_c_best}",
-            filename=make_pbh_filename(
+        if formation_model == "press_schechter" and accretion_model == "Chisholm":
+            from scripts.plotting import plot_pbh_abundance
+            plot_pbh_abundance(
+                M_best,
+                f_pbh_best,
+                zeta_c=zeta_c_best,
+                gamma=gamma_default,
+                model_label=f"Ezquiaga CHI χ₀={chi0}, β={beta:.0e}, ζ_c={zeta_c_best}",
+                filename=make_pbh_filename(
+                    "pbh", chi0, y0, N_total,
+                    formation="press_schechter", accretion="Chisholm",
+                    beta=beta, zc=zeta_c_best,
+                ),
+                category="pbh",
+                use_old_bounds=use_old_bounds,
+                smooth_bounds=smooth_bounds,
+            )
+        else:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            from scripts import constraint_mapping
+            from scripts.plotting import get_path
+
+            fname = make_pbh_filename(
                 "pbh", chi0, y0, N_total,
-                formation="press_schechter", accretion="Chisholm",
+                formation=formation_model, accretion=accretion_model,
                 beta=beta, zc=zeta_c_best,
-            ),
-            category="pbh",
-            use_old_bounds=use_old_bounds,
-            smooth_bounds=smooth_bounds,
-        )
+            )
+
+            fig, ax = plt.subplots(figsize=(6, 4.5))
+            ax.loglog(
+                M_best, f_pbh_best, "-.", color="#CC3311",
+                lw=1.5, label=f"CHI (zeta_c={zeta_c_best:.3f})",
+            )
+            constraint_mapping.plot_modern_constraints(
+                ax, accretion_model=accretion,
+            )
+            ax.legend(fontsize=8, loc="lower left", ncol=2)
+
+            path = get_path("pbh", fname)
+            fig.savefig(path, dpi=300, bbox_inches="tight")
+            plt.close(fig)
+            print(f"  Saved plot: {path}")
 
     elapsed = time.time() - t0
     print(f"\nPipeline done in {elapsed:.1f}s" + (" (cached)" if cached else ""))
@@ -368,7 +464,7 @@ def run_full_pbh_pipeline(
         "n_s": n_s,
         "ns_meta": ns_meta,
         "k_pivot": pivot_k,
-        "ns_window": None,
+        "ns_window": ns_window,
         "A_s_cmb": A_s_cmb,
         "N_total": N_total,
         "end_idx": end_idx,
@@ -381,6 +477,8 @@ def run_full_pbh_pipeline(
         "f_total_best": f_total_best,
         "M_peak_best": M_peak_best,
         "all_results": all_results,
+        "accretion_model": accretion_model,
+        "formation_model": formation_model,
     }
 
 
@@ -425,12 +523,32 @@ if __name__ == "__main__":
         default="lsq",
         help="n_s extraction method: lsq=window fit (default), derivative=log-derivative at k_pivot",
     )
+    p.add_argument(
+        "--accretion",
+        choices=["PR", "BHL", "Chisholm", "Eddington"],
+        default=None,
+        help="Accretion model (default: Chisholm)",
+    )
+    p.add_argument(
+        "--formation",
+        choices=["compaction", "press_schechter"],
+        default=None,
+        help="Formation model (default: press_schechter)",
+    )
 
     pre, _ = p.parse_known_args()
+    config_accretion = None
+    config_formation = None
     if pre.config:
         from scripts.config_loader import load_config
-        p.set_defaults(**load_config(pre.config))
+        config_data = load_config(pre.config)
+        p.set_defaults(**config_data)
+        config_accretion = config_data.get("accretion")
+        config_formation = config_data.get("formation")
     args = p.parse_args()
+
+    accretion_val = args.accretion or config_accretion or "Chisholm"
+    formation_val = args.formation or config_formation or "press_schechter"
 
     from scripts.constants import ROOT_DIR
     import os, json, shutil
@@ -441,7 +559,10 @@ if __name__ == "__main__":
         beta=args.beta, xc=args.xc, c=args.c,
         workers=args.workers, zeta_c_vals=args.zeta_c,
         plot=not args.no_plot, force=args.force,
-        k_pivot=args.k_pivot,
+        k_pivot=args.k_pivot, ns_window=args.ns_window,
+        ns_method=args.ns_method,
+        formation_model=formation_val,
+        accretion_model=accretion_val,
     )
 
     target_dir = os.path.join(ROOT_DIR, args.output_dir)
@@ -455,23 +576,62 @@ if __name__ == "__main__":
         ft = zc_data["f_total"]
         M = zc_data["M_peak"]
 
-        print(f"ζ_c={zc:.4f}  f_total={ft:.4e}  M_peak={M:.4e}")
+        print(f"zeta_c={zc:.4f}  f_total={ft:.4e}  M_peak={M:.4e}")
 
         if not args.no_plot and ft > 0:
-            from scripts.plotting import plot_pbh_abundance, make_pbh_filename
+            from scripts.plotting import make_pbh_filename
             tag = f"{args.tag}_" if args.tag else ""
             plot_name = args.tag if args.tag else "pbh"
             pid = make_pbh_filename(
                 plot_name, args.chi0, args.y0, result["N_total"],
-                formation="press_schechter", accretion="Chisholm",
+                formation=formation_val, accretion=accretion_val,
                 beta=args.beta, zc=zc,
             )
-            plot_pbh_abundance(
-                zc_data["M"], zc_data["f_pbh"],
-                zeta_c=zc, gamma=0.4,
-                model_label=f"β={args.beta:.1e}, N*={args.N_star:.0f}, ζ_c={zc:.4f} (f={ft:.3e})",
-                filename=pid, category="pbh",
-            )
+            
+            if formation_val == "press_schechter" and accretion_val == "Chisholm":
+                from scripts.plotting import plot_pbh_abundance
+                plot_pbh_abundance(
+                    zc_data["M"], zc_data["f_pbh"],
+                    zeta_c=zc, gamma=0.4,
+                    model_label=f"beta={args.beta:.1e}, N*={args.N_star:.0f}, zeta_c={zc:.4f} (f={ft:.3e})",
+                    filename=pid, category="pbh",
+                )
+            else:
+                import matplotlib
+                matplotlib.use("Agg")
+                import matplotlib.pyplot as plt
+                from scripts import constraint_mapping
+                
+                fig, ax = plt.subplots(figsize=(6, 4.5))
+                ax.loglog(
+                    zc_data["M"], zc_data["f_pbh"], "-.", color="#CC3311",
+                    lw=1.5, label=f"CHI (zeta_c={zc:.4f}, f={ft:.3e})",
+                )
+                
+                from scripts.accretion import (
+                    ChisholmAccretion, EddingtonAccretion, PBHAccretion, PR_Accretion,
+                )
+                _FACTORY = {
+                    "PR": PR_Accretion,
+                    "BHL": PBHAccretion,
+                    "Chisholm": ChisholmAccretion,
+                    "Eddington": EddingtonAccretion,
+                }
+                if accretion_val == "BHL":
+                    accretion_inst = PBHAccretion(model="BHL", lambda_acc=0.1)
+                else:
+                    accretion_inst = _FACTORY[accretion_val]()
+                    
+                constraint_mapping.plot_modern_constraints(
+                    ax, accretion_model=accretion_inst,
+                )
+                ax.legend(fontsize=8, loc="lower left", ncol=2)
+                
+                from scripts.plotting import get_path
+                plot_path = get_path("pbh", pid)
+                fig.savefig(plot_path, dpi=300, bbox_inches="tight")
+                plt.close(fig)
+
             src = os.path.join(ROOT_DIR, "outputs/plots/pbh", pid)
             dst = os.path.join(target_dir, pid)
             if os.path.exists(src):
@@ -485,10 +645,12 @@ if __name__ == "__main__":
                         "x_c": args.xc, "c": args.c, "beta": args.beta,
                         "chi0": args.chi0, "y0": args.y0, "N_star": args.N_star,
                         "k_pivot": args.k_pivot, "ns_window": args.ns_window,
+                        "formation": formation_val,
+                        "accretion": accretion_val,
                     },
                     "background": {"N_total": ntot, "n_s": ns},
                     "pbh": {"zeta_c": zc, "f_total": ft, "M_present_Msun": M},
                 }
                 with open(dst.replace(".png", ".json"), "w") as f:
                     json.dump(comp, f, indent=2, default=str)
-                print(f"  → {dst}")
+                print(f"  -> {dst}")

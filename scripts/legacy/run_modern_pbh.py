@@ -26,7 +26,7 @@ Examples
 --------
 .. code:: bash
 
-    # Modern defaults (PR accretion + compaction formation)
+    # Defaults (PR accretion + press_schechter formation)
     python scripts/run_modern_pbh.py --config configs/ezquiaga/subsolar_pbh.json
 
     # Reproduce old results
@@ -273,7 +273,7 @@ def run_modern_pbh_pipeline(
     _config_formation: str | None = config.get("formation")
     _config_accretion: str | None = config.get("accretion")
     if formation_model is None:
-        formation_model = _config_formation or "compaction"
+        formation_model = _config_formation or "press_schechter"
     elif _config_formation is not None and _config_formation != formation_model:
         import warnings as _w
         _w.warn(
@@ -568,7 +568,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--formation", choices=["compaction", "press_schechter"],
         default=None,
-        help="Formation model (default from config, or compaction)",
+        help="Formation model (default from config, or press_schechter)",
     )
     parser.add_argument(
         "--zeta-c", type=float, nargs="+",
