@@ -71,3 +71,27 @@ pivot_idx = int(np.argmin(np.abs(N_arr - N_pivot_val)))
 r_sr = 16.0 * eps1[pivot_idx]
 print(f"r (SR at N_pivot) = {r_sr:.4f}")
 print(f"n_s = {n_s:.4f}, r = {r_sr:.4f}")
+
+from scripts.camb_wrapper import compute_cl_camb_powerlaw, compute_cl_full_camb, compute_chi2_camb, C_ell_to_d_ell
+
+print("\n── CAMB C_ell ──")
+print("Computing LCDM baseline...")
+ells_pl, C_ell_pl, _, _ = compute_cl_camb_powerlaw()
+D_ell_pl = C_ell_to_d_ell(ells_pl, C_ell_pl)
+print(f"  LCDM D₂ = {D_ell_pl[0]:.0f} μK²")
+
+print("Computing Starobinsky C_ell via CAMB...")
+ps_data = {
+    "k_phys": result["k_phys"],
+    "P_S": result["P_S"],
+    "k_pivot": k_pivot,
+}
+ells_star, C_ell_star, _, _ = compute_cl_full_camb(ps_data)
+D_ell_star = C_ell_to_d_ell(ells_star, C_ell_star)
+print(f"  Starobinsky D₂ = {D_ell_star[0]:.0f} μK²")
+
+chi2_m, chi2_l, chi2_diff = compute_chi2_camb(ps_data)
+print(f"\nχ² (low-ℓ, ℓ=2-29):")
+print(f"  Starobinsky = {chi2_m:.1f}")
+print(f"  LCDM        = {chi2_l:.1f}")
+print(f"  Δχ²         = {chi2_diff:.1f}")
