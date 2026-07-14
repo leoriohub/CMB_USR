@@ -29,9 +29,9 @@ class StarobinskyModel(InflationModel):
         self.x0 = 5.5
         self.y0 = -1e-4
 
-        # Integration range (shorter than Higgs — no USR transient)
-        self.T_max = 500.0
-        self.bg_steps = 10000
+        # Integration range (plateau is long — need more code time than Higgs)
+        self.T_max = 3000.0
+        self.bg_steps = 50000
 
     def f(self, x):
         return (1.0 - np.exp(-self.alpha * x)) ** 2
