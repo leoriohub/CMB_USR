@@ -13,6 +13,10 @@ import json
 import time
 import argparse
 import numpy as np
+try:
+    from numpy import trapezoid as trapz
+except ImportError:
+    from numpy import trapz
 from scripts.full_pbh_pipeline import compute_pbh_abundance
 
 import matplotlib
@@ -151,7 +155,7 @@ def compute_pbh_metrics(k_phys, P_S, zeta_c=0.052):
     M_present = pbh["M"] * ACCRETION
     f_pbh = pbh["f_pbh"]
 
-    f_total = float(np.trapezoid(f_pbh, np.log(np.maximum(M_present, 1e-300))))
+    f_total = float(trapz(f_pbh, np.log(np.maximum(M_present, 1e-300))))
     peak_i = int(np.argmax(f_pbh))
     M_peak = float(M_present[peak_i]) if len(M_present) > 0 else np.nan
 
@@ -174,6 +178,8 @@ def run_sweep(
     N_total_min=65,
     k_pivot=0.05,
     N_star_vals=None,
+    ns_window=3.0,
+    ns_method="lsq",
     progress_fn=None,
     log_path=None,
     resume=False,
@@ -284,8 +290,8 @@ def run_sweep(
                             # n_s extracted via lsq window fit (default) or derivative at k_pivot
                             n_s, ns_meta = extract_ns(
                                 k_m, ps_ms, k_pivot=k_pivot,
-                                ns_window=args.ns_window if args.ns_method == "lsq" else None,
-                                method=args.ns_method,
+                                ns_window=ns_window if ns_method == "lsq" else None,
+                                method=ns_method,
                             )
                             A_s_at_cmb = interpolate_As(k_m, ps_ms, k_pivot)
                             M_kpeak = (
@@ -316,7 +322,7 @@ def run_sweep(
                                 "mass_bin": mass_bin,
                                 "n_s": n_s,
                                 "k_pivot": float(k_pivot),
-                                "ns_window": None,
+                                "ns_window": ns_window,
                                 "A_s_at_cmb": A_s_at_cmb,
                                 "k_phys": k_m.tolist(),
                                 "P_S": ps_ms.tolist(),
@@ -696,6 +702,8 @@ def main():
         N_total_min=args.N_total_min,
         k_pivot=args.k_pivot,
         N_star_vals=N_star_vals,
+        ns_window=args.ns_window,
+        ns_method=args.ns_method,
         progress_fn=progress,
         log_path=args.log,
         resume=args.resume,
