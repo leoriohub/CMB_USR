@@ -266,7 +266,7 @@ def run_pspectrum_pipeline(
     use_numba=True,
     executor=None,
     ms_method='dp5',
-    backend='numba',
+    backend='fortran',
 ):
     """
     Compute P_S(k) for a grid of k-modes for a given inflation model.
@@ -808,7 +808,7 @@ def main():
     ms_steps = _resolve("ms_steps", args.ms_steps, config) or 5000
     output_dir = _resolve("output_dir", args.output_dir, config) or "outputs/simulations/pspectra"
     k_start_factor = _resolve("k_start_factor", args.k_start_factor, config) or 100.0
-    backend = _resolve("backend", args.backend, config) or "numba"
+    backend = _resolve("backend", args.backend, config) or "fortran"
 
     k_grid = None
     if use_weighted:
