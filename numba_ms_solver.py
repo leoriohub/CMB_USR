@@ -7,7 +7,7 @@ inf_dyn_MS_full.run_ms_simulation() with ~2x pipeline speedup.
 import numpy as np
 from scipy.interpolate import CubicSpline
 from scipy.integrate import solve_ivp
-from functools import partial
+
 
 try:
     from numba import njit, prange
@@ -129,8 +129,7 @@ def make_rhs_spline(S, v0):
         t_grid = bc[0][0]
         i = np.searchsorted(t_grid, T) - 1
         i = max(0, min(i, len(t_grid) - 2))
-        
-        x = _spline_eval_at_index(T, t_grid, i, bc[0][1], bc[0][2], bc[0][3], bc[0][4])
+
         y = _spline_eval_at_index(T, t_grid, i, bc[1][1], bc[1][2], bc[1][3], bc[1][4])
         z = _spline_eval_at_index(T, t_grid, i, bc[2][1], bc[2][2], bc[2][3], bc[2][4])
         n_rel = _spline_eval_at_index(T, t_grid, i, bc[3][1], bc[3][2], bc[3][3], bc[3][4]) - ni
@@ -259,18 +258,16 @@ def _rhs_eval(vars_8, T, bc, k_rel, ni, S, v0, model_type, alpha):
     t_grid = bc[0][0]
     i = np.searchsorted(t_grid, T) - 1
     i = max(0, min(i, len(t_grid) - 2))
-    
+
     x = _spline_eval_at_index(T, t_grid, i, bc[0][1], bc[0][2], bc[0][3], bc[0][4])
     y = _spline_eval_at_index(T, t_grid, i, bc[1][1], bc[1][2], bc[1][3], bc[1][4])
     z = _spline_eval_at_index(T, t_grid, i, bc[2][1], bc[2][2], bc[2][3], bc[2][4])
     n_rel = _spline_eval_at_index(T, t_grid, i, bc[3][1], bc[3][2], bc[3][3], bc[3][4]) - ni
-    
+
     if model_type == 0:
-        # Higgs analytical
         df_val = 2.0 * alpha * np.exp(-alpha * x) * (1.0 - np.exp(-alpha * x))
         d2f_val = 2.0 * alpha**2 * np.exp(-alpha * x) * (2.0 * np.exp(-alpha * x) - 1.0)
     else:
-        # Spline-based
         df_val = _spline_eval_at_index(T, t_grid, i, bc[5][1], bc[5][2], bc[5][3], bc[5][4])
         d2f_val = _spline_eval_at_index(T, t_grid, i, bc[6][1], bc[6][2], bc[6][3], bc[6][4])
         
@@ -289,13 +286,38 @@ def _rhs_eval(vars_8, T, bc, k_rel, ni, S, v0, model_type, alpha):
 @njit(cache=True)
 def _integrate_dp5(y0, T_start, T_end, output_t, bc, k_rel, ni, S, v0, model_type, alpha,
                    h_init=1e-2, rtol=1e-8, atol=1e-10, max_steps=200000):
-    a21=0.2; a31=3/40; a32=9/40
-    a41=44/45; a42=-56/15; a43=32/9
-    a51=19372/6561; a52=-25360/2187; a53=64448/6561; a54=-212/729
-    a61=9017/3168; a62=-355/33; a63=46732/5247; a64=49/176; a65=-5103/18656
-    b1=35/384; b2=0; b3=500/1113; b4=125/192; b5=-2187/6784; b6=11/84
-    c2=0.2; c3=0.3; c4=0.8; c5=8/9
-    d1=5179/57600; d2=0; d3=7571/16695; d4=393/640; d5=-92097/339200; d6=187/2100; d7=1/40
+    a21 = 0.2
+    a31 = 3/40
+    a32 = 9/40
+    a41 = 44/45
+    a42 = -56/15
+    a43 = 32/9
+    a51 = 19372/6561
+    a52 = -25360/2187
+    a53 = 64448/6561
+    a54 = -212/729
+    a61 = 9017/3168
+    a62 = -355/33
+    a63 = 46732/5247
+    a64 = 49/176
+    a65 = -5103/18656
+    b1 = 35/384
+    b2 = 0
+    b3 = 500/1113
+    b4 = 125/192
+    b5 = -2187/6784
+    b6 = 11/84
+    c2 = 0.2
+    c3 = 0.3
+    c4 = 0.8
+    c5 = 8/9
+    d1 = 5179/57600
+    d2 = 0
+    d3 = 7571/16695
+    d4 = 393/640
+    d5 = -92097/339200
+    d6 = 187/2100
+    d7 = 1/40
 
     n_out = len(output_t)
     out = np.zeros((8, n_out))

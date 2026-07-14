@@ -27,7 +27,7 @@ dev = ["pytest", "pytest-cov", "pytest-mock", "jupyter", "ipykernel"]
 include = ["models*", "scripts*"]
 
 [tool.setuptools]
-py-modules = ["inf_dyn_background", "inf_dyn_MS_full", "numba_ms_solver", "pspectrum_pipeline"]
+py-modules = ["inf_dyn_background", "inf_dyn_MS_full", "numba_ms_solver", "pspectrum_pipeline", "fortran_ms_solver"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
