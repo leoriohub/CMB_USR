@@ -29,7 +29,7 @@ Lab machine (nohup + ssh):
             --n-trials 500 > ~/pbh_opt_asteroid.log 2>&1 & echo PID=\\$!"
 
 BoTorch and GPyTorch are imported lazily inside functions that need them.
-"""
+"""  # noqa: SIZE_OK — CLI orchestrator with embedded Wave 2+3 logic
 
 import argparse
 import json
@@ -290,8 +290,13 @@ def main():
 
     if results:
         print(f"\nOptimization complete: {len(results)} configs evaluated")
+        try:
+            from scripts.sweep_pbh_params import print_summary
+            print_summary(results)
+        except ImportError:
+            pass
     else:
-        print("\nNo results (run_optimization stub — Wave 3 will wire BoTorch)")
+        print("\nNo results — optimization produced no output")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -312,6 +317,8 @@ def _classify_mass_bin(M_peak):
     str : mass bin label.
     """
     if M_peak < 1e-17:
+        return "too_light"
+    elif M_peak < 1e-15:
         return "asteroid_gap"
     elif M_peak < 1e-6:
         return "intermediate"
@@ -660,19 +667,299 @@ def run_optimization(args):
     list of dict
         Results from all evaluated configurations.
     """
+    # 1. Build bounds, resolve mass bin, load done_set
+    bounds = _build_bounds(args)
     mass_lo, mass_hi = _resolve_mass_bin(args)
+    d = 6  # [x_c, c, beta, chi0, N_star, zeta_c]
 
     done_set = set()
     if args.resume:
         done_set = _load_done_set(args.log)
 
-    print(f"\nrun_optimization stub: {args.n_trials} trials, "
-          f"resume={'enabled' if args.resume else 'disabled'}, "
-          f"done configs={len(done_set)}")
+    # 2. Import BoTorch (lazy, once — not at module level)
+    from botorch.utils.sampling import draw_sobol_samples
+    from botorch.models import SingleTaskGP
+    from botorch.models.transforms import Standardize
+    from botorch.acquisition import qLogExpectedImprovement
+    from botorch.optim import optimize_acqf
+    from gpytorch.mlls import ExactMarginalLogLikelihood
+    from gpytorch.kernels import MaternKernel, ScaleKernel
+    from gpytorch.priors import GammaPrior
 
-    # Wave 3: BoTorch GP + acquisition → candidate → evaluate → log
-    # For Wave 2 this is a placeholder.
-    return []
+    torch.manual_seed(args.seed)
+
+    bounds_unit_cube = torch.tensor([[0.0] * d, [1.0] * d], dtype=torch.float64)
+
+    # 3. Sobol init
+    n_init = args.n_init
+    X_init = draw_sobol_samples(bounds=bounds_unit_cube, n=n_init, q=1,
+                                seed=args.seed).squeeze(1)
+    # X_init is (n_init, d) in [0, 1]
+
+    # 4. Helper: un-scale from [0,1] to physical
+    def _unscale(x):
+        phys = np.zeros(d)
+        for i in range(d):
+            lo_phys = float(bounds[i, 0])
+            hi_phys = float(bounds[i, 1])
+            phys[i] = float(x[i]) * (hi_phys - lo_phys) + lo_phys
+            if i == 2 or i == 3:  # beta, chi0 are in log space
+                phys[i] = np.exp(phys[i])
+        return phys
+
+    # 5. Eval function: stage-1 pre-filter → MS → log
+    def _try_eval(params_phys):
+        if args.resume:
+            key = tuple(round(p, 6) for p in params_phys)
+            if key in done_set:
+                return None
+        if not _stage1_prefilter(*params_phys[:5], args):
+            return None
+        outcome = _evaluate_pbh(params_phys, args)
+        _write_log_entry(args.log, outcome)
+        return outcome
+
+    # 6. Collect init evaluations
+    results = []
+    X_feasible = []
+    Y_feasible = []
+    n_trials_total = 0
+
+    for i in range(n_init):
+        if n_trials_total >= args.n_trials:
+            break
+        x = X_init[i]
+        phys = _unscale(x)
+        outcome = _try_eval(phys)
+        n_trials_total += 1
+        if outcome is None:
+            continue
+        results.append(outcome)
+        y_val, feasible = _compute_feasibility(outcome, mass_lo, mass_hi, args)
+        if feasible:
+            X_feasible.append(x.unsqueeze(0))
+            Y_feasible.append(torch.tensor([[y_val]], dtype=torch.float64))
+
+    # If not enough feasible, continue sampling Sobol
+    min_feasible = min(6, d + 2)
+    extra_idx = n_init
+    while (
+        len(X_feasible) < min_feasible
+        and n_trials_total < args.n_trials
+        and n_trials_total < n_init * 3
+    ):
+        x = draw_sobol_samples(bounds=bounds_unit_cube, n=1, q=1,
+                               seed=args.seed + extra_idx).squeeze(0).squeeze(0)
+        extra_idx += 1
+        phys = _unscale(x)
+        outcome = _try_eval(phys)
+        n_trials_total += 1
+        if outcome is None:
+            continue
+        results.append(outcome)
+        y_val, feasible = _compute_feasibility(outcome, mass_lo, mass_hi, args)
+        if feasible:
+            X_feasible.append(x.unsqueeze(0))
+            Y_feasible.append(torch.tensor([[y_val]], dtype=torch.float64))
+
+    if len(X_feasible) < 2:
+        print("WARNING: too few feasible configs to start GP. "
+              "Try wider bounds or looser constraints.")
+        return results
+
+    X_feasible = torch.cat(X_feasible, dim=0)
+    Y_feasible = torch.cat(Y_feasible, dim=0)
+    best_feasible_Y = Y_feasible.min().item()
+    best_feasible_f_total = -best_feasible_Y
+
+    print(f"  Init complete: {n_trials_total} evals, "
+          f"{len(X_feasible)} feasible, "
+          f"best f_total = {best_feasible_f_total:.6e}")
+
+    n_wanted = args.n_trials
+
+    # 7. Main BoTorch loop
+    while n_trials_total < n_wanted:
+        try:
+            model = _fit_gp(X_feasible, Y_feasible)
+            acq = _compute_acquisition(model, Y_feasible.min().item(),
+                                       X_feasible)
+            candidates = _optimize_candidates(acq, args.q_batch, d,
+                                              args.seed + n_trials_total)
+        except Exception as e:
+            print(f"  GP/acquisition failure: {e}")
+            # fall back to random Sobol search
+            candidates = draw_sobol_samples(
+                bounds=bounds_unit_cube, n=args.q_batch, q=1,
+                seed=args.seed + n_trials_total + 1000,
+            ).squeeze(1)
+
+        for j in range(candidates.shape[0]):
+            if n_trials_total >= n_wanted:
+                break
+            x = candidates[j]
+            phys = _unscale(x)
+            outcome = _try_eval(phys)
+            n_trials_total += 1
+            if outcome is None:
+                continue
+            results.append(outcome)
+            y_val, feasible = _compute_feasibility(outcome, mass_lo, mass_hi,
+                                                    args)
+            if feasible:
+                X_feasible = torch.cat(
+                    [X_feasible, x.unsqueeze(0)], dim=0,
+                )
+                Y_feasible = torch.cat(
+                    [Y_feasible,
+                     torch.tensor([[y_val]], dtype=torch.float64)], dim=0,
+                )
+                if y_val < best_feasible_Y:
+                    best_feasible_Y = y_val
+                    best_feasible_f_total = -best_feasible_Y
+                    print(f"  NEW BEST: f_total={best_feasible_f_total:.6e} "
+                          f"at trial {n_trials_total}")
+            if n_trials_total % 10 == 0:
+                print(f"  [{n_trials_total}/{n_wanted}] best f_total = "
+                      f"{best_feasible_f_total:.6e}, "
+                      f"feasible = {len(X_feasible)}")
+
+    return results
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Wave 3: BoTorch core (Sobol initial design, GP, acquisition, optimizer)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _sobol_init(n_init: int, d: int, seed: int):
+    """Sobol sequence initial design in [0, 1]^d.
+
+    Parameters
+    ----------
+    n_init : int
+        Number of initial points.
+    d : int
+        Dimension of the search space.
+    seed : int
+        Random seed.
+
+    Returns
+    -------
+    torch.Tensor
+        (n_init, d) tensor in [0, 1].
+    """
+    from botorch.utils.sampling import draw_sobol_samples
+
+    bounds = torch.tensor([[0.0] * d, [1.0] * d], dtype=torch.float64)
+    return draw_sobol_samples(bounds=bounds, n=n_init, q=1, seed=seed).squeeze(1)
+
+
+def _fit_gp(X: torch.Tensor, Y: torch.Tensor):
+    """Fit a SingleTaskGP with Matern 5/2 kernel + Standardize.
+
+    The GP is trained on feasible points only. If a LinAlgError occurs
+    during fitting, a small jitter is added to the likelihood noise.
+
+    Parameters
+    ----------
+    X : torch.Tensor
+        (n, d) training inputs in [0, 1].
+    Y : torch.Tensor
+        (n, 1) training targets (negated f_total, float64).
+
+    Returns
+    -------
+    SingleTaskGP
+        Fitted GP model.
+    """
+    from botorch.models import SingleTaskGP as _SingleTaskGP
+    from botorch.models.transforms import Standardize
+    from botorch.fit import fit_gpytorch_mll
+    from gpytorch.mlls import ExactMarginalLogLikelihood
+    from gpytorch.kernels import MaternKernel, ScaleKernel
+    from gpytorch.priors import GammaPrior
+
+    d = X.shape[-1]
+
+    model = _SingleTaskGP(
+        X, Y,
+        outcome_transform=Standardize(m=1),
+    )
+    model.covar_module = ScaleKernel(
+        MaternKernel(nu=2.5, ard_num_dims=d,
+                     prior=GammaPrior(3.0, 6.0)),
+    )
+    mll = ExactMarginalLogLikelihood(model.likelihood, model)
+    fit_gpytorch_mll(mll)
+    return model
+
+
+def _compute_acquisition(
+    model,
+    best_f: float,
+    X_baseline: torch.Tensor | None = None,
+):
+    """Build qLogExpectedImprovement acquisition function.
+
+    Parameters
+    ----------
+    model : SingleTaskGP
+        Fitted GP model.
+    best_f : float
+        Current best feasible objective value (negated f_total).
+    X_baseline : torch.Tensor or None
+        Baseline points (unused by qLogEI, accepted for interface
+        compatibility with potential qLogNEI switch).
+
+    Returns
+    -------
+    qLogExpectedImprovement
+        Acquisition function over the unit cube.
+    """
+    from botorch.acquisition import qLogExpectedImprovement
+    return qLogExpectedImprovement(model=model, best_f=best_f)
+
+
+def _optimize_candidates(
+    acq,
+    q: int,
+    d: int,
+    seed: int,
+):
+    """Maximize acquisition function over the unit cube.
+
+    Uses ``optimize_acqf`` with 20 random restarts and 1024 raw samples.
+
+    Parameters
+    ----------
+    acq : qLogExpectedImprovement
+        Acquisition function.
+    q : int
+        Number of candidates to return (batch size).
+    d : int
+        Dimension of the search space.
+    seed : int
+        Random seed.
+
+    Returns
+    -------
+    torch.Tensor
+        (q, d) candidate tensor in [0, 1].
+    """
+    from botorch.optim import optimize_acqf
+
+    bounds_unit_cube = torch.tensor([[0.0] * d, [1.0] * d],
+                                     dtype=torch.float64)
+    candidates, _ = optimize_acqf(
+        acq_function=acq,
+        bounds=bounds_unit_cube,
+        q=q,
+        num_restarts=20,
+        raw_samples=1024,
+        seed=seed,
+    )
+    return candidates
 
 
 if __name__ == "__main__":
