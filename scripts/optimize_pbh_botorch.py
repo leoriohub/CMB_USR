@@ -24,9 +24,11 @@ Lab machine (nohup + ssh):
     ssh uni "cd ~/Documentos/CMB_USR && git pull && \\
         source ~/miniconda3/etc/profile.d/conda.sh && conda activate cmb-anomaly && \\
         nohup python scripts/optimize_pbh_botorch.py \\
-            --x-c-lo 0.75 --x-c-hi 0.85 \\
-            --target asteroid \\
-            --n-trials 500 > ~/pbh_opt_asteroid.log 2>&1 & echo PID=\\$!"
+            --target subsolar --n-trials 200 > ~/pbh_botorch_subsolar.log 2>&1 & echo PID=\\$!"
+
+Resume an interrupted run:
+    python scripts/optimize_pbh_botorch.py --resume \\
+        --log outputs/simulations/logs/pbh_optimizer.jsonl
 
 BoTorch and GPyTorch are imported lazily inside functions that need them.
 """  # noqa: SIZE_OK — CLI orchestrator with embedded Wave 2+3 logic
@@ -291,8 +293,36 @@ def main():
     if results:
         print(f"\nOptimization complete: {len(results)} configs evaluated")
         try:
-            from scripts.sweep_pbh_params import print_summary
+            from scripts.sweep_pbh_params import (
+                print_summary, plot_heatmap_2d, plot_best_configs,
+            )
+
             print_summary(results)
+
+            if not args.no_plot:
+                os.makedirs(args.output_dir, exist_ok=True)
+
+                if len(results) > 1:
+                    # Heatmap: x_c vs c for P_S_peak_ratio
+                    plot_heatmap_2d(
+                        results, "x_c", "c", "P_S_peak_ratio",
+                        r"$x_c$", r"$c$",
+                        r"$P_{\mathcal{R}}^{\mathrm{peak}} / A_s$",
+                        "botorch_xc_vs_c_PSratio", "pbh",
+                    )
+                    # Heatmap: x_c vs c for M_peak
+                    plot_heatmap_2d(
+                        results, "x_c", "c", "M_kpeak",
+                        r"$x_c$", r"$c$",
+                        r"$M_{\mathrm{peak}} [M_\odot]$",
+                        "botorch_xc_vs_c_peakM", "pbh",
+                    )
+                    # Best configs
+                    plot_best_configs(results, n_best=3,
+                                      filename="botorch_best_configs",
+                                      category="pbh")
+
+                    print(f"  Plots saved to {args.output_dir}")
         except ImportError:
             pass
     else:
