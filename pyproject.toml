@@ -33,6 +33,7 @@ py-modules = ["inf_dyn_background", "inf_dyn_MS_full", "numba_ms_solver", "pspec
 testpaths = ["tests"]
 markers = [
     "fast: unit tests that run quickly with no external dependencies",
+    "integration: background integration tests that exercise the ODE solver over the full T_max range",
     "slow: integration tests that require solvers, CAMB, or model files",
 ]
 addopts = "-v --tb=short"
