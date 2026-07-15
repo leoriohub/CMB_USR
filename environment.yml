@@ -11,3 +11,5 @@ dependencies:
   - tqdm>=4.60,<5.0
   - jupyter
   - ipykernel
+  - gpytorch>=1.11
+  - botorch>=0.11
