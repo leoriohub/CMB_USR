@@ -960,35 +960,40 @@ def run_optimization(args):
                 seed=args.seed + n_trials_total + 1000,
             ).squeeze(1)
 
-        for j in range(candidates.shape[0]):
-            if n_trials_total >= n_wanted:
-                break
-            x = candidates[j]
-            phys = _unscale(x)
-            outcome = _try_eval(phys)
-            n_trials_total += 1
-            if outcome is None:
-                continue
-            results.append(outcome)
-            y_val, feasible = _compute_feasibility(outcome, mass_lo, mass_hi,
-                                                    args)
-            if feasible:
-                X_feasible = torch.cat(
-                    [X_feasible, x.unsqueeze(0)], dim=0,
-                )
-                Y_feasible = torch.cat(
-                    [Y_feasible,
-                     torch.tensor([[y_val]], dtype=torch.float64)], dim=0,
-                )
-                if y_val < best_feasible_Y:
-                    best_feasible_Y = y_val
-                    best_feasible_f_total = -best_feasible_Y
-                    print(f"  NEW BEST: f_total={best_feasible_f_total:.6e} "
-                          f"at trial {n_trials_total}")
-            if n_trials_total % 10 == 0:
-                print(f"  [{n_trials_total}/{n_wanted}] best f_total = "
-                      f"{best_feasible_f_total:.6e}, "
-                      f"feasible = {len(X_feasible)}")
+        # Parallel eval of q-batch candidates
+        batch_phys = [_unscale(candidates[j]) for j in range(candidates.shape[0])]
+        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+            futures = {pool.submit(_eval_worker, p.tolist(), _args_dict): (j, p)
+                       for j, p in enumerate(batch_phys)}
+            for future in as_completed(futures):
+                j, phys = futures[future]
+                if n_trials_total >= n_wanted:
+                    break
+                outcome = future.result()
+                n_trials_total += 1
+                if outcome is None:
+                    continue
+                results.append(outcome)
+                x = candidates[j]
+                y_val, feasible = _compute_feasibility(outcome, mass_lo, mass_hi,
+                                                       args)
+                if feasible:
+                    X_feasible = torch.cat(
+                        [X_feasible, x.unsqueeze(0)], dim=0,
+                    )
+                    Y_feasible = torch.cat(
+                        [Y_feasible,
+                         torch.tensor([[y_val]], dtype=torch.float64)], dim=0,
+                    )
+                    if y_val < best_feasible_Y:
+                        best_feasible_Y = y_val
+                        best_feasible_f_total = -best_feasible_Y
+                        print(f"  NEW BEST: f_total={best_feasible_f_total:.6e} "
+                              f"at trial {n_trials_total}")
+                if n_trials_total % 10 == 0:
+                    print(f"  [{n_trials_total}/{n_wanted}] best f_total = "
+                          f"{best_feasible_f_total:.6e}, "
+                          f"feasible = {len(X_feasible)}")
 
     return results
 
