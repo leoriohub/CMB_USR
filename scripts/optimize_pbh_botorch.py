@@ -40,6 +40,11 @@ import sys
 import time
 import warnings
 
+# Ensure project root is in sys.path for Fortran MS solver import
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 import numpy as np
 import torch
 
@@ -234,6 +239,14 @@ def main():
                     help="Skip parameter sets already recorded in the log file")
     p.add_argument("--f-max", type=float, default=1.0,
                     help="Exclude configs with f_total > this threshold (default: 1.0)")
+    p.add_argument("--psr-peak-min", type=float, default=1e-5,
+                    help="Stage-2 SR P_S(k) peak min for collapse feasibility "
+                         "(default: 1e-5; typical USR peaks are 1e-3 to 1)")
+    p.add_argument("--stage2-skip", action="store_true",
+                    help="Skip Stage-2 SR filter (always run full MS)")
+    p.add_argument("--stage1-skip-usr", action="store_true",
+                    help="Skip the Stage-1 usr_type=weak filter "
+                         "(only checks N_total >= N_total_min)")
 
     # Pre-parse --config before full argument parse
     pre_args, _ = p.parse_known_args()
@@ -401,7 +414,7 @@ def _stage1_prefilter(x_c, c, beta, chi0, N_star, args):
         if bg is None:
             print(f"  Stage-1: skip (analyze_background returned None)")
             return False
-        if bg["usr_type"] == "weak":
+        if bg["usr_type"] == "weak" and not args.stage1_skip_usr:
             print(f"  Stage-1: skip (usr_type=weak, "
                   f"N_total={bg['N_total']:.1f})")
             return False
@@ -412,6 +425,64 @@ def _stage1_prefilter(x_c, c, beta, chi0, N_star, args):
         return True
     except Exception as e:
         print(f"  Stage-1: exception ({e})")
+        return False
+
+
+def _stage2_sr_filter(x_c, c, beta, chi0, N_star, args):
+    """Stage-2: fast SR-approximation P_S(k) peak filter.
+
+    Computes the SR power spectrum from background quantities and checks
+    whether the peak amplitude exceeds ``--psr-peak-min``.  This filters
+    out configs whose P_S(k) peak is too weak to produce PBH collapse
+    via Press-Schechter, avoiding an expensive full MS solve.
+
+    Parameters
+    ----------
+    x_c, c, beta, chi0, N_star : float
+        Parameter set (same as Stage-1).
+    args : argparse.Namespace
+        CLI arguments with ``y0``, ``k_pivot``, ``psr_peak_min``.
+
+    Returns
+    -------
+    bool
+        True if SR P_S peak >= psr_peak_min, False otherwise.
+    """
+    from scripts.observables import model_from_params
+    from inf_dyn_background import run_background_simulation, get_derived_quantities
+    from scripts.compute_sr_ms import compute_ps_sr
+
+    try:
+        model = model_from_params(x_c, c, beta)
+        model.x0 = chi0
+        model.y0 = args.y0
+        model.patch_background_solver()
+
+        T_span = np.linspace(0, model.T_max, model.bg_steps)
+        bg_sol = run_background_simulation(model, T_span)
+        derived = get_derived_quantities(bg_sol, model)
+        epsH = derived["epsH"]
+        end_candidates = np.where(epsH >= 1.0)[0]
+        end_idx = int(end_candidates[0]) if len(end_candidates) > 0 else len(epsH) - 1
+        if end_idx < 10:
+            end_idx = len(epsH) - 1
+
+        k_sr, P_S_sr, _ = compute_ps_sr(bg_sol, end_idx)
+        valid = np.isfinite(P_S_sr) & (P_S_sr > 1e-30) & np.isfinite(k_sr) & (k_sr > 1.0)
+        if np.sum(valid) < 5:
+            print(f"  Stage-2: skip (too few valid SR modes)")
+            return False
+
+        ps_peak = float(np.max(P_S_sr[valid]))
+        if ps_peak < args.psr_peak_min:
+            print(f"  Stage-2: skip (SR peak={ps_peak:.3e} < "
+                  f"psr_peak_min={args.psr_peak_min:.3e})")
+            return False
+
+        print(f"  Stage-2: pass (SR peak={ps_peak:.3e})")
+        return True
+    except Exception as e:
+        print(f"  Stage-2: exception ({e})")
         return False
 
 
@@ -737,7 +808,7 @@ def run_optimization(args):
                 phys[i] = np.exp(phys[i])
         return phys
 
-    # 5. Eval function: stage-1 pre-filter → MS → log
+    # 5. Eval function: stage-1 → stage-2 SR filter → MS → log
     def _try_eval(params_phys):
         if args.resume:
             key = tuple(round(p, 6) for p in params_phys)
@@ -745,6 +816,9 @@ def run_optimization(args):
                 return None
         if not _stage1_prefilter(*params_phys[:5], args):
             return None
+        if not args.stage2_skip:
+            if not _stage2_sr_filter(*params_phys[:5], args):
+                return None
         outcome = _evaluate_pbh(params_phys, args)
         _write_log_entry(args.log, outcome)
         return outcome
