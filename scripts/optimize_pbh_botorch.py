@@ -37,8 +37,16 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
 import warnings
+
+# Thread-level lock for parallel JSONL writes
+_log_write_lock = threading.Lock()
+
+# OpenMP set to 1 when using Python-level thread parallelism.
+# Override via env: OMP_NUM_THREADS=8 python scripts/...
+os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 # Ensure project root is in sys.path for Fortran MS solver import
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -700,10 +708,11 @@ def _write_log_entry(log_path, entry):
         log_entry["P_S"] = entry["P_S"]
 
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    with open(log_path, "a") as f:
-        json.dump(log_entry, f)
-        f.write("\n")
-        f.flush()
+    with _log_write_lock:
+        with open(log_path, "a") as f:
+            json.dump(log_entry, f)
+            f.write("\n")
+            f.flush()
 
 
 def _load_done_set(log_path):
@@ -774,8 +783,40 @@ def run_optimization(args):
     d = 6  # [x_c, c, beta, chi0, N_star, zeta_c]
 
     done_set = set()
+    X_seed = []
+    Y_seed = []
     if args.resume:
         done_set = _load_done_set(args.log)
+        # Load feasible entries from log to seed the GP training set
+        if os.path.exists(args.log):
+            with open(args.log) as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line.strip())
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+                    if entry.get("status") != "success":
+                        continue
+                    # Map log keys back to what _compute_feasibility expects
+                    entry["M_peak_best"] = entry.get("M_present")
+                    y_val, feasible = _compute_feasibility(entry, mass_lo, mass_hi, args)
+                    if not feasible:
+                        continue
+                    p = np.array([entry["x_c"], entry["c"], entry["beta"],
+                                  entry["chi0"], entry["N_star"], entry["zeta_c"]])
+                    x_unit = np.zeros(d)
+                    for i in range(d):
+                        lo_phys = float(bounds[i, 0])
+                        hi_phys = float(bounds[i, 1])
+                        if i in (2, 3):
+                            x_unit[i] = (np.log(p[i]) - lo_phys) / (hi_phys - lo_phys)
+                        else:
+                            x_unit[i] = (p[i] - lo_phys) / (hi_phys - lo_phys)
+                    if np.all(x_unit >= 0) and np.all(x_unit <= 1):
+                        X_seed.append(torch.tensor(x_unit, dtype=torch.float64).unsqueeze(0))
+                        Y_seed.append(torch.tensor([[y_val]], dtype=torch.float64))
+        if X_seed:
+            print(f"  Loaded {len(X_seed)} feasible configs from log to seed GP")
 
     # 2. Import BoTorch (lazy, once — not at module level)
     from botorch.utils.sampling import draw_sobol_samples
@@ -823,26 +864,47 @@ def run_optimization(args):
         _write_log_entry(args.log, outcome)
         return outcome
 
-    # 6. Collect init evaluations
+    # 6. Collect init evaluations (optionally seeded from resume log)
     results = []
-    X_feasible = []
-    Y_feasible = []
+    X_feasible = list(X_seed) if 'X_seed' in dir() else []
+    Y_feasible = list(Y_seed) if 'Y_seed' in dir() else []
+    if X_feasible:
+        print(f"  Seeded GP with {len(X_feasible)} feasible configs from {args.log}")
     n_trials_total = 0
 
-    for i in range(n_init):
-        if n_trials_total >= args.n_trials:
-            break
-        x = X_init[i]
-        phys = _unscale(x)
-        outcome = _try_eval(phys)
-        n_trials_total += 1
-        if outcome is None:
-            continue
-        results.append(outcome)
-        y_val, feasible = _compute_feasibility(outcome, mass_lo, mass_hi, args)
-        if feasible:
-            X_feasible.append(x.unsqueeze(0))
-            Y_feasible.append(torch.tensor([[y_val]], dtype=torch.float64))
+    n_workers = min(args.workers, os.cpu_count() or 8)
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    # Serialize args for subprocess workers
+    _args_dict = {
+        'y0': args.y0, 'workers': 1, 'k_pivot': args.k_pivot,
+        'ns_method': args.ns_method, 'ns_window': args.ns_window,
+        'N_total_min': args.N_total_min, 'stage1_skip_usr': args.stage1_skip_usr,
+        'stage2_skip': args.stage2_skip, 'psr_peak_min': args.psr_peak_min,
+        'log': args.log,
+    }
+    init_batch = []
+    for i in range(min(n_init, args.n_trials)):
+        init_batch.append((i, _unscale(X_init[i])))
+
+    with ProcessPoolExecutor(max_workers=n_workers) as pool:
+        futures = {pool.submit(_eval_worker, phys.tolist(), _args_dict): i
+                   for i, phys in init_batch}
+        for future in as_completed(futures):
+            i = futures[future]
+            outcome = future.result()
+            n_trials_total += 1
+            if outcome is None:
+                print(f"  Init {i+1}/{n_init}: skipped")
+                continue
+            results.append(outcome)
+            y_val, feasible = _compute_feasibility(outcome, mass_lo, mass_hi, args)
+            if feasible:
+                x = X_init[i]
+                X_feasible.append(x.unsqueeze(0))
+                Y_feasible.append(torch.tensor([[y_val]], dtype=torch.float64))
+            print(f"  Init {i+1}/{n_init}: f_total={outcome.get('f_total',0):.4e} "
+                  f"feasible={feasible}")
+        pool.shutdown(wait=True)
 
     # If not enough feasible, continue sampling Sobol
     min_feasible = min(6, d + 2)
@@ -1064,6 +1126,82 @@ def _optimize_candidates(
         seed=seed,
     )
     return candidates
+
+
+# ── Parallel eval worker (module-level for pickling) ─────────────────────────
+
+_EVAL_WORKER_ARGS = None
+
+def _init_worker(args_dict):
+    """Initialize worker process with shared args."""
+    import numpy as np
+    global _EVAL_WORKER_ARGS
+    _EVAL_WORKER_ARGS = args_dict
+
+
+def _eval_worker(params_phys, args_dict):
+    """Evaluate a single config (x_c, c, beta, chi0, N_star, zeta_c) in a
+    subprocess.  Imports directly from source modules to avoid circular import.
+
+    Parameters
+    ----------
+    params_phys : list of 6 floats
+        Physical parameter values [x_c, c, beta, chi0, N_star, zeta_c].
+    args_dict : dict
+        Serialized CLI arguments.
+
+    Returns
+    -------
+    outcome dict or None
+    """
+    import numpy as np
+    from types import SimpleNamespace
+
+    args = SimpleNamespace(**args_dict)
+    x_c, c, beta, chi0, N_star, zeta_c = params_phys[:6]
+
+    try:
+        from scripts.observables import model_from_params
+        from scripts.background_scan import analyze_background
+        from inf_dyn_background import run_background_simulation, get_derived_quantities
+        from scripts.compute_sr_ms import compute_ps_sr
+        from scripts.full_pbh_pipeline import run_full_pbh_pipeline
+
+        # Stage-1 pre-filter (same as _stage1_prefilter but inline)
+        model = model_from_params(x_c, c, beta)
+        model.x0 = chi0
+        model.y0 = args.y0
+        model.patch_background_solver()
+        bg = analyze_background(model, chi0, args.y0, N_star, args.k_pivot)
+        if bg is None or bg["N_total"] < args.N_total_min:
+            return None
+        if bg["usr_type"] == "weak" and not args.stage1_skip_usr:
+            return None
+
+        # Stage-2 SR filter (same as _stage2_sr_filter but inline)
+        if not args.stage2_skip:
+            T_span = np.linspace(0, model.T_max, model.bg_steps)
+            bg_sol = run_background_simulation(model, T_span)
+            derived = get_derived_quantities(bg_sol, model)
+            epsH = derived["epsH"]
+            end_candidates = np.where(epsH >= 1.0)[0]
+            end_idx = int(end_candidates[0]) if len(end_candidates) > 0 else len(epsH) - 1
+            if end_idx < 10:
+                end_idx = len(epsH) - 1
+            k_sr, P_S_sr, _ = compute_ps_sr(bg_sol, end_idx)
+            valid = np.isfinite(P_S_sr) & (P_S_sr > 1e-30) & np.isfinite(k_sr) & (k_sr > 1.0)
+            if np.sum(valid) < 5 or float(np.max(P_S_sr[valid])) < args.psr_peak_min:
+                return None
+
+        # Stage-3: full MS pipeline
+        theta = np.array([x_c, c, beta, chi0, N_star, zeta_c])
+        from scripts.optimize_pbh_botorch import _evaluate_pbh, _write_log_entry
+        outcome = _evaluate_pbh(theta, args)
+        _write_log_entry(args.log, outcome)
+        return outcome
+    except Exception as e:
+        print(f"  Worker exception: {e}")
+        return None
 
 
 if __name__ == "__main__":
