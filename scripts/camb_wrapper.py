@@ -18,6 +18,7 @@ References
 
 import json
 import os
+from functools import lru_cache
 
 import numpy as np
 
@@ -37,25 +38,22 @@ except (ImportError, AttributeError):
 
 
 _LCDM_CACHE = {}
-_CAMB_PARAMS_CACHE = {}
 
-
+@lru_cache(maxsize=4)
 def _make_camb_params(ell_max=2500):
     """Create a CAMBparams object with Planck 2018 LCDM cosmology. Cached."""
-    if ell_max not in _CAMB_PARAMS_CACHE:
-        import camb
-        params = camb.CAMBparams()
-        params.set_cosmology(
-            H0=CAMB_COSMOLOGY["H0"], ombh2=CAMB_COSMOLOGY["ombh2"],
-            omch2=CAMB_COSMOLOGY["omch2"], tau=CAMB_COSMOLOGY["tau"],
-            mnu=CAMB_COSMOLOGY["mnu"],
-        )
-        params.set_for_lmax(ell_max)
-        params.Want_CMB = True
-        params.WantScalars = True
-        params.WantTensors = False
-        _CAMB_PARAMS_CACHE[ell_max] = params
-    return _CAMB_PARAMS_CACHE[ell_max].copy()
+    import camb
+    params = camb.CAMBparams()
+    params.set_cosmology(
+        H0=CAMB_COSMOLOGY["H0"], ombh2=CAMB_COSMOLOGY["ombh2"],
+        omch2=CAMB_COSMOLOGY["omch2"], tau=CAMB_COSMOLOGY["tau"],
+        mnu=CAMB_COSMOLOGY["mnu"],
+    )
+    params.set_for_lmax(ell_max)
+    params.Want_CMB = True
+    params.WantScalars = True
+    params.WantTensors = False
+    return params.copy()
 
 
 def _extend_pspectrum(k_phys, P_S, k_min=1e-6, k_max=10.0, n_extend=200):

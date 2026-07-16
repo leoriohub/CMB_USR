@@ -10,7 +10,7 @@
   "N_star_vals": [65, 66, 67, 68],
   "zeta_c_vals": [0.065, 0.068, 0.070, 0.072, 0.075, 0.078, 0.080, 0.083, 0.085],
   "target": "all",
-  "pivot_k": 0.05,
+  "k_pivot": 0.05,
   "workers": 4,
   "f_max": 10,
   "no_plot": true
