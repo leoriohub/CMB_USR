@@ -55,7 +55,12 @@ def _run_one_ms_config(config):
     list of dicts (one per zeta_c value), each with k_phys/P_S stripped for pickling
     """
     import os as _os
+    import sys as _sys
     _os.environ["OMP_NUM_THREADS"] = "1"
+    # Ensure project root is on path for Fortran module import
+    _project_root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    if _project_root not in _sys.path:
+        _sys.path.insert(0, _project_root)
 
     xc = config["xc"]
     c = config["c"]
