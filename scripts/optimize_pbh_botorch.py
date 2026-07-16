@@ -841,6 +841,10 @@ def run_optimization(args):
 
     # 5. Eval function: stage-1 → stage-2 SR filter → MS → log
     def _try_eval(params_phys):
+        import sys as _sys2
+        _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if _project_root not in _sys2.path:
+            _sys2.path.insert(0, _project_root)
         if args.resume:
             key = tuple(round(p, 6) for p in params_phys)
             if key in done_set:
