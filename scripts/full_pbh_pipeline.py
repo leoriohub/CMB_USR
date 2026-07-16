@@ -29,6 +29,7 @@ from scripts.constants import (
     k_eq_default,
     M_eq_default,
     ACCRETION,
+    NumpyJSONEncoder,
 )
 from scripts.plotting import make_filename
 from scripts.observables import extract_ns, interpolate_As
@@ -652,5 +653,5 @@ if __name__ == "__main__":
                     "pbh": {"zeta_c": zc, "f_total": ft, "M_present_Msun": M},
                 }
                 with open(dst.replace(".png", ".json"), "w") as f:
-                    json.dump(comp, f, indent=2, default=str)
+                    json.dump(comp, f, indent=2, cls=NumpyJSONEncoder)
                 print(f"  -> {dst}")

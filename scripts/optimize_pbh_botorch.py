@@ -48,15 +48,11 @@ _log_write_lock = threading.Lock()
 # Override via env: OMP_NUM_THREADS=8 python scripts/...
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 
-# Ensure project root is in sys.path for Fortran MS solver import
-_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _project_root not in sys.path:
-    sys.path.insert(0, _project_root)
-
 import numpy as np
 import torch
 
 from scripts.constants import (
+    ROOT_DIR,
     ACCRETION,
     As_planck,
     k_pivot_phys,
@@ -213,8 +209,6 @@ def main():
                     help="Pivot k_pivot_phys (Mpc^-1). Drives BOTH A_s "
                          "normalization and n_s extraction (single-pivot invariant). "
                          "Planck default 0.05; Higgs low-ell 0.002.")
-    p.add_argument("--pivot-k", type=float, default=None,
-                    help="Deprecated alias for --k-pivot (back-compat).")
     p.add_argument("--ns-method", choices=["lsq", "derivative"], default="lsq",
                     help="n_s extraction method: lsq=window fit (default), "
                          "derivative=log-derivative at k_pivot.")
@@ -264,10 +258,6 @@ def main():
         p.set_defaults(**config)
 
     args = p.parse_args()
-
-    # Back-compat: --pivot-k aliases --k-pivot
-    if args.pivot_k is not None:
-        args.k_pivot = args.pivot_k
 
     # Build bounds tensor
     bounds = _build_bounds(args)

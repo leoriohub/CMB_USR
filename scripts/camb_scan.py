@@ -15,6 +15,7 @@ import sys
 import time
 from datetime import datetime
 
+from functools import lru_cache
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor
 
@@ -36,22 +37,16 @@ CHI2_LCDM = 20.47
 CHI2_LCDM_FULL = 2573.04
 D2_LCDM = 1028.7
 
-
-_lcdm_cache = {}
-
-
 def _generate_grids(args):
     k_phys = np.logspace(np.log10(args.k_min), np.log10(args.k_max), args.num_k)
     ells = np.arange(args.ell_max + 1)
     return k_phys, ells
-
 
 def compute_camb_curves(ps_data, ell_max):
     """Full CAMB: returns d2, ells, D_ell, C_TT, C_TE, C_EE."""
     ells, C_TT, C_TE, C_EE = compute_cl_full_camb(ps_data, ell_max=ell_max)
     D = C_ell_to_d_ell(ells, C_TT)
     return float(D[0]), ells, D, C_TT, C_TE, C_EE
-
 
 def chi2_vs_planck(ells_model, D_model, ell_max_chi2=29):
     """Asymmetric diagonal chi2 vs Planck low-ell TT."""
@@ -61,15 +56,11 @@ def chi2_vs_planck(ells_model, D_model, ell_max_chi2=29):
     )
     return chi2
 
-
+@lru_cache(maxsize=4)
 def lcdm_baseline(ell_max):
     """Cached LCDM D_ell at given ell_max."""
-    if ell_max not in _lcdm_cache:
-        ells, C, _, _ = compute_cl_camb_powerlaw(ell_max=ell_max)
-        _lcdm_cache[ell_max] = (ells, C)
-    ells, C = _lcdm_cache[ell_max]
+    ells, C, _, _ = compute_cl_camb_powerlaw(ell_max=ell_max)
     return ells, C
-
 
 def passes_criteria(chi2, d2, n_star, k_dip, mode="chi2", max_chi2=None):
     if k_dip <= 0:
@@ -79,7 +70,6 @@ def passes_criteria(chi2, d2, n_star, k_dip, mode="chi2", max_chi2=None):
     return (chi2 <= max_chi2 and d2 < D2_LCDM
             and 50 <= n_star <= 65
             and K_DIP_MIN <= k_dip <= K_DIP_MAX)
-
 
 def load_completed(log_path):
     completed = set()
@@ -101,7 +91,6 @@ def load_completed(log_path):
             except (json.JSONDecodeError, KeyError):
                 pass
     return completed
-
 
 def evaluate_config(phi0, y0, N_star, args, k_phys_grid=None,
                     executor=None, model=None):
@@ -195,7 +184,6 @@ def evaluate_config(phi0, y0, N_star, args, k_phys_grid=None,
         entry["chi2_binned_model"] = chi2_binned_model
         entry["chi2_binned_lcdm"] = chi2_binned_lcdm
     return entry
-
 
 def run_phase1(args, completed):
     phi0_vals = np.linspace(args.phi0_range[0], args.phi0_range[1],
@@ -333,7 +321,6 @@ def run_phase1(args, completed):
     print(f"  Passing configs: {len(ok)}", flush=True)
     return log_path
 
-
 def find_promising_regions(log_path, args):
     """Read Phase 1 results, find regions passing all criteria."""
     regions = []
@@ -387,7 +374,6 @@ def find_promising_regions(log_path, args):
         regions.append((m["phi0"], m["y0"], max(m.get("N_star", 52), 50)))
 
     return regions
-
 
 def run_phase2(args, completed, regions):
     if not regions:
@@ -491,7 +477,6 @@ def run_phase2(args, completed, regions):
     print(f"\n\n  Phase 2 complete: {done[0]} evals in "
           f"{elapsed:.0f}s ({elapsed/60:.1f}m)", flush=True)
 
-
 def run_random_scan(args):
     """Run random config scan over phi0/y0/N_star ranges."""
     import random
@@ -580,7 +565,6 @@ def run_random_scan(args):
     print(f"  Top-50 saved: {summary_path}", flush=True)
     return log_path
 
-
 def print_summary(log_path_broad, log_path_fine=None, mode="chi2", max_chi2=None):
     print(f"\n{'='*60}", flush=True)
     print(f"  SCAN SUMMARY", flush=True)
@@ -624,7 +608,6 @@ def print_summary(log_path_broad, log_path_fine=None, mode="chi2", max_chi2=None
                   f"{r['N_star']:6.1f}  {r['chi2']:7.2f}  "
                   f"{r.get('d2', 0):7.1f}  {r['k_dip']:10.2e}  "
                   f"{r.get('suppression_pct', 0):7.1f}%", flush=True)
-
 
 def setup_args():
     p = argparse.ArgumentParser(description="CAMB-based Higgs USR scan")
@@ -701,7 +684,6 @@ def setup_args():
                    help="Path to existing Phase 1 log for Phase 2")
 
     return p.parse_args()
-
 
 def main():
     args = setup_args()
@@ -802,7 +784,6 @@ def main():
         pass
 
     print("\nDone.", flush=True)
-
 
 if __name__ == "__main__":
     main()
