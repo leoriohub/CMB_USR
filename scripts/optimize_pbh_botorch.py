@@ -1151,6 +1151,10 @@ def _eval_worker(params_phys, args_dict):
     """
     import numpy as np
     from types import SimpleNamespace
+    import os as _os, sys as _sys
+    _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _project_root not in _sys.path:
+        _sys.path.insert(0, _project_root)
 
     args = SimpleNamespace(**args_dict)
     x_c, c, beta, chi0, N_star, zeta_c = params_phys[:6]
