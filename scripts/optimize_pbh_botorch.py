@@ -1138,70 +1138,139 @@ def _init_worker(args_dict):
     _EVAL_WORKER_ARGS = args_dict
 
 
-def _eval_worker(params_phys, args_dict):
-    """Evaluate a single config (x_c, c, beta, chi0, N_star, zeta_c) in a
-    subprocess.  Imports directly from source modules to avoid circular import.
+def _run_pipeline(params_phys, args):
+    """Three-stage pipeline: background → SR filter → MS solver.
+
+    Called by both the main-process `_try_eval` closure and the
+    subprocess `_eval_worker`. Avoids code duplication.
 
     Parameters
     ----------
-    params_phys : list of 6 floats
-        Physical parameter values [x_c, c, beta, chi0, N_star, zeta_c].
-    args_dict : dict
-        Serialized CLI arguments.
+    params_phys : array-like of 6 floats
+        [x_c, c, beta, chi0, N_star, zeta_c]
+    args : object
+        Must have attributes: y0, k_pivot, N_total_min, stage1_skip_usr,
+        stage2_skip, psr_peak_min, log, workers, ns_method, ns_window.
 
     Returns
     -------
-    outcome dict or None
+    outcome dict or None (None = filtered out by stage 1 or 2)
     """
-    import numpy as np
-    from types import SimpleNamespace
+    x_c, c, beta, chi0, N_star, zeta_c = params_phys[:6]
+
+    from scripts.observables import model_from_params
+    from scripts.background_scan import analyze_background
+
+    # Stage-1: background pre-filter
+    model = model_from_params(x_c, c, beta)
+    model.x0 = chi0
+    model.y0 = args.y0
+    model.patch_background_solver()
+    bg = analyze_background(model, chi0, args.y0, N_star, args.k_pivot)
+    if bg is None or bg["N_total"] < args.N_total_min:
+        return None
+    if bg["usr_type"] == "weak" and not args.stage1_skip_usr:
+        return None
+
+    # Stage-2: SR peak filter
+    if not args.stage2_skip:
+        from inf_dyn_background import run_background_simulation, get_derived_quantities
+        from scripts.compute_sr_ms import compute_ps_sr
+
+        T_span = np.linspace(0, model.T_max, model.bg_steps)
+        bg_sol = run_background_simulation(model, T_span)
+        derived = get_derived_quantities(bg_sol, model)
+        epsH = derived["epsH"]
+        end_candidates = np.where(epsH >= 1.0)[0]
+        end_idx = int(end_candidates[0]) if len(end_candidates) > 0 else len(epsH) - 1
+        if end_idx < 10:
+            end_idx = len(epsH) - 1
+        k_sr, P_S_sr, _ = compute_ps_sr(bg_sol, end_idx)
+        valid = np.isfinite(P_S_sr) & (P_S_sr > 1e-30) & np.isfinite(k_sr) & (k_sr > 1.0)
+        if np.sum(valid) < 5 or float(np.max(P_S_sr[valid])) < args.psr_peak_min:
+            return None
+
+    # Stage-3: full MS pipeline
+    from scripts.full_pbh_pipeline import run_full_pbh_pipeline
+
+    result = run_full_pbh_pipeline(
+        chi0=chi0, y0=args.y0, N_star=N_star, beta=beta,
+        xc=x_c, c=c, workers=args.workers,
+        zeta_c_vals=[zeta_c], plot=False, force=False,
+        k_pivot=args.k_pivot, ns_window=args.ns_window,
+        ns_method=getattr(args, 'ns_method', 'lsq'),
+    )
+    k_phys = result["k_phys"]
+    P_S = result["P_S"]
+    n_s = result["n_s"]
+    N_total = result["N_total"]
+    A_s_cmb = result.get("A_s_cmb")
+    f_total_best = result["f_total_best"]
+    M_peak_best = result["M_peak_best"]
+
+    k_arr = np.asarray(k_phys)
+    ps_arr = np.asarray(P_S)
+    valid = np.isfinite(ps_arr) & (ps_arr > 1e-10) & np.isfinite(k_arr) & (k_arr > 1.0)
+    if np.sum(valid) >= 5:
+        k_peak = float(k_arr[valid][np.argmax(ps_arr[valid])])
+        P_S_peak = float(ps_arr[valid][np.argmax(ps_arr[valid])])
+        on_grid_boundary = False
+    else:
+        peak_i = int(np.argmax(ps_arr))
+        k_peak = float(k_arr[peak_i])
+        P_S_peak = float(ps_arr[peak_i])
+        on_grid_boundary = True
+
+    P_S_peak_ratio = P_S_peak / As_planck if As_planck > 0 else 0.0
+    if k_peak > 0:
+        M_form = gamma_default * M_eq_default * (k_eq_default / k_peak) ** 2
+        M_kpeak = M_form * ACCRETION
+    else:
+        M_form = 0.0
+        M_kpeak = 0.0
+
+    import json as _json
+    return {
+        "status": "success",
+        "x_c": x_c, "c": c, "beta": beta,
+        "chi0": chi0, "N_star": N_star, "zeta_c": zeta_c,
+        "N_total": N_total,
+        "k_peak": k_peak, "P_S_peak": P_S_peak,
+        "P_S_peak_ratio": P_S_peak_ratio,
+        "M_form": M_form, "M_kpeak": M_kpeak,
+        "M_peak_best": M_peak_best,
+        "f_total": f_total_best,
+        "n_s": n_s, "A_s_cmb": A_s_cmb,
+        "on_grid_boundary": on_grid_boundary,
+        "mass_bin": _classify_mass_bin(M_kpeak),
+        "k_pivot": float(args.k_pivot),
+        "ns_window": float(args.ns_window),
+        "k_phys": k_arr.tolist(),
+        "P_S": ps_arr.tolist(),
+    }
+
+
+def _eval_worker(params_phys, args_dict):
+    """Subprocess entry point for parallel config evaluation.
+
+    Injects project root into `sys.path`, deserializes args, and calls
+    `_run_pipeline`.
+    """
     import os as _os, sys as _sys
+    from types import SimpleNamespace
+
     _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if _project_root not in _sys.path:
         _sys.path.insert(0, _project_root)
 
     args = SimpleNamespace(**args_dict)
-    x_c, c, beta, chi0, N_star, zeta_c = params_phys[:6]
-
     try:
-        from scripts.observables import model_from_params
-        from scripts.background_scan import analyze_background
-        from inf_dyn_background import run_background_simulation, get_derived_quantities
-        from scripts.compute_sr_ms import compute_ps_sr
-        from scripts.full_pbh_pipeline import run_full_pbh_pipeline
-
-        # Stage-1 pre-filter (same as _stage1_prefilter but inline)
-        model = model_from_params(x_c, c, beta)
-        model.x0 = chi0
-        model.y0 = args.y0
-        model.patch_background_solver()
-        bg = analyze_background(model, chi0, args.y0, N_star, args.k_pivot)
-        if bg is None or bg["N_total"] < args.N_total_min:
-            return None
-        if bg["usr_type"] == "weak" and not args.stage1_skip_usr:
-            return None
-
-        # Stage-2 SR filter (same as _stage2_sr_filter but inline)
-        if not args.stage2_skip:
-            T_span = np.linspace(0, model.T_max, model.bg_steps)
-            bg_sol = run_background_simulation(model, T_span)
-            derived = get_derived_quantities(bg_sol, model)
-            epsH = derived["epsH"]
-            end_candidates = np.where(epsH >= 1.0)[0]
-            end_idx = int(end_candidates[0]) if len(end_candidates) > 0 else len(epsH) - 1
-            if end_idx < 10:
-                end_idx = len(epsH) - 1
-            k_sr, P_S_sr, _ = compute_ps_sr(bg_sol, end_idx)
-            valid = np.isfinite(P_S_sr) & (P_S_sr > 1e-30) & np.isfinite(k_sr) & (k_sr > 1.0)
-            if np.sum(valid) < 5 or float(np.max(P_S_sr[valid])) < args.psr_peak_min:
-                return None
-
-        # Stage-3: full MS pipeline
-        theta = np.array([x_c, c, beta, chi0, N_star, zeta_c])
-        from scripts.optimize_pbh_botorch import _evaluate_pbh, _write_log_entry
-        outcome = _evaluate_pbh(theta, args)
-        _write_log_entry(args.log, outcome)
-        return outcome
+        outcome = _run_pipeline(params_phys, args)
+        from scripts.optimize_pbh_botorch import _write_log_entry
+        if outcome is not None:
+            _write_log_entry(args.log, outcome)
+            return outcome
+        return None
     except Exception as e:
         print(f"  Worker exception: {e}")
         return None
