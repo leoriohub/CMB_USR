@@ -1,7 +1,6 @@
 """Validate Starobinsky model background and P_S(k)."""
 import numpy as np
 import sys
-sys.path.insert(0, ".")
 
 from models.starobinsky import StarobinskyModel
 from inf_dyn_background import run_background_simulation, get_derived_quantities

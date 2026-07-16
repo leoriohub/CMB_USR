@@ -16,7 +16,7 @@ import time
 
 import numpy as np
 
-from scripts.constants import ROOT_DIR
+from scripts.constants import ROOT_DIR, NumpyJSONEncoder
 from scripts.plotting import OUTPUT_DIRS
 from scripts.full_pbh_pipeline import run_full_pbh_pipeline
 
@@ -196,7 +196,7 @@ def main():
     summary_path = os.path.join(LOGS_DIR, "top_configs_batch_summary.json")
     clean_out = list(summaries)
     with open(summary_path, "w") as f:
-        json.dump(clean_out, f, indent=2, default=str)
+        json.dump(clean_out, f, indent=2, cls=NumpyJSONEncoder)
     print(f"\nBatch summary: {summary_path}")
 
     # 4. Summary table

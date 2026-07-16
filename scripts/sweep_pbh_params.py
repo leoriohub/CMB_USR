@@ -392,7 +392,7 @@ def plot_sweep_1d(results, param, fixed, param_label, filename, category):
     filtered.sort(key=lambda r: r[param])
 
     with plt.rc_context(PAPER_RCPARAMS):
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7, 2.8))
+        fig, ax1 = plt.subplots(figsize=(3.5, 2.8))
 
         colors = plt.colormaps["viridis"](np.linspace(0.2, 0.9, len(filtered)))
         for i, r in enumerate(filtered):
@@ -428,8 +428,6 @@ def plot_sweep_1d(results, param, fixed, param_label, filename, category):
             fontsize=7,
             alpha=0.7,
         )
-
-        ax2.axis("off")
 
         fig.tight_layout()
         save_fig(fig, filename, category)
@@ -594,12 +592,6 @@ def main():
              "Higgs low-ell 0.002.",
     )
     p.add_argument(
-        "--pivot-k",
-        type=float,
-        default=None,
-        help="Deprecated alias for --k-pivot (back-compat).",
-    )
-    p.add_argument(
         "--ns-method",
         choices=["lsq", "derivative"],
         default="lsq",
@@ -641,10 +633,6 @@ def main():
         p.set_defaults(**load_config(pre_args.config))
 
     args = p.parse_args()
-
-    # Back-compat: --pivot-k aliases --k-pivot
-    if args.pivot_k is not None:
-        args.k_pivot = args.pivot_k
 
     global MS_N_WORKERS
     MS_N_WORKERS = args.workers

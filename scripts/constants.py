@@ -5,6 +5,7 @@ All constants reference Planck 2018 results (Aghanim et al. 2020).
 The xi/lam ratio is fixed by As normalization to the CMB amplitude.
 """
 
+import json
 import os
 
 # ── Project root — computed, never hardcoded ────────────────────────────────
@@ -87,3 +88,22 @@ k_eq_default = 0.0104  # Mpc^-1, comoving wavenumber at matter-radiation equalit
 M_eq_default = 3.0e17  # M_sun, horizon mass at matter-radiation equality
 # M_eq = c^3/(2G) * 1/H_eq (approximate from ΛCDM)
 ACCRETION = 3e7  # mass growth from equality to present day (Chisholm 2006)
+
+
+class NumpyJSONEncoder(json.JSONEncoder):
+    """JSON encoder that handles NumPy types (ndarray, int, float, etc.) by
+    converting them to Python native types. Use as `cls=NumpyJSONEncoder` in
+    json.dump() calls that may encounter NumPy values."""
+
+    def default(self, obj):
+        import numpy as np
+
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        return super().default(obj)

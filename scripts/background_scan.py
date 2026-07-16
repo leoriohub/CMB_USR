@@ -208,16 +208,8 @@ def main():
         help="Pivot k_pivot_phys (Mpc^-1). Default 0.05 for Ezquiaga; "
              "Higgs low-ell 0.002.",
     )
-    p.add_argument(
-        "--pivot-k", type=float, default=None,
-        help="Deprecated alias for --k-pivot (back-compat).",
-    )
     p.add_argument("--log", default="outputs/simulations/logs/bg_scan.jsonl")
     args = p.parse_args()
-
-    # Back-compat: --pivot-k aliases --k-pivot
-    if args.pivot_k is not None:
-        args.k_pivot = args.pivot_k
 
     xc_vals = np.linspace(args.x_c_lo, args.x_c_hi, args.n_xc)
     c_vals = np.linspace(args.c_lo, args.c_hi, args.n_c)

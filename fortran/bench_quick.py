@@ -10,10 +10,10 @@ Physics check: P_S max rel diff < 1e-4.
 Usage: python fortran/bench_quick.py
 Output: outputs/simulations/logs/fortran_bench_quick.json
 """
+from scripts.constants import ROOT_DIR
 import argparse, json, os, shutil, subprocess, sys, time
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUTPUT_PATH = os.path.join(PROJECT_ROOT,
+OUTPUT_PATH = os.path.join(ROOT_DIR,
     "outputs/simulations/logs/fortran_bench_quick.json")
 
 CONFIG = dict(
@@ -124,7 +124,7 @@ def worker_main(backend, nthreads):
 
 def _clear_numba_cache():
     count = 0
-    for root, _dirs, files in os.walk(PROJECT_ROOT):
+    for root, _dirs, files in os.walk(ROOT_DIR):
         for f in files:
             if f.endswith((".nbi", ".nbc")):
                 os.remove(os.path.join(root, f))
@@ -174,7 +174,7 @@ def driver_main():
         proc = subprocess.run(
             [sys.executable, worker_script, "--worker", backend, str(nthreads)],
             capture_output=True, text=True, timeout=600,
-            env=env, cwd=PROJECT_ROOT,
+            env=env, cwd=ROOT_DIR,
         )
 
         if proc.returncode != 0:
