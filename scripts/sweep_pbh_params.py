@@ -39,6 +39,116 @@ TARGET_F_TOTAL = 0.42  # Omega_PBH / Omega_DM
 
 MS_N_WORKERS = 8  # overridden by --workers CLI arg
 
+# ── Per-config worker (module-level for ProcessPoolExecutor pickling) ────────
+
+def _run_one_ms_config(config):
+    """Run MS solver + PBH metrics for one (xc, c, beta, chi0, N_star) tuple.
+
+    Parameters
+    ----------
+    config : dict with keys {xc, c, beta, chi0, N_star, y0, target, k_pivot,
+                             ns_window, ns_method, zeta_c_vals, N_total_min,
+                             done_keys}
+
+    Returns
+    -------
+    list of dicts (one per zeta_c value), each with k_phys/P_S stripped for pickling
+    """
+    import os as _os
+    import sys as _sys
+    _os.environ["OMP_NUM_THREADS"] = "1"
+    # Ensure project root is on path for Fortran module import
+    _project_root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    if _project_root not in _sys.path:
+        _sys.path.insert(0, _project_root)
+
+    xc = config["xc"]
+    c = config["c"]
+    beta = config["beta"]
+    chi0 = config["chi0"]
+    N_star = config["N_star"]
+    y0 = config["y0"]
+    target = config["target"]
+    k_pivot = config["k_pivot"]
+    ns_window = config["ns_window"]
+    ns_method = config["ns_method"]
+    zeta_c_vals = config["zeta_c_vals"]
+    N_total_min = config["N_total_min"]
+    done_keys = config.get("done_keys", set())
+
+    results = []
+
+    try:
+        m = model_from_params(xc, c, beta)
+        k_m, ps_ms, N_total, _pipe, k_min_val, k_max_val = run_ms(
+            m, chi0, y0, target, k_pivot, N_star
+        )
+        if N_total < N_total_min:
+            return results
+        peak = find_pbh_peak(k_m, ps_ms, k_min_val, k_max_val)
+        if peak is None:
+            return results
+        n_s, _ns_meta = extract_ns(
+            k_m, ps_ms, k_pivot=k_pivot,
+            ns_window=ns_window if ns_method == "lsq" else None,
+            method=ns_method,
+        )
+        A_s_at_cmb = interpolate_As(k_m, ps_ms, k_pivot)
+        M_kpeak = (
+            gamma_default
+            * M_eq_default
+            * (k_eq_default / peak["k_peak"]) ** 2
+            * ACCRETION
+        )
+        mass_bin = classify_mass_range(M_kpeak)
+        ps_ratio = peak["P_S_peak"] / TARGET_As
+        base_result = {
+            "x_c": xc,
+            "c": c,
+            "beta": beta,
+            "chi0": chi0,
+            "N_star": N_star,
+            "N_total": N_total,
+            "k_peak": peak["k_peak"],
+            "P_S_peak": peak["P_S_peak"],
+            "P_S_peak_ratio": ps_ratio,
+            "M_form": gamma_default * M_eq_default * (k_eq_default / peak["k_peak"]) ** 2
+            if peak["k_peak"] > 0
+            else 0,
+            "M_kpeak": M_kpeak,
+            "on_grid_boundary": peak.get("on_grid_boundary", False),
+            "mass_bin": mass_bin,
+            "n_s": n_s,
+            "k_pivot": float(k_pivot),
+            "ns_window": ns_window,
+            "A_s_at_cmb": A_s_at_cmb,
+            "k_phys": k_m.tolist(),
+            "P_S": ps_ms.tolist(),
+        }
+
+        for zeta_c in zeta_c_vals:
+            zc_key = (xc, c, beta, chi0, N_star, zeta_c)
+            if zc_key in done_keys:
+                continue
+            pbh = compute_pbh_metrics(k_m, ps_ms, zeta_c)
+            result = dict(base_result)
+            result["zeta_c"] = zeta_c
+            result["f_total"] = pbh["f_total"]
+            result["M_present"] = pbh["M_peak"]
+            results.append(result)
+
+    except Exception as e:
+        for zeta_c in zeta_c_vals:
+            zc_key = (xc, c, beta, chi0, N_star, zeta_c)
+            if zc_key in done_keys:
+                continue
+            results.append({
+                "x_c": xc, "c": c, "beta": beta, "chi0": chi0,
+                "N_star": N_star, "zeta_c": zeta_c, "error": str(e),
+            })
+
+    return results
+
 
 def _pbh_weighted_kgrid(target="subsolar"):
     """k-grid targeting a specific PBH mass range, plus CMB-scale n_s fitting.
@@ -184,6 +294,7 @@ def run_sweep(
     log_path=None,
     resume=False,
     f_max=1.0,
+    sweep_workers=1,
 ):
     """Run the full sweep over parameter grid.
 
@@ -197,6 +308,10 @@ def run_sweep(
         Initial field values to sweep
     N_star_vals : array-like or None
         N_star values to sweep (default: [65])
+    sweep_workers : int
+        Number of concurrent MS solver processes. When >1, OMP_NUM_THREADS=1
+        per worker and results are written to log after collection (not
+        incrementally). Default 1 (serial, existing behaviour).
     """
     if N_star_vals is None:
         N_star_vals = [65]
@@ -224,14 +339,89 @@ def run_sweep(
                     pass
         print(f"  Resuming: {len(done_set)} configs already in {log_path}")
 
-    results = []
     n_unique = (
         len(xc_vals) * len(c_vals) * len(beta_vals) * len(chi0_vals) * len(N_star_vals)
     )
-    total = n_unique * len(zeta_c_vals)
+
+    # ── Build config list ──────────────────────────────────────────────
+    configs = []
+    ms_done_map = {}  # (xc, c, beta, chi0, N_star) -> bool (all zeta done)
+    for xc in xc_vals:
+        for c in c_vals:
+            for beta in beta_vals:
+                for chi0 in chi0_vals:
+                    for N_star in N_star_vals:
+                        ms_done_key = (xc, c, beta, chi0, N_star)
+                        all_zeta_done = resume and all(
+                            (xc, c, beta, chi0, N_star, z) in done_set
+                            for z in zeta_c_vals
+                        )
+                        ms_done_map[ms_done_key] = all_zeta_done
+                        if all_zeta_done:
+                            continue
+                        configs.append({
+                            "xc": xc, "c": c, "beta": beta, "chi0": chi0,
+                            "N_star": N_star, "y0": y0, "target": target,
+                            "k_pivot": k_pivot, "ns_window": ns_window,
+                            "ns_method": ns_method, "zeta_c_vals": list(zeta_c_vals),
+                            "N_total_min": N_total_min, "done_keys": done_set,
+                        })
+
+    skipped = sum(1 for v in ms_done_map.values() if v) * len(zeta_c_vals)
+    if skipped > 0:
+        print(f"  Skipped {skipped} already-computed configs")
+
+    # ── Parallel path ──────────────────────────────────────────────────
+    if sweep_workers > 1 and len(configs) > 0:
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        n_total = len(configs)
+        results = []
+        print(f"  Running {n_total} configs on {sweep_workers} sweep workers "
+              f"(OMP_NUM_THREADS=1 per worker) ...")
+
+        with ProcessPoolExecutor(max_workers=sweep_workers) as pool:
+            futures = {pool.submit(_run_one_ms_config, c): i for i, c in enumerate(configs)}
+            for future in as_completed(futures):
+                try:
+                    config_results = future.result()
+                    results.extend(config_results)
+                except Exception as exc:
+                    idx = futures[future]
+                    cfg = configs[idx]
+                    for zeta_c in zeta_c_vals:
+                        results.append({
+                            "x_c": cfg["xc"], "c": cfg["c"], "beta": cfg["beta"],
+                            "chi0": cfg["chi0"], "N_star": cfg["N_star"],
+                            "zeta_c": zeta_c, "error": str(exc),
+                        })
+                if progress_fn:
+                    n_done = len(results)
+                    progress_fn(n_done, n_total - n_done, 0, 0, 0, 0, 0)
+
+        # Filter by f_max
+        n_before = len(results)
+        results = [r for r in results if "error" in r or r.get("f_total", 0) <= f_max]
+        n_filtered = n_before - len(results)
+        if n_filtered > 0:
+            print(f"\n  Filtered {n_filtered} configs with f_total > {f_max}")
+
+        # Write log (single pass at end — no interleaving from workers)
+        if log_path:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, "a") as _f:
+                for entry in results:
+                    log_entry = {k: v for k, v in entry.items()
+                                 if k not in ("k_phys", "P_S")}
+                    json.dump(log_entry, _f)
+                    _f.write("\n")
+
+        return results
+
+    # ── Serial path (original behaviour) ───────────────────────────────
+    results = []
 
     def _write_log_entry(entry):
-        """Write stripped entry to incremental JSONL log (opens/closes per write)."""
         if not log_path:
             return
         log_entry = {k: v for k, v in entry.items() if k not in ("k_phys", "P_S")}
@@ -242,31 +432,18 @@ def run_sweep(
             f.flush()
 
     idx = 0
-    skipped = 0
     for xc in xc_vals:
         for c in c_vals:
             for beta in beta_vals:
                 for chi0 in chi0_vals:
                     for N_star in N_star_vals:
-                        # MS solver runs ONCE per (xc, c, beta, chi0, N_star)
                         ms_done_key = (xc, c, beta, chi0, N_star)
-                        ms_completed = any(k[:5] == ms_done_key for k in done_set)
-
-                        if ms_completed:
-                            # Check if ALL zeta_c variants are done for this config
-                            all_zeta_done = all(
-                                (xc, c, beta, chi0, N_star, z) in done_set for z in zeta_c_vals
-                            )
-                            if all_zeta_done:
-                                skipped += len(zeta_c_vals)
-                                continue
-                            # Some zeta_c remaining — fall through to re-run MS solver
-                            # This re-runs MS for the config, but the inner zeta_c loop
-                            # (lines 333-334) correctly skips already-logged zeta_c values
+                        if ms_done_map.get(ms_done_key, False):
+                            continue
 
                         idx += 1
-                        n_remaining = n_unique - idx + skipped
-                        n_done = idx - skipped
+                        n_done = idx
+                        n_remaining = n_unique - idx
                         if progress_fn:
                             progress_fn(
                                 n_done, n_remaining, xc, c, beta, chi0, N_star, None
@@ -287,7 +464,6 @@ def run_sweep(
                             peak = find_pbh_peak(k_m, ps_ms, k_min_val, k_max_val)
                             if peak is None:
                                 continue
-                            # n_s extracted via lsq window fit (default) or derivative at k_pivot
                             n_s, ns_meta = extract_ns(
                                 k_m, ps_ms, k_pivot=k_pivot,
                                 ns_window=ns_window if ns_method == "lsq" else None,
@@ -328,7 +504,6 @@ def run_sweep(
                                 "P_S": ps_ms.tolist(),
                             }
 
-                            # zeta_c loop: only cheap PBH metrics
                             for zeta_c in zeta_c_vals:
                                 zc_key = (xc, c, beta, chi0, N_star, zeta_c)
                                 if zc_key in done_set:
@@ -606,6 +781,14 @@ def main():
     p.add_argument(
         "--workers", type=int, default=8, help="MS solver parallel workers per config"
     )
+    p.add_argument(
+        "--sweep-workers",
+        type=int,
+        default=1,
+        help="Number of concurrent configs. "
+             "When >1, OMP_NUM_THREADS=1 per worker and configs run "
+             "in parallel via ProcessPoolExecutor. Default 1 (serial).",
+    )
     p.add_argument("--output-dir", default="outputs/plots/pbh")
     p.add_argument("--log", default="outputs/simulations/logs/pbh_sweep.jsonl")
     p.add_argument("--no-plot", action="store_true")
@@ -662,7 +845,8 @@ def main():
         f"{len(N_star_vals)} N* × {len(zeta_c_vals)} ζ_c = "
         f"{n_unique} MS solves → {total_entries} entries  "
         f"target={args.target}  k_pivot={args.k_pivot}  "
-        f"N_total_min={args.N_total_min}  workers={args.workers}"
+        f"N_total_min={args.N_total_min}  "
+        f"sweep_workers={args.sweep_workers}  workers={args.workers}"
     )
 
     t0 = time.time()
@@ -696,6 +880,7 @@ def main():
         log_path=args.log,
         resume=args.resume,
         f_max=args.f_max,
+        sweep_workers=args.sweep_workers,
     )
     print(f"\n  Done in {time.time() - t0:.1f}s")
     print(f"  Log: {args.log}")
