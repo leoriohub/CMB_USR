@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.integrate import odeint
+from scipy.integrate import solve_ivp
 from scipy.interpolate import CubicSpline
 
 from .base import InflationModel
@@ -71,15 +71,15 @@ class FullHiggsModel(InflationModel):
         self.psi_max = 100.0 / np.sqrt(self.xi_val) # Enough to reach way past the plateau
         self.psi_grid = np.linspace(0, self.psi_max, 5000)
         
-        def dx_dpsi_deriv(x, psi): # ODE system for x(psi)
+        def dx_dpsi_deriv(psi, x):
             if psi < 0: psi = 0 
             num = np.sqrt(1 + self.xi_val * psi**2 * (1 + 6 * self.xi_val))
             den = 1 + self.xi_val * psi**2
             return [num / den]
 
-        # Solve x(psi)
-        x_sol = odeint(dx_dpsi_deriv, [0.0], self.psi_grid)
-        self.x_grid = x_sol[:, 0]
+        sol = solve_ivp(dx_dpsi_deriv, (self.psi_grid[0], self.psi_grid[-1]), [0.0],
+                        method='LSODA', t_eval=self.psi_grid)
+        self.x_grid = sol.y[0]
         
         # We need the inverse: psi(x)
         self.psi_spline = CubicSpline(self.x_grid, self.psi_grid)
