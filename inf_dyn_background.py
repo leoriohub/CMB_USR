@@ -7,7 +7,7 @@
 #########################################################################################################
 
 import numpy as np
-from scipy.integrate import odeint
+from scipy.integrate import solve_ivp
 
 
 
@@ -27,7 +27,7 @@ def run_background_simulation(model, T_span):
     v0 = model.v0
     S = model.S
 
-    def sys(var, T):
+    def bg_derivs(T, var):
         [x, y, z, n] = var
         dxdT = y
         dydT = -3*z*y - v0*model.dfdx(x)/S**2 
@@ -35,9 +35,10 @@ def run_background_simulation(model, T_span):
         dndT = z # d(ln A)/dT = H = z
         return [dxdT, dydT, dzdT, dndT]
 
-    # Using tighter tolerances for general stability
-    sol = odeint(sys, [phi0, y0, zi, Ni], T_span, rtol=1e-10, atol=1e-12, mxstep=1000000)
-    return np.transpose(sol)
+    sol = solve_ivp(bg_derivs, (T_span[0], T_span[-1]), [phi0, y0, zi, Ni],
+                    method='LSODA', t_eval=T_span, rtol=1e-10, atol=1e-12,
+                    max_step=np.inf)
+    return sol.y
 
 def get_derived_quantities(sol_data, model):
     """
