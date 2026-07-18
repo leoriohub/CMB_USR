@@ -1,3 +1,4 @@
+.commandcode/
 # Simulation outputs (plots, caches, results)
 outputs/
 
@@ -61,3 +62,6 @@ package-lock.json
 # Agent configs (local machine specific)
 .agents/
 .pi/
+.commandcode/
+.coverage
+.coverage
