@@ -7,7 +7,7 @@
 #########################################################################################################
 
 import numpy as np
-from scipy.integrate import solve_ivp
+from scipy.integrate import odeint
 from scipy.interpolate import interp1d
 
 # execution block
@@ -132,7 +132,7 @@ def run_ms_simulation(bg_interp, ni, T_span, k, model):
     h_Ti = v_Ti
     g_Ti = u_Ti
 
-    def sys(T, var):
+    def sys(var, T):
         [v, v_T, u, u_T, h, h_T, g, g_T] = var
         
         # Background from interpolation (no re-integration)
@@ -167,10 +167,8 @@ def run_ms_simulation(bg_interp, ni, T_span, k, model):
         return [dvdT, dv_TdT, dudT, du_TdT, dhdT, dh_TdT, dgdT, dg_TdT]
 
     # Initialize n_rel = 0
-    sol = solve_ivp(sys, (T_span[0], T_span[-1]), [vi,v_Ti,ui,u_Ti,hi,h_Ti,gi,g_Ti],
-                    method='LSODA', t_eval=T_span, rtol=1e-12, atol=1e-14,
-                    max_step=np.inf)
-    return sol.y
+    sol = odeint(sys, [vi,v_Ti,ui,u_Ti,hi,h_Ti,gi,g_Ti], T_span, rtol=1e-12, atol=1e-14, mxstep=5000000)
+    return np.transpose(sol)
 
 
 def run_ms_simulation_full(bg_interp, ni, T_span, k, model):
