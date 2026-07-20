@@ -25,12 +25,14 @@ from inf_dyn_background import run_background_simulation, get_derived_quantities
 
 # ── Exported helpers (moved from scripts/plotting) ─────────────────────────
 
-def build_usr_weighted_kgrid(k_min=1e-8, k_max=1e18, n_dense=200, n_outer=20):
-    """Build k-grid with dense zone covering the PBH peak (k=1e9 to 1e13)."""
+def build_usr_weighted_kgrid(k_min=1e-8, k_max=1e18, n_dense=250, n_outer=20):
+    """Build k-grid with ultra-dense zone covering the dip and peak (k=1e11 to 1e14)."""
     k_lo = np.logspace(np.log10(k_min), 9, n_outer)
-    k_dense = np.logspace(9, 13, n_dense)
-    k_hi = np.logspace(13, np.log10(k_max), n_outer)
-    return np.unique(np.concatenate([k_lo, k_dense, k_hi]))
+    k_mid1 = np.logspace(9, 11, 30)
+    k_dip = np.logspace(11, 14, n_dense)
+    k_mid2 = np.logspace(14, 16, 50)
+    k_hi = np.logspace(16, np.log10(k_max), n_outer)
+    return np.unique(np.concatenate([k_lo, k_mid1, k_dip, k_mid2, k_hi]))
 
 
 def compute_ps_sr(bg_sol, end_idx):
@@ -179,7 +181,7 @@ def compute_sr_ms(
     k_sr, Ps_sr = k_sr[valid], Ps_sr[valid]
 
     # MS via Fortran grid solver
-    k_grid = build_usr_weighted_kgrid(k_min, k_max, n_dense=n_dense, n_outer=n_outer)
+    k_grid = build_usr_weighted_kgrid(k_sr.min(), k_sr.max(), n_dense=n_dense, n_outer=n_outer)
     n_k = len(k_grid)
     print(f"  Running MS for {n_k} modes (Fortran backend)...")
 
@@ -215,7 +217,8 @@ def compute_sr_ms(
                 pi_ms = int(np.argmin(np.abs(k_grid - k_piv)))
                 if pi_ms >= h_width and pi_ms <= len(k_grid) - h_width - 1:
                     lp_ms = np.log(np.maximum(ps_arr[pi_ms - h_width:pi_ms + h_width + 1], 1e-300))
-                    ns_ms_val = 1 + (lp_ms[-1] - lp_ms[0]) / (lk[-1] - lk[0])
+                    lk_ms = np.log(k_grid[pi_ms - h_width:pi_ms + h_width + 1])
+                    ns_ms_val = 1 + (lp_ms[-1] - lp_ms[0]) / (lk_ms[-1] - lk_ms[0])
         msg = f"  {label}: n_s_local(SR)={ns_sr:.4f}"
         if ns_ms_val is not None:
             msg += f", n_s_local(MS)={ns_ms_val:.4f}"
@@ -306,10 +309,12 @@ if __name__ == "__main__":
     parser.add_argument("--n-dense", type=int, default=200)
     parser.add_argument("--n-outer", type=int, default=20)
     parser.add_argument("--force", action="store_true", help="Recompute even if cached")
+    parser.add_argument("--plot", action="store_true", help="Generate comparison plot")
+    parser.add_argument("--plot-filename", type=str, default=None, help="Custom filename for the plot")
     args = parser.parse_args()
 
     a, b = inflection_parameters(args.xc, args.c, beta=args.beta)
-    model = EzquiagaCHIModel()
+    model = EzquiagaCHIModel(c=args.c)
     model.a, model.b = a, b
 
     data = compute_and_save(
@@ -327,3 +332,17 @@ if __name__ == "__main__":
     n_ok = meta.get("n_ok", 0)
     n_total = data.get("N_total", meta.get("N_total", 0))
     print(f"Done: {n_ok} MS modes, N_total={n_total:.1f}")
+
+    if args.plot:
+        from scripts.plotting import plot_ps_sr_ms_comparison
+        plot_fname = args.plot_filename or f"ps_sr_ms_comparison_ezquiaga_beta{args.beta:.1e}"
+        print(f"Generating comparison plot as: {plot_fname}")
+        plot_ps_sr_ms_comparison(
+            model=model,
+            chi0=args.chi0,
+            y0=args.y0,
+            filename=plot_fname,
+            category="paper",
+            dpi=300,
+            data=data,
+        )

@@ -1,10 +1,11 @@
+# -*- coding: utf-8 -*-
 """Plotting utilities + CLI for CMB anomaly analysis.
 
 Importable module (plot_ps, plot_dell, etc.) + CLI subcommands:
-    python -m scripts.plotting epsilon2        Fig 4: ε₂ evolution
+    python -m scripts.plotting epsilon2        Fig 4: epsilon_2 evolution
     python -m scripts.plotting potential       Fig 1: Higgs potential
     python -m scripts.plotting usr-map          Fig 3: USR heatmap
-    python -m scripts.plotting compare-configs  Multi-config D_ℓ/P_S comparison
+    python -m scripts.plotting compare-configs  Multi-config D_ell/P_S comparison
 
 All functions follow publication-ready conventions:
 - Two-column format (~3.25-3.5in wide single, ~7in full)
@@ -20,6 +21,7 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as path_effects
 
 from scipy.interpolate import CubicSpline
 
@@ -36,11 +38,11 @@ TOL = {
     "dark": "#222222",
 }
 # Color convention across all plots:
-#   TOL["red"]   — model/main data line
-#   TOL["blue"]  — secondary/reference data (e.g. CAMB full)
-#   TOL["dark"]  — Planck data points / LCDM baseline
-#   TOL["grey"]  — reference lines, grid, annotations
-#   TOL["green"] — feature markers (pivot, inflection)
+#   TOL["red"]   - model/main data line
+#   TOL["blue"]  - secondary/reference data (e.g. CAMB full)
+#   TOL["dark"]  - Planck data points / LCDM baseline
+#   TOL["grey"]  - reference lines, grid, annotations
+#   TOL["green"] - feature markers (pivot, inflection)
 
 COLORS = ["#CC3311", "#EE8866", "#44BB99", "#AA3377",
           "#4477AA", "#228833", "#DDCC77", "#88CCEE"]
@@ -68,7 +70,7 @@ MARKER_RCPARAMS = {
 }
 
 # COLOR_MAP: standard role-based color assignment for comparison plots.
-# Plot philosophy — data-first, minimal clutter:
+# Plot philosophy - data-first, minimal clutter:
 #   No annotation boxes, reference lines, or decorations unless explicitly
 #   requested. Let the data speak. Add elements only when they serve a
 #   specific expository purpose.
@@ -81,7 +83,7 @@ COLOR_MAP = {
     "feature": TOL["green"],    # pivot markers, inflection points
 }
 
-# ── Module-level workers (must be top-level for pickle) ─────────────────────
+# -- Module-level workers (must be top-level for pickle) ---------------------
 
 def _heatmap_worker(args):
     """Worker for usr-map multiprocessing."""
@@ -150,12 +152,12 @@ def make_filename(
     are appended, e.g. ``_beta2e-05_zc0.077``.
 
     Examples:
-        make_filename("ps", 6.60, -0.736, 52.6)                        → "ps_phi6.60_y0-0.736_nstar52.6.json"
-        make_filename("camb", 6.60, -0.736, 52.6)                       → "camb_phi6.60_y0-0.736_nstar52.6.json"
-        make_filename("camb_lcdm")                                       → "camb_lcdm.json"
-        make_filename("planck", 6.60, -0.736, 52.6, ".png")              → "planck_phi6.60_y0-0.736_nstar52.6.png"
-        make_filename("ps", 8.0, -1e-4, 72.0, formation="cmp", accretion="PR") → "ps_phi8.00_y0-0.000_nstar72.0_cmp_PR.json"
-        make_filename("ps", 8.0, -1e-4, 72.0, formation="cmp", accretion="PR", beta=2e-5, zc=0.077) → "ps_phi8.00_y0-0.000_nstar72.0_cmp_PR_beta2e-05_zc0.077.json"
+        make_filename("ps", 6.60, -0.736, 52.6)                        -> "ps_phi6.60_y0-0.736_nstar52.6.json"
+        make_filename("camb", 6.60, -0.736, 52.6)                       -> "camb_phi6.60_y0-0.736_nstar52.6.json"
+        make_filename("camb_lcdm")                                       -> "camb_lcdm.json"
+        make_filename("planck", 6.60, -0.736, 52.6, ".png")              -> "planck_phi6.60_y0-0.736_nstar52.6.png"
+        make_filename("ps", 8.0, -1e-4, 72.0, formation="cmp", accretion="PR") -> "ps_phi8.00_y0-0.000_nstar72.0_cmp_PR.json"
+        make_filename("ps", 8.0, -1e-4, 72.0, formation="cmp", accretion="PR", beta=2e-5, zc=0.077) -> "ps_phi8.00_y0-0.000_nstar72.0_cmp_PR_beta2e-05_zc0.077.json"
     """
     if phi0 is not None:
         base = f"{name}_phi{phi0:.2f}_y0{y0:+.3f}_nstar{nstar:.1f}"
@@ -178,7 +180,7 @@ def make_filename(
     return f"{base}{ext}"
 
 
-# ── PBH filename helper ──────────────────────────────────────────────────
+# -- PBH filename helper --------------------------------------------------
 
 _FORMATION_CODES: dict[str, str] = {
     "compaction": "cmp",
@@ -206,7 +208,7 @@ def make_pbh_filename(
     """PBH-specific filename with short code mapping.
 
     Wraps :func:`make_filename` by mapping human-readable formation/accretion
-    names to their short codes (e.g. ``"compaction"`` → ``"cmp"``).
+    names to their short codes (e.g. ``"compaction"`` -> ``"cmp"``).
 
     Parameters
     ----------
@@ -297,7 +299,7 @@ def find_ps(phi0, y0, nstar, tolerance=3.0):
     return scored[0][1], scored[0][2]
 
 
-# ── Ezquiaga CHI diagnostics & PS comparison ──────────────────────────────
+# -- Ezquiaga CHI diagnostics & PS comparison ------------------------------
 
 def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
                                pivot_k=0.002, suffix="", N_star=None):
@@ -402,16 +404,16 @@ def plot_ps_sr_ms_comparison(
     model : EzquiagaCHIModel (already configured with inflection params)
         Used only to determine cache filename; if data is provided, model is
         only used for the default filename.
-    chi0 : float or None — model.x0 value (for cache lookup)
-    y0 : float — model.y0 value (for cache lookup, default -1e-4)
+    chi0 : float or None - model.x0 value (for cache lookup)
+    y0 : float - model.y0 value (for cache lookup, default -1e-4)
     k_pivots : list of (label, k_value) or None
-    filename : str or None — plot filename override
-    category : str — output subdirectory
-    dpi : int — figure resolution
-    data : dict or None — pre-computed data dict with keys
+    filename : str or None - plot filename override
+    category : str - output subdirectory
+    dpi : int - figure resolution
+    data : dict or None - pre-computed data dict with keys
         k_phys_sr, P_S_sr, k_phys_ms, P_S_ms, n_s_local, N_total.
         If None, loads from cache via compute_sr_ms.compute_and_save().
-    force_recompute : bool — if True, recompute even if cached
+    force_recompute : bool - if True, recompute even if cached
 
     Returns
     -------
@@ -434,61 +436,36 @@ def plot_ps_sr_ms_comparison(
     n_s_results = data.get("n_s_local", {})
     N_total = data.get("N_total", data.get("metadata", {}).get("N_total", 0))
 
-    fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(7, 6), sharex=True,
-        gridspec_kw={"height_ratios": [3, 1]}
-    )
+    with plt.rc_context(PAPER_RCPARAMS):
+        fig, ax1 = plt.subplots(figsize=(3.4, 2.6))
 
-    ax1.loglog(k_sr, Ps_sr, "-", color=TOL["blue"], lw=1.5, label="SR approx")
-    interp_ms_vals = None
-    if k_ms is not None and Ps_ms is not None:
-        ok_ms = np.isfinite(Ps_ms)
-        if np.any(ok_ms):
-            k_ok = k_ms[ok_ms]
-            ps_ok = Ps_ms[ok_ms]
-            k_line = np.logspace(np.log10(k_ok[0]), np.log10(k_ok[-1]), 500)
-            if len(k_ok) >= 4:
-                spl = CubicSpline(np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
-                                  bc_type='not-a-knot', extrapolate=False)
-                ps_line = np.exp(spl(np.log(k_line)))
-            else:
-                ps_line = np.exp(np.interp(np.log(k_line), np.log(k_ok),
-                                           np.log(np.maximum(ps_ok, 1e-300)),
-                                           left=np.nan, right=np.nan))
-            ax1.loglog(k_line, ps_line, "-", color=TOL["red"], lw=1.2,
-                       alpha=0.7, label=f"MS solver ({len(ps_ok)}/{len(Ps_ms)})")
-            ax1.loglog(k_ok, ps_ok, "o", color=TOL["red"], ms=2, alpha=0.4)
-            interp_ms_vals = np.interp(k_sr, k_ok, ps_ok, left=np.nan, right=np.nan)
+        ax1.loglog(k_sr, Ps_sr, "-", color=TOL["blue"], lw=1.0, label="SR approx")
+        if k_ms is not None and Ps_ms is not None:
+            ok_ms = np.isfinite(Ps_ms)
+            if np.any(ok_ms):
+                k_ok = k_ms[ok_ms]
+                ps_ok = Ps_ms[ok_ms]
+                k_line = np.logspace(np.log10(k_ok[0]), np.log10(k_ok[-1]), 500)
+                if len(k_ok) >= 4:
+                    spl = CubicSpline(np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
+                                      bc_type='not-a-knot', extrapolate=False)
+                    ps_line = np.exp(spl(np.log(k_line)))
+                else:
+                    ps_line = np.exp(np.interp(np.log(k_line), np.log(k_ok),
+                                               np.log(np.maximum(ps_ok, 1e-300)),
+                                               left=np.nan, right=np.nan))
+                ax1.loglog(k_line, ps_line, "-", color=TOL["red"], lw=1.3,
+                           label="MS solver")
 
-    for label, k_piv in (k_pivots or [("k=0.002", 0.002), ("k=0.05", 0.05)]):
-        ax1.axvline(k_piv, color=TOL["grey"], ls=":", lw=0.8, alpha=0.5)
-        ax1.annotate(label, xy=(k_piv, ax1.get_ylim()[0]), fontsize=8,
-                     color=TOL["grey"], ha="center")
+        ax1.legend(loc="lower left")
+        ax1.set_xlabel(r"$k$ [Mpc$^{-1}$]")
+        ax1.set_ylabel(r"$P_{\mathcal{R}}(k)$")
+        ax1.grid(True, which="both", alpha=0.15, lw=0.4)
+        ax1.set_xlim(left=1e-5)
 
-    ax1.legend(fontsize=11)
-    ax1.set_ylabel(r"$P_{\mathcal{R}}(k)$", fontsize=14)
-    ax1.tick_params(labelsize=12)
-    ax1.grid(True, which="both", alpha=0.2)
-
-    if interp_ms_vals is not None:
-        ratio = interp_ms_vals / Ps_sr
-        ax2.semilogx(k_sr, ratio, "-", color=TOL["blue"], lw=1.2)
-        rmin, rmax = np.nanmin(ratio), np.nanmax(ratio)
-        if not np.isfinite(rmin):
-            rmin = 0.5
-        if not np.isfinite(rmax):
-            rmax = 1.5
-        ax2.set_ylim(max(0, rmin - 0.2), min(5, rmax + 0.2))
-    ax2.axhline(1.0, color=TOL["grey"], ls="--", lw=0.8)
-    ax2.set_xlabel(r"$k$ [Mpc$^{-1}$]", fontsize=14)
-    ax2.set_ylabel("MS / SR", fontsize=14)
-    ax2.tick_params(labelsize=12)
-    ax2.grid(True, which="both", alpha=0.2)
-
-    fig.tight_layout()
-    fname = filename or f"ps_sr_ms_chi{model.x0}"
-    save_fig(fig, fname, category, dpi=dpi)
-
+        fig.tight_layout()
+        fname = filename or f"ps_sr_ms_chi{model.x0}"
+        save_fig(fig, fname, category, dpi=dpi)
     return {
         "k_phys_sr": k_sr,
         "P_S_sr": Ps_sr,
@@ -755,10 +732,10 @@ def plot_camb_fullsky(camb_data, filename="camb_fullsky", category="powerloss"):
     save_fig(fig, filename, category)
 
 
-# ── CLI subcommands ──────────────────────────────────────────────────────────
+# -- CLI subcommands ----------------------------------------------------------
 
 def _cli_epsilon2(xi=15000.0, lam=0.13, phi0=5.43, y0=-0.07):
-    """Fig 4: ε₂ evolution with USR and transition shading."""
+    """Fig 4: epsilon_2 evolution with USR and transition shading."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -787,8 +764,8 @@ def _cli_epsilon2(xi=15000.0, lam=0.13, phi0=5.43, y0=-0.07):
     transition_mask = (eps2_plot > -5.5) & (eps2_plot < -1)
     dN = np.diff(N_plot, prepend=N_plot[0])
     dur_trans = float(np.sum(dN[transition_mask]))
-    print(f"  Pure USR duration (ε₂ < -5.5):  {dur_usr:.4f} e-folds")
-    print(f"  Transition duration (-5.5 < ε₂ < -1): {dur_trans:.4f} e-folds")
+    print(f"  Pure USR duration (epsilon_2 < -5.5):  {dur_usr:.4f} e-folds")
+    print(f"  Transition duration (-5.5 < epsilon_2 < -1): {dur_trans:.4f} e-folds")
 
     fig, ax = plt.subplots(figsize=(7, 5))
     ax.plot(N_plot, eps2_plot, linewidth=2, color=TOL["blue"],
@@ -864,7 +841,7 @@ def _cli_usr_map(phi_min=5.18, phi_max=5.93, n_phi=100,
                  y_min_abs=0.01, y_max_abs=0.20, n_y=100,
                  workers=12, xi=15000.0, lam=0.13,
                  bg_steps=30000, x_star=5.42):
-    """Fig 3: USR duration heatmap over (φ₀, |y₀|) space."""
+    """Fig 3: USR duration heatmap over (phi0, |y0|) space."""
     import multiprocessing as mp
     import time
     import matplotlib
@@ -882,7 +859,7 @@ def _cli_usr_map(phi_min=5.18, phi_max=5.93, n_phi=100,
     y_grid = np.linspace(-y_min_abs, -y_max_abs, n_y)
     n_total = n_phi * n_y
 
-    print(f"  Grid: {n_phi}×{n_y} = {n_total} points, Workers: {workers}")
+    print(f"  Grid: {n_phi}x{n_y} = {n_total} points, Workers: {workers}")
     t0 = time.time()
 
     tasks = [(i, phi_val, y_val, xi, lam, bg_steps)
@@ -923,7 +900,7 @@ def _cli_compare_configs(phi0_str="", y0_str="", nstar_str="",
                          labels_str="", output_suffix="camb_top_configs",
                          from_log=None, n_configs=10,
                          xi=15000.0, lam=0.13, quick=False):
-    """Multi-config P_S(k) and D_ℓ comparison plot."""
+    """Multi-config P_S(k) and D_ell comparison plot."""
     import json
     import matplotlib
     matplotlib.use("Agg")
@@ -1108,14 +1085,14 @@ def _cli_compare_configs(phi0_str="", y0_str="", nstar_str="",
     save_fig(fig, f"dell_comparison_{suffix}", "diagnostics")
 
 
-# ── PBH abundance plot ────────────────────────────────────────────────────
+# -- PBH abundance plot ----------------------------------------------------
 
 
 def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
                        model_label="PBH-CHI", filename="pbh_abundance",
                        category="pbh", use_old_bounds=False, smooth_bounds=False):
     """
-    Plot Ω_PBH/Ω_DM vs M/M_⊙ (Figure 3 style).
+    Plot Omega_PBH/Omega_DM vs M/M_sun (Figure 3 style).
 
     log-log, solid TOL line, paper-style legend.
     Observational constraint overlays included from bradkav/PBHbounds.
@@ -1127,7 +1104,7 @@ def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
         return
 
     with plt.rc_context(PAPER_RCPARAMS):
-        fig, ax = plt.subplots(figsize=(4.5, 3.5))
+        fig, ax = plt.subplots(figsize=(3.4, 2.6))
         
         bounds_dir = os.path.join(ROOT_DIR, "data", "PBHbounds", "bounds")
         
@@ -1148,29 +1125,29 @@ def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
         if use_old_bounds:
             datasets = [
                 # (label, filename, color, alpha, (x, y, rotation))
-                ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (2e-18, 2e-2, 65)),
-                ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 2.5e-1, 0)),
-                ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (6e-14, 7e-2, 0)),
-                ("HSC", "old_bounds/HSC_original.txt", TOL["teal"], 0.08, (1e-10, 2e-2, 0)),
-                ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 2e-1, 0)),
-                ("MACHO", "M.txt", TOL["grey"], 0.08, (1e-5, 2e-1, 0)),
-                ("EROS", "EROS.txt", TOL["blue"], 0.08, (1e-2, 5e-2, 0)),
-                ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (3e3, 1.5e-1, -55)),
-                ("Planck", "old_bounds/CMB_withoutDM.txt", TOL["dark"], 0.08, (1e3, 3e-3, -40))
+                ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (8e-19, 5e-3, 65)),
+                ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 0.3, 0)),
+                ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (1e-13, 0.08, 0)),
+                ("HSC", "old_bounds/HSC_original.txt", TOL["teal"], 0.08, (3e-9, 4e-2, 0)),
+                ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 0.4, 0)),
+                ("MACHO", "M.txt", TOL["grey"], 0.08, (0.5, 0.5, 0)),
+                ("EROS", "EROS.txt", TOL["blue"], 0.08, (1.5e-3, 0.15, 0)),
+                ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (2e4, 0.3, 0)),
+                ("Planck", "old_bounds/CMB_withoutDM.txt", TOL["dark"], 0.08, (2e3, 1.5e-3, 0))
             ]
         else:
             datasets = [
                 # (label, filename, color, alpha, (x, y, rotation))
-                ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (2e-18, 2e-2, 65)),
-                ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 2.5e-1, 0)),
-                ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (6e-14, 7e-2, 0)),
-                ("HSC", "HSC.txt", TOL["teal"], 0.08, (1e-10, 6e-3, 0)),
-                ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 2e-1, 0)),
-                ("MACHO", "M.txt", TOL["grey"], 0.08, (1e-5, 2e-1, 0)),
-                ("EROS", "EROS.txt", TOL["blue"], 0.08, (1e-2, 5e-2, 0)),
-                ("LIGO", "LIGO.txt", TOL["purple"], 0.08, (8.0, 8e-3, -55)),
-                ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (1.5e3, 6e-2, -50)),
-                ("Planck", "CMB.txt", TOL["dark"], 0.08, (4.5e1, 2e-2, -82))
+                ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (8e-19, 5e-3, 65)),
+                ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 0.3, 0)),
+                ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (1e-13, 0.08, 0)),
+                ("HSC", "HSC.txt", TOL["teal"], 0.08, (3e-9, 4e-2, 0)),
+                ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 0.4, 0)),
+                ("MACHO", "M.txt", TOL["grey"], 0.08, (0.5, 0.5, 0)),
+                ("EROS", "EROS.txt", TOL["blue"], 0.08, (1.5e-3, 0.15, 0)),
+                ("LIGO", "LIGO.txt", TOL["purple"], 0.08, (2.0, 0.05, -60)),
+                ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (2e4, 0.3, 0)),
+                ("Planck", "CMB.txt", TOL["dark"], 0.08, (2e3, 1.5e-3, 0))
             ]
         
         if os.path.exists(bounds_dir):
@@ -1237,8 +1214,9 @@ def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
                         ax.plot(m_b, f_b, color=color, lw=0.8)
                         ax.fill_between(m_b, f_b, 10.0, color=color, alpha=alpha, lw=0)
                         tx, ty, rot = pos
-                        ax.text(tx, ty, label, color=color, fontsize=6, 
-                                rotation=rot, ha='center', va='center', zorder=10)
+                        ax.text(tx, ty, label, color=color, fontsize=5, 
+                                rotation=rot, ha='center', va='center', zorder=10,
+                                path_effects=[path_effects.withStroke(linewidth=1.5, foreground="white")])
                     except Exception as e:
                         print(f"  WARNING: Failed to load {fname}: {e}")
         else:
@@ -1251,14 +1229,14 @@ def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
         ax.set_ylabel(r"$\Omega_{\mathrm{PBH}} / \Omega_{\mathrm{DM}}$")
         ax.set_xlim(1e-19, 1e8)
         ax.set_ylim(1e-4, 1.0)
-        ax.legend(loc="lower right", fontsize=7)
+        # ax.legend(loc="lower left", fontsize=7)
         # Use a gray grid
         ax.grid(True, alpha=0.2, color='gray', which="both", ls='--')
         fig.tight_layout()
         save_fig(fig, filename, category)
 
 
-# ── Inflection potential zoom plot (Ezquiaga CHI) ─────────────────────────
+# -- Inflection potential zoom plot (Ezquiaga CHI) -------------------------
 
 
 def _V_shape(x, a, b, c=0.77):
@@ -1365,7 +1343,7 @@ def main():
         description="CMB anomaly plotting utilities")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("epsilon2", help="Fig 4: ε₂ evolution with USR shading")
+    p = sub.add_parser("epsilon2", help="Fig 4: epsilon_2 evolution with USR shading")
     p.add_argument("--phi0", type=float, default=5.43)
     p.add_argument("--y0", type=float, default=-0.07)
     p.add_argument("--xi", type=float, default=15000.0)
