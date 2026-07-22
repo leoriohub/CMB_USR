@@ -5,11 +5,27 @@ Falls back to Numba if Fortran module is not compiled.
 """
 import numpy as np
 
+import sys
+import os
+
 try:
     import ms_solver_fort as _fort
     HAVE_FORTRAN = True
 except ImportError:
-    HAVE_FORTRAN = False
+    _dir = os.path.dirname(os.path.abspath(__file__))
+    _fortran_dir = os.path.join(_dir, 'fortran')
+    _orig_path = list(sys.path)
+    try:
+        if _dir not in sys.path:
+            sys.path.insert(0, _dir)
+        if _fortran_dir not in sys.path:
+            sys.path.insert(0, _fortran_dir)
+        import ms_solver_fort as _fort
+        HAVE_FORTRAN = True
+    except ImportError:
+        HAVE_FORTRAN = False
+    finally:
+        sys.path = _orig_path
 
 
 def fortran_run_ms_grid(bg_sol, T_span_bg, end_idx, k_codes, model,
