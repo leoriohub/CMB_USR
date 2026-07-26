@@ -128,6 +128,12 @@ def run_full_pbh_pipeline(
     ns_method="lsq",
     formation_model="press_schechter",
     accretion_model="Chisholm",
+    sigw=False,
+    sigw_f_min=1e-5,
+    sigw_f_max=1.0,
+    sigw_num_f=150,
+    sigw_num_grid=150,
+    sigw_t_obs_yr=4.0,
 ):
     """Run the full PBH pipeline and produce the abundance plot.
 
@@ -459,6 +465,58 @@ def run_full_pbh_pipeline(
     elapsed = time.time() - t0
     print(f"\nPipeline done in {elapsed:.1f}s" + (" (cached)" if cached else ""))
 
+    # ── 8. SIGW computation ────────────────────────────────────────────
+    sigw_results = None
+    if sigw:
+        print("\n--- SIGW computation ---")
+        from scripts.sigw import run_sigw, plot_sigw_lisa
+
+        sigw_results = run_sigw(
+            k_phys, P_S,
+            f_min=sigw_f_min, f_max=sigw_f_max, num_f=sigw_num_f,
+            num_grid=sigw_num_grid, t_obs_yr=sigw_t_obs_yr,
+        )
+        print(f"  f_peak = {sigw_results['f_peak']:.4e} Hz")
+        print(f"  Omega_GW_peak h^2 = {sigw_results['omega_peak']:.4e}")
+        print(f"  SNR (LISA, {sigw_t_obs_yr} yr) = {sigw_results['snr']:.2f}")
+
+        # Save SIGW JSON
+        from scripts.plotting import get_path, make_pbh_filename
+        data_dir = get_path("sigw_data", "")
+        os.makedirs(data_dir, exist_ok=True)
+        fname = make_pbh_filename(
+            "sigw", chi0, y0, N_total,
+            formation=formation_model, accretion=accretion_model, ext=".json",
+        )
+        sigw_json_path = os.path.join(data_dir, fname)
+        sigw_save = {
+            "_type": "sigw",
+            "format_version": 1,
+            "metadata": metadata,
+            "freq_hz": sigw_results["frequency_hz"].tolist(),
+            "omega_gw_h2": sigw_results["omega_gw_h2"].tolist(),
+            "lisa_noise_h2": sigw_results["lisa_noise_h2"].tolist(),
+            "snr": sigw_results["snr"],
+            "f_peak": sigw_results["f_peak"],
+            "omega_peak": sigw_results["omega_peak"],
+            "dilution": sigw_results["dilution"],
+            "t_obs_yr": sigw_results["t_obs_yr"],
+        }
+        with open(sigw_json_path, "w") as f:
+            json.dump(sigw_save, f, indent=2)
+        print(f"  Saved: {sigw_json_path}")
+
+        # Plot
+        plot_sigw_lisa(
+            sigw_results["frequency_hz"],
+            sigw_results["omega_gw_h2"],
+            sigw_results["lisa_noise_h2"],
+            sigw_results["snr"],
+            filename="sigw",
+            chi0=chi0, y0=y0, nstar=N_total,
+            formation=formation_model, accretion=accretion_model,
+        )
+
     return {
         "k_phys": k_phys,
         "P_S": P_S,
@@ -480,6 +538,7 @@ def run_full_pbh_pipeline(
         "all_results": all_results,
         "accretion_model": accretion_model,
         "formation_model": formation_model,
+        "sigw_results": sigw_results,
     }
 
 
@@ -536,6 +595,13 @@ if __name__ == "__main__":
         default=None,
         help="Formation model (default: press_schechter)",
     )
+    p.add_argument("--sigw", action="store_true", default=False,
+                    help="Compute SIGW spectrum after PBH abundance")
+    p.add_argument("--sigw-f-min", type=float, default=1e-5)
+    p.add_argument("--sigw-f-max", type=float, default=1.0)
+    p.add_argument("--sigw-num-f", type=int, default=150)
+    p.add_argument("--sigw-num-grid", type=int, default=150)
+    p.add_argument("--sigw-t-obs-yr", type=float, default=4.0)
 
     pre, _ = p.parse_known_args()
     config_accretion = None
@@ -564,6 +630,12 @@ if __name__ == "__main__":
         ns_method=args.ns_method,
         formation_model=formation_val,
         accretion_model=accretion_val,
+        sigw=args.sigw,
+        sigw_f_min=args.sigw_f_min,
+        sigw_f_max=args.sigw_f_max,
+        sigw_num_f=args.sigw_num_f,
+        sigw_num_grid=args.sigw_num_grid,
+        sigw_t_obs_yr=args.sigw_t_obs_yr,
     )
 
     target_dir = os.path.join(ROOT_DIR, args.output_dir)
