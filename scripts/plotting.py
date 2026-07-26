@@ -106,6 +106,8 @@ OUTPUT_DIRS = {
     "logs": os.path.join(ROOT_DIR, "outputs/simulations/logs"),
     "scans": os.path.join(ROOT_DIR, "outputs/simulations/scans"),
     "pbh": os.path.join(ROOT_DIR, "outputs/plots/pbh"),
+    "sigw": os.path.join(ROOT_DIR, "outputs/plots/sigw"),
+    "sigw_data": os.path.join(ROOT_DIR, "outputs/simulations/sigw"),
 }
 
 
