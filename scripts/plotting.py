@@ -1338,8 +1338,169 @@ def plot_full_potential(a, b, c=0.77, x_range=(0.01, 10),
         plt.close(fig)
 
 
-def main():
-    """CLI entry point: python -m scripts.plotting <subcommand> [args]."""
+def plot_subsolar_ps_and_sigw(filename="fig4_subsolar_pbh", category="pbh", dpi=300):
+    """Two-panel paper figure for Sub-solar window (Figure 4):
+    Panel (a): SR vs MS primordial power spectrum P_R(k) for sub-solar config.
+    Panel (b): Induced GW spectrum Omega_GW,0(f) h^2 vs LISA 4-yr noise.
+    """
+    import json
+    from scripts.sigw import get_lisa_noise
+    from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
+    from inf_dyn_background import run_background_simulation, get_derived_quantities
+    from scripts.compute_sr_ms import compute_ps_sr
+
+    a_sub, b_sub = inflection_parameters(x_c=0.784, c=0.77, beta=2e-5)
+    model_sub = EzquiagaCHIModel(lambda_0=2.23e-7, b_lambda=a_sub*2.23e-7, xi_0=7.55, b_xi=b_sub*7.55, c=0.77)
+    model_sub.x0 = 8.0
+    model_sub.y0 = -0.0001
+    model_sub.patch_background_solver()
+
+    T_sub = np.linspace(0, model_sub.T_max, model_sub.bg_steps)
+    bg_sub = run_background_simulation(model_sub, T_sub)
+    derived_sub = get_derived_quantities(bg_sub, model_sub)
+    end_idx_sub = np.where(derived_sub["epsH"] > 1)[0]
+    end_idx_sub = end_idx_sub[0] if len(end_idx_sub) > 0 else len(T_sub) - 1
+
+    k_sr_raw_sub, ps_sub_sr, _ = compute_ps_sr(bg_sub, end_idx_sub)
+    N_sub = derived_sub["N"][:end_idx_sub+1]
+    idx_piv_sub = np.argmin(np.abs(N_sub - (N_sub[-1] - 66.0)))
+    k_sub_sr = 0.05 * (k_sr_raw_sub / k_sr_raw_sub[idx_piv_sub])
+
+    ps_sub_path = get_path("pspectra", "ps_phi8.00_y0-0.000_nstar86.7.json")
+    with open(ps_sub_path) as f:
+        sp_data = json.load(f)
+    k_sub_ms = np.array(sp_data["spectrum"]["k_phys"])
+    ps_sub_ms = np.array(sp_data["spectrum"]["P_S"])
+
+    subsolar_sigw_path = get_path("sigw_data", "sigw_phi8.00_y0-0.000_nstar86.7_psch_Chs.json")
+    with open(subsolar_sigw_path) as f:
+        sd = json.load(f)
+
+    f_sub = np.array(sd["freq_hz"])
+    om_sub = np.array(sd["omega_gw_h2"])
+    snr_sub = sd["snr"]
+
+    f_grid = np.logspace(-5, 4, 400)
+    lisa_noise = get_lisa_noise(f_grid)
+
+    with plt.rc_context(PAPER_RCPARAMS):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.0, 2.7))
+
+        # Panel (a): Sub-solar SR vs MS
+        ax1.loglog(k_sub_sr, ps_sub_sr, "--", color=TOL["blue"], lw=1.2, label="Slow-roll approx")
+        ax1.loglog(k_sub_ms, ps_sub_ms, "-", color=TOL["red"], lw=1.4, label="MS solver")
+        ax1.axhline(0.01, color="gray", ls=":", lw=0.8, alpha=0.7)
+        ax1.text(2e9, 0.015, r"$\mathcal{P}_{\mathcal{R}} \sim 10^{-2}$", fontsize=6.5, color="gray")
+
+        ax1.set_xlabel(r"$k$ [Mpc$^{-1}$]")
+        ax1.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$")
+        ax1.set_xlim(1e8, 1e18)
+        ax1.set_ylim(1e-9, 0.2)
+        ax1.grid(True, which="both", alpha=0.15, lw=0.4)
+        ax1.legend(loc="upper left", frameon=True, framealpha=0.9, fontsize=6.5)
+
+        # Panel (b): Sub-solar Induced GWs
+        ax2.loglog(f_sub, om_sub, "-", color=TOL["red"], lw=1.4, label="Induced GWs")
+        ax2.loglog(f_grid, lisa_noise, "--", color=TOL["blue"], lw=1.0, label="LISA (4 yr)")
+        ax2.axhline(2.47e-5, color="gray", ls=":", lw=0.8, alpha=0.7)
+        ax2.text(2e-5, 7e-6, r"Planck $\Omega_{\gamma,0} h^2$", fontsize=6.5, color="gray")
+        ax2.text(1.2e-2, 2.5e-13, rf"LISA SNR $\approx {snr_sub:.1f}$", fontsize=7, color=TOL["red"], fontweight="bold")
+
+        ax2.set_xlabel(r"$f$ [Hz]")
+        ax2.set_ylabel(r"$\Omega_{\text{GW},0}(f) \, h^2$")
+        ax2.set_xlim(1e-5, 1e4)
+        ax2.set_ylim(1e-18, 5e-4)
+        ax2.grid(True, which="both", alpha=0.15, lw=0.4)
+        ax2.legend(loc="upper right", frameon=True, framealpha=0.9, fontsize=6.5)
+
+        fig.tight_layout()
+        out = save_fig(fig, filename, category, dpi=dpi)
+        paper_png = os.path.join("ezquiaga", "images", f"{filename}.png")
+        fig.savefig(paper_png, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+        return out
+
+
+def plot_asteroid_ps_and_sigw(filename="fig5_asteroid_pbh", category="pbh", dpi=300):
+    """Two-panel paper figure for Asteroid window (Figure 5):
+    Panel (a): SR vs MS primordial power spectrum P_R(k) for asteroid config.
+    Panel (b): Induced GW spectrum Omega_GW,0(f) h^2 vs LISA 4-yr noise.
+    """
+    import json
+    from scripts.sigw import get_lisa_noise
+    from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
+    from inf_dyn_background import run_background_simulation, get_derived_quantities
+    from scripts.compute_sr_ms import compute_ps_sr
+
+    a_ast, b_ast = inflection_parameters(x_c=0.784, c=0.77, beta=1.8e-4)
+    model_ast = EzquiagaCHIModel(lambda_0=2.23e-7, b_lambda=a_ast*2.23e-7, xi_0=7.55, b_xi=b_ast*7.55, c=0.77)
+    model_ast.x0 = 8.0
+    model_ast.y0 = -0.0001
+    model_ast.patch_background_solver()
+
+    T_ast = np.linspace(0, model_ast.T_max, model_ast.bg_steps)
+    bg_ast = run_background_simulation(model_ast, T_ast)
+    derived_ast = get_derived_quantities(bg_ast, model_ast)
+    end_idx_ast = np.where(derived_ast["epsH"] > 1)[0]
+    end_idx_ast = end_idx_ast[0] if len(end_idx_ast) > 0 else len(T_ast) - 1
+
+    k_sr_raw_ast, ps_ast_sr, _ = compute_ps_sr(bg_ast, end_idx_ast)
+    N_ast = derived_ast["N"][:end_idx_ast+1]
+    idx_piv_ast = np.argmin(np.abs(N_ast - (N_ast[-1] - 72.0)))
+    k_ast_sr = 0.05 * (k_sr_raw_ast / k_sr_raw_ast[idx_piv_ast])
+
+    ps_ast_path = get_path("pspectra", "ps_phi8.00_y0-0.000_nstar79.7.json")
+    with open(ps_ast_path) as f:
+        ap_data = json.load(f)
+    k_ast_ms = np.array(ap_data["spectrum"]["k_phys"])
+    ps_ast_ms = np.array(ap_data["spectrum"]["P_S"])
+
+    asteroid_sigw_path = get_path("sigw_data", "sigw_phi8.00_y0-0.000_nstar79.7_psch_Chs.json")
+    with open(asteroid_sigw_path) as f:
+        ad = json.load(f)
+
+    f_ast = np.array(ad["freq_hz"])
+    om_ast = np.array(ad["omega_gw_h2"])
+
+    f_grid = np.logspace(-5, 4, 400)
+    lisa_noise = get_lisa_noise(f_grid)
+
+    with plt.rc_context(PAPER_RCPARAMS):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.0, 2.7))
+
+        # Panel (a): Asteroid SR vs MS
+        ax1.loglog(k_ast_sr, ps_ast_sr, "--", color=TOL["blue"], lw=1.2, label="Slow-roll approx")
+        ax1.loglog(k_ast_ms, ps_ast_ms, "-", color=TOL["teal"], lw=1.4, label="MS solver")
+        ax1.axhline(0.01, color="gray", ls=":", lw=0.8, alpha=0.7)
+        ax1.text(1e15, 0.015, r"$\mathcal{P}_{\mathcal{R}} \sim 10^{-2}$", fontsize=6.5, color="gray")
+
+        ax1.set_xlabel(r"$k$ [Mpc$^{-1}$]")
+        ax1.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$")
+        ax1.set_xlim(1e13, 1e21)
+        ax1.set_ylim(1e-9, 0.2)
+        ax1.grid(True, which="both", alpha=0.15, lw=0.4)
+        ax1.legend(loc="upper left", frameon=True, framealpha=0.9, fontsize=6.5)
+
+        # Panel (b): Asteroid Induced GWs
+        ax2.loglog(f_ast, om_ast, "-", color=TOL["teal"], lw=1.4, label="Induced GWs")
+        ax2.loglog(f_grid, lisa_noise, "--", color=TOL["blue"], lw=1.0, label="LISA (4 yr)")
+        ax2.axhline(2.47e-5, color="gray", ls=":", lw=0.8, alpha=0.7)
+        ax2.text(2e-5, 7e-6, r"Planck $\Omega_{\gamma,0} h^2$", fontsize=6.5, color="gray")
+        ax2.text(10, 2.5e-13, r"Peak $f \approx 2.6\text{ kHz}$", fontsize=7, color=TOL["teal"], fontweight="bold")
+
+        ax2.set_xlabel(r"$f$ [Hz]")
+        ax2.set_ylabel(r"$\Omega_{\text{GW},0}(f) \, h^2$")
+        ax2.set_xlim(1e-5, 1e4)
+        ax2.set_ylim(1e-18, 5e-4)
+        ax2.grid(True, which="both", alpha=0.15, lw=0.4)
+        ax2.legend(loc="upper right", frameon=True, framealpha=0.9, fontsize=6.5)
+
+        fig.tight_layout()
+        out = save_fig(fig, filename, category, dpi=dpi)
+        paper_png = os.path.join("ezquiaga", "images", f"{filename}.png")
+        fig.savefig(paper_png, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+        return out
     import argparse
     parser = argparse.ArgumentParser(
         description="CMB anomaly plotting utilities")
