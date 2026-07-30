@@ -21,7 +21,7 @@ from collections import Counter, defaultdict
 
 import numpy as np
 
-from scripts.constants import ROOT_DIR
+from scripts.constants import ROOT_DIR, NumpyJSONEncoder
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 DEFAULT_DATA_DIR = os.path.join(ROOT_DIR, "outputs/simulations/pbh_results")
@@ -594,7 +594,7 @@ def main():
             }
 
     with open(out_path, "w") as f:
-        json.dump(output, f, indent=2, default=str)
+        json.dump(output, f, indent=2, cls=NumpyJSONEncoder)
     print(f"\nWritten: {out_path}")
 
     # ── Plots ──────────────────────────────────────────────────────────

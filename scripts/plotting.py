@@ -1,10 +1,11 @@
+# -*- coding: utf-8 -*-
 """Plotting utilities + CLI for CMB anomaly analysis.
 
 Importable module (plot_ps, plot_dell, etc.) + CLI subcommands:
-    python -m scripts.plotting epsilon2        Fig 4: ε₂ evolution
+    python -m scripts.plotting epsilon2        Fig 4: epsilon_2 evolution
     python -m scripts.plotting potential       Fig 1: Higgs potential
     python -m scripts.plotting usr-map          Fig 3: USR heatmap
-    python -m scripts.plotting compare-configs  Multi-config D_ℓ/P_S comparison
+    python -m scripts.plotting compare-configs  Multi-config D_ell/P_S comparison
 
 All functions follow publication-ready conventions:
 - Two-column format (~3.25-3.5in wide single, ~7in full)
@@ -15,17 +16,16 @@ All functions follow publication-ready conventions:
 """
 import os
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
-
 import numpy as np
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as path_effects
 
 from scipy.interpolate import CubicSpline
 
-from scripts.constants import As, k_pivot_phys, T_cmb, ROOT_DIR
+from scripts.constants import As, k_pivot_phys, T_cmb, ROOT_DIR, S
 
 TOL = {
     "blue": "#4477AA",
@@ -38,11 +38,11 @@ TOL = {
     "dark": "#222222",
 }
 # Color convention across all plots:
-#   TOL["red"]   — model/main data line
-#   TOL["blue"]  — secondary/reference data (e.g. CAMB full)
-#   TOL["dark"]  — Planck data points / LCDM baseline
-#   TOL["grey"]  — reference lines, grid, annotations
-#   TOL["green"] — feature markers (pivot, inflection)
+#   TOL["red"]   - model/main data line
+#   TOL["blue"]  - secondary/reference data (e.g. CAMB full)
+#   TOL["dark"]  - Planck data points / LCDM baseline
+#   TOL["grey"]  - reference lines, grid, annotations
+#   TOL["green"] - feature markers (pivot, inflection)
 
 COLORS = ["#CC3311", "#EE8866", "#44BB99", "#AA3377",
           "#4477AA", "#228833", "#DDCC77", "#88CCEE"]
@@ -70,7 +70,7 @@ MARKER_RCPARAMS = {
 }
 
 # COLOR_MAP: standard role-based color assignment for comparison plots.
-# Plot philosophy — data-first, minimal clutter:
+# Plot philosophy - data-first, minimal clutter:
 #   No annotation boxes, reference lines, or decorations unless explicitly
 #   requested. Let the data speak. Add elements only when they serve a
 #   specific expository purpose.
@@ -83,7 +83,7 @@ COLOR_MAP = {
     "feature": TOL["green"],    # pivot markers, inflection points
 }
 
-# ── Module-level workers (must be top-level for pickle) ─────────────────────
+# -- Module-level workers (must be top-level for pickle) ---------------------
 
 def _heatmap_worker(args):
     """Worker for usr-map multiprocessing."""
@@ -106,6 +106,8 @@ OUTPUT_DIRS = {
     "logs": os.path.join(ROOT_DIR, "outputs/simulations/logs"),
     "scans": os.path.join(ROOT_DIR, "outputs/simulations/scans"),
     "pbh": os.path.join(ROOT_DIR, "outputs/plots/pbh"),
+    "sigw": os.path.join(ROOT_DIR, "outputs/plots/sigw"),
+    "sigw_data": os.path.join(ROOT_DIR, "outputs/simulations/sigw"),
 }
 
 
@@ -131,21 +133,124 @@ def save_fig(fig, filename, category="diagnostics", dpi=300):
     plt.close(fig)
 
 
-def make_filename(name, phi0=None, y0=None, nstar=None, ext=".json"):
+def make_filename(
+    name,
+    phi0=None,
+    y0=None,
+    nstar=None,
+    ext=".json",
+    formation=None,
+    accretion=None,
+    **extra,
+):
     """Generate standardized output filename.
 
-    Pattern: {name}_phi{phi0:.2f}_y0{y0:+.3f}_nstar{nstar:.1f}{ext}
+    Base pattern: {name}_phi{phi0:.2f}_y0{y0:+.3f}_nstar{nstar:.1f}{ext}
     If phi0 is None, returns {name}{ext} (for special files like camb_lcdm).
 
+    When *formation* and/or *accretion* are provided, a suffix
+    ``_{formation}_{accretion}`` is appended after ``nstar``.
+    When ``**extra`` has keys, additional ``_{key}{value}`` segments
+    are appended, e.g. ``_beta2e-05_zc0.077``.
+
     Examples:
-        make_filename("ps", 6.60, -0.736, 52.6)         → "ps_phi6.60_y0-0.736_nstar52.6.json"
-        make_filename("camb", 6.60, -0.736, 52.6)        → "camb_phi6.60_y0-0.736_nstar52.6.json"
-        make_filename("camb_lcdm")                        → "camb_lcdm.json"
-        make_filename("planck", 6.60, -0.736, 52.6, ".png") → "planck_phi6.60_y0-0.736_nstar52.6.png"
+        make_filename("ps", 6.60, -0.736, 52.6)                        -> "ps_phi6.60_y0-0.736_nstar52.6.json"
+        make_filename("camb", 6.60, -0.736, 52.6)                       -> "camb_phi6.60_y0-0.736_nstar52.6.json"
+        make_filename("camb_lcdm")                                       -> "camb_lcdm.json"
+        make_filename("planck", 6.60, -0.736, 52.6, ".png")              -> "planck_phi6.60_y0-0.736_nstar52.6.png"
+        make_filename("ps", 8.0, -1e-4, 72.0, formation="cmp", accretion="PR") -> "ps_phi8.00_y0-0.000_nstar72.0_cmp_PR.json"
+        make_filename("ps", 8.0, -1e-4, 72.0, formation="cmp", accretion="PR", beta=2e-5, zc=0.077) -> "ps_phi8.00_y0-0.000_nstar72.0_cmp_PR_beta2e-05_zc0.077.json"
     """
     if phi0 is not None:
-        return f"{name}_phi{phi0:.2f}_y0{y0:+.3f}_nstar{nstar:.1f}{ext}"
-    return f"{name}{ext}"
+        base = f"{name}_phi{phi0:.2f}_y0{y0:+.3f}_nstar{nstar:.1f}"
+    else:
+        base = name
+
+    if formation is not None or accretion is not None:
+        f_str = formation if formation else ""
+        a_str = accretion if accretion else ""
+        if f_str and a_str:
+            base = f"{base}_{f_str}_{a_str}"
+        elif f_str:
+            base = f"{base}_{f_str}"
+        elif a_str:
+            base = f"{base}_{a_str}"
+
+    for k, v in extra.items():
+        base = f"{base}_{k}{v}"
+
+    return f"{base}{ext}"
+
+
+# -- PBH filename helper --------------------------------------------------
+
+_FORMATION_CODES: dict[str, str] = {
+    "compaction": "cmp",
+    "press_schechter": "psch",
+}
+_ACCRETION_CODES: dict[str, str] = {
+    "PR": "PR",
+    "BHL": "BHL",
+    "Eddington": "Edd",
+    "Chisholm": "Chs",
+    "Merger": "Mrg",
+}
+
+
+def make_pbh_filename(
+    name,
+    phi0,
+    y0,
+    nstar,
+    formation=None,
+    accretion=None,
+    ext=".png",
+    **extra,
+):
+    """PBH-specific filename with short code mapping.
+
+    Wraps :func:`make_filename` by mapping human-readable formation/accretion
+    names to their short codes (e.g. ``"compaction"`` -> ``"cmp"``).
+
+    Parameters
+    ----------
+    name : str
+        File prefix (e.g. ``'pbh'``, ``'rank02'``).
+    phi0 : float
+        Initial field value.
+    y0 : float
+        Initial field velocity.
+    nstar : float
+        Number of e-folds.
+    formation : str or None
+        Formation model name (``'compaction'`` or ``'press_schechter'``).
+        Mapped to short code.  Unknown names pass through unchanged.
+    accretion : str or None
+        Accretion model name (``'PR'``, ``'BHL'``, ``'Eddington'``,
+        ``'Chisholm'``, ``'Merger'``).  Mapped to short code.
+        Unknown names pass through unchanged.
+    ext : str
+        File extension (default ``'.png'``).
+    **extra
+        Additional key-value pairs appended to the filename.
+
+    Returns
+    -------
+    str
+        Standardised PBH filename.
+    """
+    f_code = _FORMATION_CODES.get(formation, formation)
+    a_code = _ACCRETION_CODES.get(accretion, accretion)
+    return make_filename(
+        name,
+        phi0=phi0,
+        y0=y0,
+        nstar=nstar,
+        ext=ext,
+        formation=f_code,
+        accretion=a_code,
+        **extra,
+    )
 
 
 def find_ps(phi0, y0, nstar, tolerance=3.0):
@@ -196,30 +301,7 @@ def find_ps(phi0, y0, nstar, tolerance=3.0):
     return scored[0][1], scored[0][2]
 
 
-# ── Ezquiaga CHI diagnostics & PS comparison ──────────────────────────────
-
-S_CODE = 5e-5
-
-
-def build_usr_weighted_kgrid(k_min, k_max, n_dense=200, n_outer=20):
-    """Build k-grid with dense zone covering the PBH peak (k=1e9 to 1e13)."""
-    k_lo = np.logspace(np.log10(k_min), 9, n_outer)
-    k_dense = np.logspace(9, 13, n_dense)
-    k_hi = np.logspace(13, np.log10(k_max), n_outer)
-    return np.unique(np.concatenate([k_lo, k_dense, k_hi]))
-
-
-def compute_ps_sr(bg_sol, end_idx):
-    """Compute SR-approximation P_S(k) from background solution."""
-    x, y, z, n = bg_sol
-    epsH = y**2 / (2 * z**2)
-    k_phys = np.exp(n[:end_idx+1]) * z[:end_idx+1] * S_CODE
-    e = epsH[:end_idx+1]
-    P_S = np.where(np.isfinite(e) & (e > 0),
-                   (S_CODE * z[:end_idx+1])**2 / (8 * np.pi**2 * e),
-                   np.nan)
-    return k_phys, P_S, e
-
+# -- Ezquiaga CHI diagnostics & PS comparison ------------------------------
 
 def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
                                pivot_k=0.002, suffix="", N_star=None):
@@ -243,7 +325,7 @@ def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
     z_bg = bg_sol[2]
     N_end_val = float(N[end_idx])
     N_std = N_end_val - N[:end_idx + 1]
-    k_phys = np.exp(bg_sol[3][:end_idx + 1]) * z_bg[:end_idx + 1] * S_CODE
+    k_phys = np.exp(bg_sol[3][:end_idx + 1]) * z_bg[:end_idx + 1] * S
     pivot_idx = int(np.argmin(np.abs(np.log10(k_phys) - np.log10(pivot_k))))
     start_N = N_std[int(np.where(epsH[:end_idx + 1] > 1e-6)[0][0])] if np.any(epsH[:end_idx + 1] > 1e-6) else N_std[0]
 
@@ -288,7 +370,7 @@ def plot_ezquiaga_diagnostics(model, bg_sol, derived, end_idx, chi0,
     save_fig(fig_v, fname_v, "diagnostics")
 
     epsH_clip = np.clip(epsH[:end_idx + 1], 1e-30, None)
-    P_S_sr = (S_CODE * z_bg[:end_idx + 1])**2 / (8 * np.pi**2 * epsH_clip)
+    P_S_sr = (S * z_bg[:end_idx + 1])**2 / (8 * np.pi**2 * epsH_clip)
     mask_ps = N_std <= start_N
 
     fig_ps, ax_ps = plt.subplots(figsize=(3.35, 2.6))
@@ -309,160 +391,83 @@ def plot_ps_sr_ms_comparison(
     model,
     chi0=None,
     y0=-1e-4,
-    k_min=1e-8,
-    k_max=1e18,
-    n_dense=200,
-    n_outer=20,
-    n_workers=8,
-    ms_enabled=True,
     k_pivots=None,
     filename=None,
     category="diagnostics",
     dpi=200,
+    data=None,
+    force_recompute=False,
 ):
     """
-    Run background, compute SR + MS P_S(k), plot overlay with ratio panel.
+    Plot SR + MS P_S(k) overlay with ratio panel from cached or provided data.
 
     Parameters
     ----------
     model : EzquiagaCHIModel (already configured with inflection params)
-    chi0 : float or None — sets model.x0 if given
-    y0 : float — sets model.y0 (default -1e-4)
-    k_min, k_max : float — k-range in Mpc^-1
-    n_dense, n_outer : int — PBH-weighted k-grid params
-    n_workers : int — parallel workers for MS solver
-    ms_enabled : bool — if True, run MS solver
-    k_pivots : list of (label, k_value) or None (defaults to [(k=0.002,), (k=0.05,)])
-    filename : str or None — plot filename (default: "ps_sr_ms_chi{chi0}")
-    category : str — output subdirectory
-    dpi : int — figure resolution
+        Used only to determine cache filename; if data is provided, model is
+        only used for the default filename.
+    chi0 : float or None - model.x0 value (for cache lookup)
+    y0 : float - model.y0 value (for cache lookup, default -1e-4)
+    k_pivots : list of (label, k_value) or None
+    filename : str or None - plot filename override
+    category : str - output subdirectory
+    dpi : int - figure resolution
+    data : dict or None - pre-computed data dict with keys
+        k_phys_sr, P_S_sr, k_phys_ms, P_S_ms, n_s_local, N_total.
+        If None, loads from cache via compute_sr_ms.compute_and_save().
+    force_recompute : bool - if True, recompute even if cached
 
     Returns
     -------
     dict with keys: k_phys_sr, P_S_sr, k_phys_ms, P_S_ms, n_s_local, N_total
     """
-    from inf_dyn_background import run_background_simulation, get_derived_quantities
+    from scipy.interpolate import CubicSpline
 
-    if chi0 is not None:
-        model.x0 = chi0
-    model.y0 = y0
+    if data is None:
+        from scripts.compute_sr_ms import compute_and_save
+        data = compute_and_save(
+            model, chi0=chi0, y0=y0, force=force_recompute,
+        )
+        print()
 
-    T = np.linspace(0, model.T_max, model.bg_steps)
-    bg_sol = run_background_simulation(model, T)
-    derived = get_derived_quantities(bg_sol, model)
+    assert data is not None
+    k_sr = data["k_phys_sr"]
+    Ps_sr = data["P_S_sr"]
+    k_ms = data.get("k_phys_ms")
+    Ps_ms = data.get("P_S_ms")
+    n_s_results = data.get("n_s_local", {})
+    N_total = data.get("N_total", data.get("metadata", {}).get("N_total", 0))
 
-    epsH = derived["epsH"]
-    eps1_arr = np.where(np.isfinite(epsH) & (epsH >= 1.0))[0]
-    end_idx = int(eps1_arr[0]) if len(eps1_arr) > 0 else len(epsH) - 1
-    N_total = float(derived["N"][end_idx])
-    print(f"  N_total = {N_total:.1f}, end_idx = {end_idx}")
+    with plt.rc_context(PAPER_RCPARAMS):
+        fig, ax1 = plt.subplots(figsize=(3.4, 2.6))
 
-    k_sr, Ps_sr, _ = compute_ps_sr(bg_sol, end_idx)
-    valid = np.where(np.isfinite(Ps_sr) & (Ps_sr > 0))[0]
-    k_sr, Ps_sr = k_sr[valid], Ps_sr[valid]
+        ax1.loglog(k_sr, Ps_sr, "-", color=TOL["blue"], lw=1.0, label="SR approx")
+        if k_ms is not None and Ps_ms is not None:
+            ok_ms = np.isfinite(Ps_ms)
+            if np.any(ok_ms):
+                k_ok = k_ms[ok_ms]
+                ps_ok = Ps_ms[ok_ms]
+                k_line = np.logspace(np.log10(k_ok[0]), np.log10(k_ok[-1]), 500)
+                if len(k_ok) >= 4:
+                    spl = CubicSpline(np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
+                                      bc_type='not-a-knot', extrapolate=False)
+                    ps_line = np.exp(spl(np.log(k_line)))
+                else:
+                    ps_line = np.exp(np.interp(np.log(k_line), np.log(k_ok),
+                                               np.log(np.maximum(ps_ok, 1e-300)),
+                                               left=np.nan, right=np.nan))
+                ax1.loglog(k_line, ps_line, "-", color=TOL["red"], lw=1.3,
+                           label="MS solver")
 
-    k_ms, Ps_ms = None, None
-    n_s_results = {}
-    ok_ms = np.array([], dtype=bool)
-    k_ok = np.array([])
+        ax1.legend(loc="lower left")
+        ax1.set_xlabel(r"$k$ [Mpc$^{-1}$]")
+        ax1.set_ylabel(r"$P_{\mathcal{R}}(k)$")
+        ax1.grid(True, which="both", alpha=0.15, lw=0.4)
+        ax1.set_xlim(left=1e-5)
 
-    if ms_enabled:
-        k_grid = build_usr_weighted_kgrid(k_min, k_max, n_dense=n_dense, n_outer=n_outer)
-        n_k = len(k_grid)
-        print(f"  Running MS for {n_k} modes ({n_dense} dense + {n_outer*2} outer) on {n_workers} workers...")
-
-        chunks = np.array_split(k_grid, n_workers)
-        model_params = (model.a, model.b, model.v0, model.x0, model.y0)
-        batch_args = [(ch, bg_sol, T, end_idx, model_params, 'dp5') for ch in chunks]
-
-        Ps_ms_arr = np.full(n_k, np.nan)
-        k_to_result = {kp: i for i, kp in enumerate(k_grid)}
-
-        t0 = time.time()
-        with ProcessPoolExecutor(max_workers=n_workers) as pool:
-            futures = [pool.submit(_solve_ms_batch, ba) for ba in batch_args]
-            done = 0
-            for future in as_completed(futures):
-                for kp, ps in future.result():
-                    if kp in k_to_result and ps is not None:
-                        Ps_ms_arr[k_to_result[kp]] = ps
-                done += 1
-                print(f"    batch {done}/{n_workers}", flush=True)
-
-        elapsed = time.time() - t0
-        n_ok = int(np.sum(np.isfinite(Ps_ms_arr)))
-        print(f"  MS done: {n_ok}/{n_k} OK in {elapsed:.0f}s")
-        k_ms, Ps_ms = k_grid, Ps_ms_arr
-        ok_ms = np.isfinite(Ps_ms)
-        k_ok = k_grid[ok_ms]
-
-    fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(7, 6), sharex=True,
-        gridspec_kw={"height_ratios": [3, 1]}
-    )
-
-    ax1.loglog(k_sr, Ps_sr, "-", color=TOL["blue"], lw=1.5, label="SR approx")
-    interp_ms_vals = None
-    if ms_enabled and np.any(ok_ms):
-        ps_ok = Ps_ms[ok_ms]
-        k_line = np.logspace(np.log10(k_ok[0]), np.log10(k_ok[-1]), 500)
-        if len(k_ok) >= 4:
-            spl = CubicSpline(np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
-                              bc_type='not-a-knot', extrapolate=False)
-            ps_line = np.exp(spl(np.log(k_line)))
-        else:
-            ps_line = np.exp(np.interp(np.log(k_line), np.log(k_ok), np.log(np.maximum(ps_ok, 1e-300)),
-                                       left=np.nan, right=np.nan))
-        ax1.loglog(k_line, ps_line, "-", color=TOL["red"], lw=1.2,
-                   alpha=0.7, label=f"MS solver ({len(ps_ok)}/{len(Ps_ms)})")
-        ax1.loglog(k_ok, ps_ok, "o", color=TOL["red"], ms=2, alpha=0.4)
-        interp_ms_vals = np.interp(k_sr, k_ok, ps_ok, left=np.nan, right=np.nan)
-
-    for label, k_piv in (k_pivots or [("k=0.002", 0.002), ("k=0.05", 0.05)]):
-        ax1.axvline(k_piv, color=TOL["grey"], ls=":", lw=0.8, alpha=0.5)
-        ax1.annotate(label, xy=(k_piv, ax1.get_ylim()[0]), fontsize=8,
-                     color=TOL["grey"], ha="center")
-
-    ax1.legend(fontsize=11)
-    ax1.set_ylabel(r"$P_{\mathcal{R}}(k)$", fontsize=14)
-    ax1.tick_params(labelsize=12)
-    ax1.grid(True, which="both", alpha=0.2)
-
-    if interp_ms_vals is not None:
-        ratio = interp_ms_vals / Ps_sr
-        ax2.semilogx(k_sr, ratio, "-", color=TOL["blue"], lw=1.2)
-        rmin, rmax = np.nanmin(ratio), np.nanmax(ratio)
-        if not np.isfinite(rmin): rmin = 0.5
-        if not np.isfinite(rmax): rmax = 1.5
-        ax2.set_ylim(max(0, rmin - 0.2), min(5, rmax + 0.2))
-    ax2.axhline(1.0, color=TOL["grey"], ls="--", lw=0.8)
-    ax2.set_xlabel(r"$k$ [Mpc$^{-1}$]", fontsize=14)
-    ax2.set_ylabel("MS / SR", fontsize=14)
-    ax2.tick_params(labelsize=12)
-    ax2.grid(True, which="both", alpha=0.2)
-
-    fig.tight_layout()
-    fname = filename or f"ps_sr_ms_chi{model.x0}"
-    save_fig(fig, fname, category, dpi=dpi)
-
-    for label, k_piv in (k_pivots or [("k=0.002", 0.002), ("k=0.05", 0.05)]):
-        pi = int(np.argmin(np.abs(k_sr - k_piv)))
-        if pi < 5 or pi > len(k_sr) - 6:
-            continue
-        d5 = 5
-        lk = np.log(k_sr[pi-d5:pi+d5+1])
-        lp_sr = np.log(Ps_sr[pi-d5:pi+d5+1])
-        ns_sr = 1 + (lp_sr[-1] - lp_sr[0]) / (lk[-1] - lk[0])
-        ns_ms_val = None
-        if interp_ms_vals is not None and np.isfinite(interp_ms_vals[pi]):
-            lp_ms = np.log(np.maximum(interp_ms_vals[pi-d5:pi+d5+1], 1e-300))
-            ns_ms_val = 1 + (lp_ms[-1] - lp_ms[0]) / (lk[-1] - lk[0])
-        msg = f"  {label}: n_s_local(SR)={ns_sr:.4f}"
-        if ns_ms_val is not None:
-            msg += f", n_s_local(MS)={ns_ms_val:.4f}"
-        print(msg)
-        n_s_results[label] = {"SR_local": ns_sr, "MS_local": ns_ms_val}
-
+        fig.tight_layout()
+        fname = filename or f"ps_sr_ms_chi{model.x0}"
+        save_fig(fig, fname, category, dpi=dpi)
     return {
         "k_phys_sr": k_sr,
         "P_S_sr": Ps_sr,
@@ -470,50 +475,8 @@ def plot_ps_sr_ms_comparison(
         "P_S_ms": Ps_ms,
         "n_s_local": n_s_results,
         "N_total": N_total,
-        "end_idx": end_idx,
+        "end_idx": data.get("end_idx"),
     }
-
-
-def _solve_ms_batch(args):
-    """Worker for parallel MS solver — top-level for pickle."""
-    k_phys_batch, bg_sol, T_span_bg, end_idx, model_params, ms_method = args
-    from scipy.interpolate import CubicSpline
-    import inf_dyn_MS_full as ms_solver
-    from numba_ms_solver import numba_run_ms, build_numba_splines
-    from models.ezquiaga_chi import EzquiagaCHIModel
-
-    m = EzquiagaCHIModel()
-    m.a, m.b, m.v0, m.x0, m.y0 = model_params
-    m.patch_background_solver()
-
-    interp = tuple(
-        CubicSpline(T_span_bg, bg_sol[i], bc_type='not-a-knot', extrapolate=True)
-        for i in range(4)
-    )
-    bg_coefs = build_numba_splines(bg_sol, T_span_bg, model=m)
-    n_bg, z_bg = bg_sol[3], bg_sol[2]
-    log_az = n_bg + np.log(np.maximum(z_bg, 1e-300))
-    t_end = T_span_bg[end_idx]
-
-    results = []
-    for kp in k_phys_batch:
-        k_code = kp / S_CODE
-        si = int(np.argmin(np.abs(log_az[:end_idx] - np.log(k_code) + np.log(100.0))))
-        si = max(si, 0)
-        ni = bg_sol[3][si]
-        T_ms = np.linspace(T_span_bg[si], t_end, 5000)
-        try:
-            sol = numba_run_ms(bg_sol, T_span_bg, T_ms, ni, k_code, m,
-                               bg_coefs=bg_coefs, method=ms_method)
-            d = ms_solver.get_ms_derived_quantities_with_bg(sol, interp, T_ms, m, k_code, ni)
-            ps = float(d["P_S"][-1])
-            if np.isfinite(ps) and ps > 0:
-                results.append((kp, ps))
-            else:
-                results.append((kp, None))
-        except Exception:
-            results.append((kp, None))
-    return results
 
 
 def plot_ps(k_phys, P_S, label="Higgs USR", filename="ps", category="powerloss",
@@ -771,10 +734,10 @@ def plot_camb_fullsky(camb_data, filename="camb_fullsky", category="powerloss"):
     save_fig(fig, filename, category)
 
 
-# ── CLI subcommands ──────────────────────────────────────────────────────────
+# -- CLI subcommands ----------------------------------------------------------
 
 def _cli_epsilon2(xi=15000.0, lam=0.13, phi0=5.43, y0=-0.07):
-    """Fig 4: ε₂ evolution with USR and transition shading."""
+    """Fig 4: epsilon_2 evolution with USR and transition shading."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -803,8 +766,8 @@ def _cli_epsilon2(xi=15000.0, lam=0.13, phi0=5.43, y0=-0.07):
     transition_mask = (eps2_plot > -5.5) & (eps2_plot < -1)
     dN = np.diff(N_plot, prepend=N_plot[0])
     dur_trans = float(np.sum(dN[transition_mask]))
-    print(f"  Pure USR duration (ε₂ < -5.5):  {dur_usr:.4f} e-folds")
-    print(f"  Transition duration (-5.5 < ε₂ < -1): {dur_trans:.4f} e-folds")
+    print(f"  Pure USR duration (epsilon_2 < -5.5):  {dur_usr:.4f} e-folds")
+    print(f"  Transition duration (-5.5 < epsilon_2 < -1): {dur_trans:.4f} e-folds")
 
     fig, ax = plt.subplots(figsize=(7, 5))
     ax.plot(N_plot, eps2_plot, linewidth=2, color=TOL["blue"],
@@ -880,7 +843,7 @@ def _cli_usr_map(phi_min=5.18, phi_max=5.93, n_phi=100,
                  y_min_abs=0.01, y_max_abs=0.20, n_y=100,
                  workers=12, xi=15000.0, lam=0.13,
                  bg_steps=30000, x_star=5.42):
-    """Fig 3: USR duration heatmap over (φ₀, |y₀|) space."""
+    """Fig 3: USR duration heatmap over (phi0, |y0|) space."""
     import multiprocessing as mp
     import time
     import matplotlib
@@ -898,7 +861,7 @@ def _cli_usr_map(phi_min=5.18, phi_max=5.93, n_phi=100,
     y_grid = np.linspace(-y_min_abs, -y_max_abs, n_y)
     n_total = n_phi * n_y
 
-    print(f"  Grid: {n_phi}×{n_y} = {n_total} points, Workers: {workers}")
+    print(f"  Grid: {n_phi}x{n_y} = {n_total} points, Workers: {workers}")
     t0 = time.time()
 
     tasks = [(i, phi_val, y_val, xi, lam, bg_steps)
@@ -939,7 +902,7 @@ def _cli_compare_configs(phi0_str="", y0_str="", nstar_str="",
                          labels_str="", output_suffix="camb_top_configs",
                          from_log=None, n_configs=10,
                          xi=15000.0, lam=0.13, quick=False):
-    """Multi-config P_S(k) and D_ℓ comparison plot."""
+    """Multi-config P_S(k) and D_ell comparison plot."""
     import json
     import matplotlib
     matplotlib.use("Agg")
@@ -1124,14 +1087,14 @@ def _cli_compare_configs(phi0_str="", y0_str="", nstar_str="",
     save_fig(fig, f"dell_comparison_{suffix}", "diagnostics")
 
 
-# ── PBH abundance plot ────────────────────────────────────────────────────
+# -- PBH abundance plot ----------------------------------------------------
 
 
 def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
                        model_label="PBH-CHI", filename="pbh_abundance",
                        category="pbh", use_old_bounds=False, smooth_bounds=False):
     """
-    Plot Ω_PBH/Ω_DM vs M/M_⊙ (Figure 3 style).
+    Plot Omega_PBH/Omega_DM vs M/M_sun (Figure 3 style).
 
     log-log, solid TOL line, paper-style legend.
     Observational constraint overlays included from bradkav/PBHbounds.
@@ -1143,7 +1106,7 @@ def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
         return
 
     with plt.rc_context(PAPER_RCPARAMS):
-        fig, ax = plt.subplots(figsize=(4.5, 3.5))
+        fig, ax = plt.subplots(figsize=(3.4, 2.6))
         
         bounds_dir = os.path.join(ROOT_DIR, "data", "PBHbounds", "bounds")
         
@@ -1164,29 +1127,29 @@ def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
         if use_old_bounds:
             datasets = [
                 # (label, filename, color, alpha, (x, y, rotation))
-                ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (2e-18, 2e-2, 65)),
-                ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 2.5e-1, 0)),
-                ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (6e-14, 7e-2, 0)),
-                ("HSC", "old_bounds/HSC_original.txt", TOL["teal"], 0.08, (1e-10, 2e-2, 0)),
-                ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 2e-1, 0)),
-                ("MACHO", "M.txt", TOL["grey"], 0.08, (1e-5, 2e-1, 0)),
-                ("EROS", "EROS.txt", TOL["blue"], 0.08, (1e-2, 5e-2, 0)),
-                ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (3e3, 1.5e-1, -55)),
-                ("Planck", "old_bounds/CMB_withoutDM.txt", TOL["dark"], 0.08, (1e3, 3e-3, -40))
+                ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (8e-19, 5e-3, 65)),
+                ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 0.3, 0)),
+                ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (1e-13, 0.08, 0)),
+                ("HSC", "old_bounds/HSC_original.txt", TOL["teal"], 0.08, (3e-9, 4e-2, 0)),
+                ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 0.4, 0)),
+                ("MACHO", "M.txt", TOL["grey"], 0.08, (0.5, 0.5, 0)),
+                ("EROS", "EROS.txt", TOL["blue"], 0.08, (1.5e-3, 0.15, 0)),
+                ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (2e4, 0.3, 0)),
+                ("Planck", "old_bounds/CMB_withoutDM.txt", TOL["dark"], 0.08, (2e3, 1.5e-3, 0))
             ]
         else:
             datasets = [
                 # (label, filename, color, alpha, (x, y, rotation))
-                ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (2e-18, 2e-2, 65)),
-                ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 2.5e-1, 0)),
-                ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (6e-14, 7e-2, 0)),
-                ("HSC", "HSC.txt", TOL["teal"], 0.08, (1e-10, 6e-3, 0)),
-                ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 2e-1, 0)),
-                ("MACHO", "M.txt", TOL["grey"], 0.08, (1e-5, 2e-1, 0)),
-                ("EROS", "EROS.txt", TOL["blue"], 0.08, (1e-2, 5e-2, 0)),
-                ("LIGO", "LIGO.txt", TOL["purple"], 0.08, (8.0, 8e-3, -55)),
-                ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (1.5e3, 6e-2, -50)),
-                ("Planck", "CMB.txt", TOL["dark"], 0.08, (4.5e1, 2e-2, -82))
+                ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (8e-19, 5e-3, 65)),
+                ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 0.3, 0)),
+                ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (1e-13, 0.08, 0)),
+                ("HSC", "HSC.txt", TOL["teal"], 0.08, (3e-9, 4e-2, 0)),
+                ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 0.4, 0)),
+                ("MACHO", "M.txt", TOL["grey"], 0.08, (0.5, 0.5, 0)),
+                ("EROS", "EROS.txt", TOL["blue"], 0.08, (1.5e-3, 0.15, 0)),
+                ("LIGO", "LIGO.txt", TOL["purple"], 0.08, (2.0, 0.05, -60)),
+                ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (2e4, 0.3, 0)),
+                ("Planck", "CMB.txt", TOL["dark"], 0.08, (2e3, 1.5e-3, 0))
             ]
         
         if os.path.exists(bounds_dir):
@@ -1253,8 +1216,9 @@ def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
                         ax.plot(m_b, f_b, color=color, lw=0.8)
                         ax.fill_between(m_b, f_b, 10.0, color=color, alpha=alpha, lw=0)
                         tx, ty, rot = pos
-                        ax.text(tx, ty, label, color=color, fontsize=6, 
-                                rotation=rot, ha='center', va='center', zorder=10)
+                        ax.text(tx, ty, label, color=color, fontsize=5, 
+                                rotation=rot, ha='center', va='center', zorder=10,
+                                path_effects=[path_effects.withStroke(linewidth=1.5, foreground="white")])
                     except Exception as e:
                         print(f"  WARNING: Failed to load {fname}: {e}")
         else:
@@ -1267,14 +1231,14 @@ def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
         ax.set_ylabel(r"$\Omega_{\mathrm{PBH}} / \Omega_{\mathrm{DM}}$")
         ax.set_xlim(1e-19, 1e8)
         ax.set_ylim(1e-4, 1.0)
-        ax.legend(loc="lower right", fontsize=7)
+        # ax.legend(loc="lower left", fontsize=7)
         # Use a gray grid
         ax.grid(True, alpha=0.2, color='gray', which="both", ls='--')
         fig.tight_layout()
         save_fig(fig, filename, category)
 
 
-# ── Inflection potential zoom plot (Ezquiaga CHI) ─────────────────────────
+# -- Inflection potential zoom plot (Ezquiaga CHI) -------------------------
 
 
 def _V_shape(x, a, b, c=0.77):
@@ -1374,14 +1338,175 @@ def plot_full_potential(a, b, c=0.77, x_range=(0.01, 10),
         plt.close(fig)
 
 
-def main():
-    """CLI entry point: python -m scripts.plotting <subcommand> [args]."""
+def plot_subsolar_ps_and_sigw(filename="fig4_subsolar_pbh", category="pbh", dpi=300):
+    """Two-panel paper figure for Sub-solar window (Figure 4):
+    Panel (a): SR vs MS primordial power spectrum P_R(k) for sub-solar config.
+    Panel (b): Induced GW spectrum Omega_GW,0(f) h^2 vs LISA 4-yr noise.
+    """
+    import json
+    from scripts.sigw import get_lisa_noise
+    from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
+    from inf_dyn_background import run_background_simulation, get_derived_quantities
+    from scripts.compute_sr_ms import compute_ps_sr
+
+    a_sub, b_sub = inflection_parameters(x_c=0.784, c=0.77, beta=2e-5)
+    model_sub = EzquiagaCHIModel(lambda_0=2.23e-7, b_lambda=a_sub*2.23e-7, xi_0=7.55, b_xi=b_sub*7.55, c=0.77)
+    model_sub.x0 = 8.0
+    model_sub.y0 = -0.0001
+    model_sub.patch_background_solver()
+
+    T_sub = np.linspace(0, model_sub.T_max, model_sub.bg_steps)
+    bg_sub = run_background_simulation(model_sub, T_sub)
+    derived_sub = get_derived_quantities(bg_sub, model_sub)
+    end_idx_sub = np.where(derived_sub["epsH"] > 1)[0]
+    end_idx_sub = end_idx_sub[0] if len(end_idx_sub) > 0 else len(T_sub) - 1
+
+    k_sr_raw_sub, ps_sub_sr, _ = compute_ps_sr(bg_sub, end_idx_sub)
+    N_sub = derived_sub["N"][:end_idx_sub+1]
+    idx_piv_sub = np.argmin(np.abs(N_sub - (N_sub[-1] - 66.0)))
+    k_sub_sr = 0.05 * (k_sr_raw_sub / k_sr_raw_sub[idx_piv_sub])
+
+    ps_sub_path = get_path("pspectra", "ps_phi8.00_y0-0.000_nstar86.7.json")
+    with open(ps_sub_path) as f:
+        sp_data = json.load(f)
+    k_sub_ms = np.array(sp_data["spectrum"]["k_phys"])
+    ps_sub_ms = np.array(sp_data["spectrum"]["P_S"])
+
+    subsolar_sigw_path = get_path("sigw_data", "sigw_phi8.00_y0-0.000_nstar86.7_psch_Chs.json")
+    with open(subsolar_sigw_path) as f:
+        sd = json.load(f)
+
+    f_sub = np.array(sd["freq_hz"])
+    om_sub = np.array(sd["omega_gw_h2"])
+    snr_sub = sd["snr"]
+
+    f_grid = np.logspace(-5, 4, 400)
+    lisa_noise = get_lisa_noise(f_grid)
+
+    with plt.rc_context(PAPER_RCPARAMS):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.0, 2.7))
+
+        # Panel (a): Sub-solar SR vs MS
+        ax1.loglog(k_sub_sr, ps_sub_sr, "--", color=TOL["blue"], lw=1.2, label="Slow-roll approx")
+        ax1.loglog(k_sub_ms, ps_sub_ms, "-", color=TOL["red"], lw=1.4, label="MS solver")
+        ax1.axhline(0.01, color="gray", ls=":", lw=0.8, alpha=0.7)
+        ax1.text(2e9, 0.015, r"$\mathcal{P}_{\mathcal{R}} \sim 10^{-2}$", fontsize=6.5, color="gray")
+
+        ax1.set_xlabel(r"$k$ [Mpc$^{-1}$]")
+        ax1.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$")
+        ax1.set_xlim(1e8, 1e18)
+        ax1.set_ylim(1e-9, 0.2)
+        ax1.grid(True, which="both", alpha=0.15, lw=0.4)
+        ax1.legend(loc="upper left", frameon=True, framealpha=0.9, fontsize=6.5)
+
+        # Panel (b): Sub-solar Induced GWs
+        ax2.loglog(f_sub, om_sub, "-", color=TOL["red"], lw=1.4, label="Induced GWs")
+        ax2.loglog(f_grid, lisa_noise, "--", color=TOL["blue"], lw=1.0, label="LISA (4 yr)")
+        ax2.axhline(2.47e-5, color="gray", ls=":", lw=0.8, alpha=0.7)
+        ax2.text(2e-5, 7e-6, r"Planck $\Omega_{\gamma,0} h^2$", fontsize=6.5, color="gray")
+        ax2.text(1.2e-2, 2.5e-13, rf"LISA SNR $\approx {snr_sub:.1f}$", fontsize=7, color=TOL["red"], fontweight="bold")
+
+        ax2.set_xlabel(r"$f$ [Hz]")
+        ax2.set_ylabel(r"$\Omega_{\text{GW},0}(f) \, h^2$")
+        ax2.set_xlim(1e-5, 1e4)
+        ax2.set_ylim(1e-18, 5e-4)
+        ax2.grid(True, which="both", alpha=0.15, lw=0.4)
+        ax2.legend(loc="upper right", frameon=True, framealpha=0.9, fontsize=6.5)
+
+        fig.tight_layout()
+        out = save_fig(fig, filename, category, dpi=dpi)
+        paper_png = os.path.join("ezquiaga", "images", f"{filename}.png")
+        fig.savefig(paper_png, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+        return out
+
+
+def plot_asteroid_ps_and_sigw(filename="fig5_asteroid_pbh", category="pbh", dpi=300):
+    """Two-panel paper figure for Asteroid window (Figure 5):
+    Panel (a): SR vs MS primordial power spectrum P_R(k) for asteroid config.
+    Panel (b): Induced GW spectrum Omega_GW,0(f) h^2 vs LISA 4-yr noise.
+    """
+    import json
+    from scripts.sigw import get_lisa_noise
+    from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
+    from inf_dyn_background import run_background_simulation, get_derived_quantities
+    from scripts.compute_sr_ms import compute_ps_sr
+
+    a_ast, b_ast = inflection_parameters(x_c=0.784, c=0.77, beta=1.8e-4)
+    model_ast = EzquiagaCHIModel(lambda_0=2.23e-7, b_lambda=a_ast*2.23e-7, xi_0=7.55, b_xi=b_ast*7.55, c=0.77)
+    model_ast.x0 = 8.0
+    model_ast.y0 = -0.0001
+    model_ast.patch_background_solver()
+
+    T_ast = np.linspace(0, model_ast.T_max, model_ast.bg_steps)
+    bg_ast = run_background_simulation(model_ast, T_ast)
+    derived_ast = get_derived_quantities(bg_ast, model_ast)
+    end_idx_ast = np.where(derived_ast["epsH"] > 1)[0]
+    end_idx_ast = end_idx_ast[0] if len(end_idx_ast) > 0 else len(T_ast) - 1
+
+    k_sr_raw_ast, ps_ast_sr, _ = compute_ps_sr(bg_ast, end_idx_ast)
+    N_ast = derived_ast["N"][:end_idx_ast+1]
+    idx_piv_ast = np.argmin(np.abs(N_ast - (N_ast[-1] - 72.0)))
+    k_ast_sr = 0.05 * (k_sr_raw_ast / k_sr_raw_ast[idx_piv_ast])
+
+    ps_ast_path = get_path("pspectra", "ps_phi8.00_y0-0.000_nstar79.7.json")
+    with open(ps_ast_path) as f:
+        ap_data = json.load(f)
+    k_ast_ms = np.array(ap_data["spectrum"]["k_phys"])
+    ps_ast_ms = np.array(ap_data["spectrum"]["P_S"])
+
+    asteroid_sigw_path = get_path("sigw_data", "sigw_phi8.00_y0-0.000_nstar79.7_psch_Chs.json")
+    with open(asteroid_sigw_path) as f:
+        ad = json.load(f)
+
+    f_ast = np.array(ad["freq_hz"])
+    om_ast = np.array(ad["omega_gw_h2"])
+
+    f_grid = np.logspace(-5, 4, 400)
+    lisa_noise = get_lisa_noise(f_grid)
+
+    with plt.rc_context(PAPER_RCPARAMS):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.0, 2.7))
+
+        # Panel (a): Asteroid SR vs MS
+        ax1.loglog(k_ast_sr, ps_ast_sr, "--", color=TOL["blue"], lw=1.2, label="Slow-roll approx")
+        ax1.loglog(k_ast_ms, ps_ast_ms, "-", color=TOL["teal"], lw=1.4, label="MS solver")
+        ax1.axhline(0.01, color="gray", ls=":", lw=0.8, alpha=0.7)
+        ax1.text(1e15, 0.015, r"$\mathcal{P}_{\mathcal{R}} \sim 10^{-2}$", fontsize=6.5, color="gray")
+
+        ax1.set_xlabel(r"$k$ [Mpc$^{-1}$]")
+        ax1.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$")
+        ax1.set_xlim(1e13, 1e21)
+        ax1.set_ylim(1e-9, 0.2)
+        ax1.grid(True, which="both", alpha=0.15, lw=0.4)
+        ax1.legend(loc="upper left", frameon=True, framealpha=0.9, fontsize=6.5)
+
+        # Panel (b): Asteroid Induced GWs
+        ax2.loglog(f_ast, om_ast, "-", color=TOL["teal"], lw=1.4, label="Induced GWs")
+        ax2.loglog(f_grid, lisa_noise, "--", color=TOL["blue"], lw=1.0, label="LISA (4 yr)")
+        ax2.axhline(2.47e-5, color="gray", ls=":", lw=0.8, alpha=0.7)
+        ax2.text(2e-5, 7e-6, r"Planck $\Omega_{\gamma,0} h^2$", fontsize=6.5, color="gray")
+        ax2.text(10, 2.5e-13, r"Peak $f \approx 2.6\text{ kHz}$", fontsize=7, color=TOL["teal"], fontweight="bold")
+
+        ax2.set_xlabel(r"$f$ [Hz]")
+        ax2.set_ylabel(r"$\Omega_{\text{GW},0}(f) \, h^2$")
+        ax2.set_xlim(1e-5, 1e4)
+        ax2.set_ylim(1e-18, 5e-4)
+        ax2.grid(True, which="both", alpha=0.15, lw=0.4)
+        ax2.legend(loc="upper right", frameon=True, framealpha=0.9, fontsize=6.5)
+
+        fig.tight_layout()
+        out = save_fig(fig, filename, category, dpi=dpi)
+        paper_png = os.path.join("ezquiaga", "images", f"{filename}.png")
+        fig.savefig(paper_png, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+        return out
     import argparse
     parser = argparse.ArgumentParser(
         description="CMB anomaly plotting utilities")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("epsilon2", help="Fig 4: ε₂ evolution with USR shading")
+    p = sub.add_parser("epsilon2", help="Fig 4: epsilon_2 evolution with USR shading")
     p.add_argument("--phi0", type=float, default=5.43)
     p.add_argument("--y0", type=float, default=-0.07)
     p.add_argument("--xi", type=float, default=15000.0)

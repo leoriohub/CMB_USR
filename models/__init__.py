@@ -5,3 +5,4 @@ from .Smooth_USR import SmoothUSRTransitionModel
 from .punctuated import PunctuatedInflationModel
 from .higgs_critical import CriticalHiggsModel
 from .ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
+from .starobinsky import StarobinskyModel

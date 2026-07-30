@@ -9,7 +9,7 @@
   "chi0_vals": [8.0],
   "N_star_vals": [65.0],
   "target": "subsolar",
-  "pivot_k": 0.05,
+  "k_pivot": 0.05,
   "zeta_c_vals": [0.077],
   "workers": 4,
   "no_plot": true

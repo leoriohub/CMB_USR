@@ -1,3 +1,7 @@
+.commandcode/
+.codegraph/
+.omp/
+
 # Simulation outputs (plots, caches, results)
 outputs/
 
@@ -24,6 +28,9 @@ Thumbs.db
 # Local docs
 docs/
 .vscode/
+
+# Obsidian vault integration (local symlink to external vault)
+{env:OBSIDIAN_VAULT_PATH}/
 .opencode/
 .omo/
 .agents/plans/
@@ -61,3 +68,5 @@ package-lock.json
 # Agent configs (local machine specific)
 .agents/
 .pi/
+.commandcode/
+.coverage

@@ -1,0 +1,19 @@
+{
+  "x_c_lo": 0.77, "x_c_hi": 0.85,
+  "c_lo": 0.5, "c_hi": 5.0,
+  "beta_lo": 1e-6, "beta_hi": 8e-4,
+  "chi0_lo": 5.0, "chi0_hi": 9.0,
+  "N_star_lo": 55, "N_star_hi": 75,
+  "zeta_c_lo": 0.040, "zeta_c_hi": 0.100,
+  "mass_bin_lo": 1e-20, "mass_bin_hi": 1e10,
+  "n_s_min": 0.95, "n_s_max": 0.975,
+  "f_total_min": 0.05, "f_total_max": 100,
+  "psr_peak_min": 1e-6,
+  "stage1_skip_usr": true,
+  "n_init": 30,
+  "n_trials": 200,
+  "q_batch": 4,
+  "workers": 8,
+  "no_plot": true,
+  "log": "/tmp/fixed_sweep.jsonl"
+}

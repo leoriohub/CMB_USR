@@ -567,20 +567,21 @@ From paper lines 302-303 (ΔN ∈ (30,35) for viable PBH production):
 - First resolved (non-grid-boundary) peak at k=9.1×10¹⁷ at c=1.86, β=3e-4, xc=0.79
 - The search plan is documented in `docs/pbh_search_plan.md`
 
-### 21. Best PBH Configs — Sub-solar & Asteroid
+### 21. Best PBH Configs — Sub-solar & Asteroid (Press-Schechter + Chisholm legacy)
 
 Two independently-verified configs producing real (non-boundary) USR peaks with
-clean observational-constraint fits, companion JSONs auto-generated on plot output:
+clean observational-constraint fits, companion JSONs auto-generated on plot output.
+Both were computed with the legacy **Press-Schechter** formation + **Chisholm** (3×10⁷) accretion:
 
-| Region | Config | M_peak [M⊙] | f_total | ζ_c | n_s | File |
-|--------|--------|-------------|---------|-----|-----|------|
-| **Sub-solar** | β=2e-5, N*=66 | 1.97e-05 | 0.183 | 0.0765 | 0.9501 | `configs/subsolar_pbh.json` |
-| **Asteroid** | β=1.8e-4, N*=72 | 1.29e-16 | 0.128 | 0.0488 | 0.9663 | `configs/asteroid_pbh.json` |
+| Region | Config | M_peak [M⊙] | f_total | ζ_c | n_s | Formation | Accretion | File |
+|--------|--------|-------------|---------|-----|-----|-----------|-----------|------|
+| **Sub-solar** | β=2e-5, N*=66 | 1.97e-05 | 0.183 | 0.0765 | 0.9501 | Press-Schechter | Chisholm | `configs/ezquiaga/subsolar_pbh.json` |
+| **Asteroid** | β=1.8e-4, N*=72 | 1.29e-16 | 0.128 | 0.0488 | 0.9663 | Press-Schechter | Chisholm | `configs/ezquiaga/asteroid_pbh.json` |
 
 Both at χ₀=8.0, x_c=0.784, c=0.77. Reproduce with:
 ```bash
-python scripts/full_pbh_pipeline.py --config configs/subsolar_pbh.json --tag rank02
-python scripts/full_pbh_pipeline.py --config configs/asteroid_pbh.json --tag rank07
+python scripts/full_pbh_pipeline.py --config configs/ezquiaga/subsolar_pbh.json --tag rank02
+python scripts/full_pbh_pipeline.py --config configs/ezquiaga/asteroid_pbh.json --tag rank07
 ```
 
 ### 22. Ezquiaga Parameter Relationships & Config Structure
@@ -616,11 +617,44 @@ python scripts/full_pbh_pipeline.py --config configs/asteroid_pbh.json --tag ran
 
 `λ₀=2.23e-7, ξ₀=7.55` are universal across all. `a_eff` barely varies (only via `c`). The radical physics differences come from `b_eff` at the 6th decimal (controlled by `β`).
 
-### 23. Fortran MS Solver Backend
+### 23. Fortran MS Solver Backend — Primary Backend
 
 The Hot Path comoving MS grid integration is ported to native Fortran 90 (`fortran/ms_solver.f90`) with OpenMP multi-threaded parallelization over comoving modes.
+
+**Status: primary backend.** We are committed to using the Fortran solver as the default MS solver. The Python/Numba backends remain available as fallbacks for cross-checking but are no longer the primary target for new work.
+
 - Python bridge: `fortran_ms_solver.py` converts background splines to Fortran memory order (`order='F'`) and calls the library.
 - Compilation: Compiled via `f2py` with Meson/Ninja toolchain in `cmb-anomaly` conda env. Make command: `cd fortran && make`.
 - Linking: Requires `LDFLAGS="-fopenmp"` to resolve OpenMP runtime linker symbols.
-- Execution: Activated via `--backend fortran` flag in `pspectrum_pipeline.py`.
+- Execution: Default backend in `pspectrum_pipeline.py` is `'fortran'`. Use `--backend numba` to fall back for debugging.
+- Old solvers: `inf_dyn_MS_full.py` (Python/scipy) and `numba_ms_solver.py` (Numba) are **not deleted**. They serve as reference implementations and debugging fallbacks.
 - Validation: `fortran/test_vs_numba.py` checks single-mode trajectory correctness, full comoving grid agreement across three key configurations (within relative difference < 1e-4), and CAMB observable compatibility.
+
+### 24. PBH Config Formation & Accretion Metadata
+
+Config JSONs can carry **formation** and **accretion** top-level keys recording
+which models were used to compute the results:
+
+```json
+{
+  "model": "EzquiagaCHIModel",
+  "formation": "press_schechter",
+  "accretion": "Chisholm",
+  ...
+}
+```
+
+**Supported values:**
+- `formation`: `"compaction"` (Escrivà 2021/2022 profile-dependent) or `"press_schechter"` (legacy erfc ζ_c formula)
+- `accretion`: `"PR"` (Park-Ricotti with radiative feedback), `"BHL"` (Bondi-Hoyle-Lyttleton), `"Chisholm"` (legacy 3×10⁷ factor), `"Eddington"` (Eddington-limited with DM halo boost), `"Merger"` (hierarchical merger history, reserved/not yet wired in CLI)
+
+**CLI precedence:**
+- `--formation` / `--accretion` CLI flags override config values with a warning
+- Omit the flag to let config value apply
+- When both are absent: `"press_schechter"` + `"PR"` (defaults)
+
+**Filename convention (managed by `scripts.plotting.make_pbh_filename`):**
+Formation codes: `cmp` (compaction), `psch` (press_schechter)
+Accretion codes: `PR`, `BHL`, `Edd` (Eddington), `Chs` (Chisholm), `Mrg` (Merger)
+Pattern: `{prefix}_phi{phi0}_y0{y0}_nstar{nstar}_{formation}_{accretion}{ext}`
+Example: `pbh_phi8.00_y0-0.000_nstar72.0_cmp_PR.png`
