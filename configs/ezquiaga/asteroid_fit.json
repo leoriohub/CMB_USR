@@ -1,5 +1,8 @@
 {
   "model": "EzquiagaCHIModel",
+  "description": "Asteroid PBH (fit): β=1.8e-4, N*=72, ζ_c=0.0483. Computed with Press-Schechter + Chisholm.",
+  "formation": "press_schechter",
+  "accretion": "Chisholm",
   "model_params": {
     "lambda_0": 2.23e-07,
     "xi_0": 7.55,

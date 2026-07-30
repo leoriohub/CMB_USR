@@ -10,7 +10,7 @@
   "N_star_vals": [65, 67, 68],
   "zeta_c_vals": [0.05, 0.077, 0.1],
   "target": "subsolar",
-  "pivot_k": 0.05,
+  "k_pivot": 0.05,
   "workers": 4,
   "f_max": 100,
   "no_plot": true

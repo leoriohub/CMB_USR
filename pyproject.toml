@@ -17,6 +17,8 @@ dependencies = [
     "scikit-learn>=1.3,<2.0",
     "joblib>=1.3,<2.0",
     "torch>=2.0,<3.0",
+    "gpytorch>=1.11,<2.0",
+    "botorch>=0.11,<1.0",
 ]
 
 [project.optional-dependencies]
@@ -27,12 +29,13 @@ dev = ["pytest", "pytest-cov", "pytest-mock", "jupyter", "ipykernel"]
 include = ["models*", "scripts*"]
 
 [tool.setuptools]
-py-modules = ["inf_dyn_background", "inf_dyn_MS_full", "numba_ms_solver", "pspectrum_pipeline"]
+py-modules = ["inf_dyn_background", "inf_dyn_MS_full", "numba_ms_solver", "pspectrum_pipeline", "fortran_ms_solver"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
     "fast: unit tests that run quickly with no external dependencies",
+    "integration: background integration tests that exercise the ODE solver over the full T_max range",
     "slow: integration tests that require solvers, CAMB, or model files",
 ]
 addopts = "-v --tb=short"

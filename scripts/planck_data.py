@@ -17,6 +17,7 @@ scoping (the full Planck low-ℓ likelihood is non-Gaussian).
 """
 import os
 
+from functools import lru_cache
 import numpy as np
 from scripts.constants import T_cmb
 
@@ -27,22 +28,16 @@ DATA_FILE = os.path.join(DATA_DIR, "planck_2018_low_ell_tt.csv")
 _PLIK_UNBINNED = os.path.join(DATA_DIR, "COM_PowerSpect_CMB-TT-full_R3.01.txt")
 _PLIK_BINNED = os.path.join(DATA_DIR, "COM_PowerSpect_CMB-TT-binned_R3.01.txt")
 
-_planck_data = None
-
-
+@lru_cache(maxsize=1)
 def _load_data():
     """Load low-ℓ Commander data from CSV, caching the result."""
-    global _planck_data
-    if _planck_data is not None:
-        return _planck_data
     data = np.loadtxt(DATA_FILE, skiprows=1, delimiter=",")
-    _planck_data = {
+    return {
         "ell": data[:, 0].astype(int),
         "D_ell": data[:, 1],
         "D_ell_err_lower": data[:, 2],
         "D_ell_err_upper": data[:, 3],
     }
-    return _planck_data
 
 
 def get_planck_data():

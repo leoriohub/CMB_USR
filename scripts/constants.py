@@ -5,6 +5,7 @@ All constants reference Planck 2018 results (Aghanim et al. 2020).
 The xi/lam ratio is fixed by As normalization to the CMB amplitude.
 """
 
+import json
 import os
 
 # ── Project root — computed, never hardcoded ────────────────────────────────
@@ -28,6 +29,20 @@ ns_sr_default = 0.965  # Higgs inflation slow-roll prediction at N_* ≈ 55-60.
 ns_method_default = "lsq"  # n_s extraction: "lsq" (least-squares fit) or "sr" (slow-roll formula)
 r_ls = 14000.0  # Mpc, comoving distance to last scattering
 T_cmb = 2.7255  # K, CMB temperature
+
+# ── Physical constants (cgs) ──────────────────────────────────────────────
+G = 6.67430e-8
+M_SUN = 1.98892e33
+MPC_CM = 3.085677581e24
+K_B = 1.380649e-16  # erg/K
+M_P = 1.6735575e-24
+KM_PER_S = 1.0e5
+C_LIGHT = 2.99792458e10
+SIGMA_SB = 5.670374419e-5
+A_R = 4.0 * SIGMA_SB / C_LIGHT  # erg/cm³/K⁴
+GAMMA_B = 5.0 / 3.0
+MU = 1.22
+N_EFF = 3.046
 
 # ── Planck 2018 ΛCDM cosmology (TT+lowE best fit) ───────────────────────────
 # Used by CAMB for both ΛCDM baseline and custom P_S(k) C_ell computations.
@@ -73,3 +88,22 @@ k_eq_default = 0.0104  # Mpc^-1, comoving wavenumber at matter-radiation equalit
 M_eq_default = 3.0e17  # M_sun, horizon mass at matter-radiation equality
 # M_eq = c^3/(2G) * 1/H_eq (approximate from ΛCDM)
 ACCRETION = 3e7  # mass growth from equality to present day (Chisholm 2006)
+
+
+class NumpyJSONEncoder(json.JSONEncoder):
+    """JSON encoder that handles NumPy types (ndarray, int, float, etc.) by
+    converting them to Python native types. Use as `cls=NumpyJSONEncoder` in
+    json.dump() calls that may encounter NumPy values."""
+
+    def default(self, obj):
+        import numpy as np
+
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        return super().default(obj)

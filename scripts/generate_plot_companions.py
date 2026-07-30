@@ -15,7 +15,7 @@ import os
 import re
 from datetime import datetime
 
-from scripts.constants import ROOT_DIR
+from scripts.constants import ROOT_DIR, ACCRETION, k_eq_default, M_eq_default, gamma_default, NumpyJSONEncoder
 from scripts.plotting import make_filename
 
 PLOT_DIR = os.path.join(ROOT_DIR, "outputs/plots/pbh/top_configs")
@@ -34,10 +34,10 @@ PLOT_RE = re.compile(
 DEFAULT_C = 0.77
 DEFAULT_XC = 0.784
 DEFAULT_Y0 = -1e-4
-ACCR = 3e7
-K_EQ = 0.0104
-M_EQ = 3.0e17
-GAMMA = 0.4
+ACCR = ACCRETION
+K_EQ = k_eq_default
+M_EQ = M_eq_default
+GAMMA = gamma_default
 
 
 def parse_beta(s):
@@ -206,7 +206,7 @@ def main():
 
         # Write companion JSON
         with open(json_path, "w") as f:
-            json.dump(rec, f, indent=2, default=str)
+            json.dump(rec, f, indent=2, cls=NumpyJSONEncoder)
         print(f"  WROTE: {os.path.basename(json_path)}")
 
     print(
