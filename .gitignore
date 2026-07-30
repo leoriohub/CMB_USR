@@ -1,6 +1,7 @@
 .commandcode/
 .codegraph/
 .omp/
+diagrams/
 
 # Simulation outputs (plots, caches, results)
 outputs/
