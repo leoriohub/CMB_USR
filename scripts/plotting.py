@@ -1365,7 +1365,9 @@ def plot_subsolar_ps_and_sigw(filename="fig4_subsolar_pbh", category="pbh", dpi=
     N_sub = derived_sub["N"][:end_idx_sub+1]
     idx_piv_sub = np.argmin(np.abs(N_sub - (N_sub[-1] - 66.0)))
     k_sub_sr = 0.05 * (k_sr_raw_sub / k_sr_raw_sub[idx_piv_sub])
-
+    mask_sub = k_sub_sr >= 1e-4
+    k_sub_sr = k_sub_sr[mask_sub][4:]
+    ps_sub_sr = ps_sub_sr[mask_sub][4:]
     ps_sub_path = get_path("pspectra", "ps_phi8.00_y0-0.000_nstar86.7.json")
     with open(ps_sub_path) as f:
         sp_data = json.load(f)
@@ -1389,22 +1391,19 @@ def plot_subsolar_ps_and_sigw(filename="fig4_subsolar_pbh", category="pbh", dpi=
         # Panel (a): Sub-solar SR vs MS
         ax1.loglog(k_sub_sr, ps_sub_sr, "--", color=TOL["blue"], lw=1.2, label="Slow-roll approx")
         ax1.loglog(k_sub_ms, ps_sub_ms, "-", color=TOL["red"], lw=1.4, label="MS solver")
-        ax1.axhline(0.01, color="gray", ls=":", lw=0.8, alpha=0.7)
-        ax1.text(2e9, 0.015, r"$\mathcal{P}_{\mathcal{R}} \sim 10^{-2}$", fontsize=6.5, color="gray")
 
         ax1.set_xlabel(r"$k$ [Mpc$^{-1}$]")
         ax1.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$")
-        ax1.set_xlim(1e8, 1e18)
-        ax1.set_ylim(1e-9, 0.2)
+        ax1.set_xlim(1e-4, 1e28)
+        ax1.set_ylim(1e-14, 1e-3)
         ax1.grid(True, which="both", alpha=0.15, lw=0.4)
-        ax1.legend(loc="upper left", frameon=True, framealpha=0.9, fontsize=6.5)
+        ax1.legend(loc="lower left", frameon=True, framealpha=0.9, fontsize=6.5)
 
         # Panel (b): Sub-solar Induced GWs
+        lisa_noise_masked = np.where(lisa_noise <= 1e-2, lisa_noise, np.nan)
         ax2.loglog(f_sub, om_sub, "-", color=TOL["red"], lw=1.4, label="Induced GWs")
-        ax2.loglog(f_grid, lisa_noise, "--", color=TOL["blue"], lw=1.0, label="LISA (4 yr)")
-        ax2.axhline(2.47e-5, color="gray", ls=":", lw=0.8, alpha=0.7)
-        ax2.text(2e-5, 7e-6, r"Planck $\Omega_{\gamma,0} h^2$", fontsize=6.5, color="gray")
-        ax2.text(1.2e-2, 2.5e-13, rf"LISA SNR $\approx {snr_sub:.1f}$", fontsize=7, color=TOL["red"], fontweight="bold")
+        ax2.loglog(f_grid, lisa_noise_masked, "--", color=TOL["blue"], lw=1.0, label="LISA (4 yr)")
+        ax2.text(1.2e-2, 2.5e-13, r"Peak $f \approx 5.7\text{ mHz}$", fontsize=7, color=TOL["red"], fontweight="bold")
 
         ax2.set_xlabel(r"$f$ [Hz]")
         ax2.set_ylabel(r"$\Omega_{\text{GW},0}(f) \, h^2$")
@@ -1448,7 +1447,9 @@ def plot_asteroid_ps_and_sigw(filename="fig5_asteroid_pbh", category="pbh", dpi=
     N_ast = derived_ast["N"][:end_idx_ast+1]
     idx_piv_ast = np.argmin(np.abs(N_ast - (N_ast[-1] - 72.0)))
     k_ast_sr = 0.05 * (k_sr_raw_ast / k_sr_raw_ast[idx_piv_ast])
-
+    mask_sr = k_ast_sr >= 1e-4
+    k_ast_sr = k_ast_sr[mask_sr][4:]
+    ps_ast_sr = ps_ast_sr[mask_sr][4:]
     ps_ast_path = get_path("pspectra", "ps_phi8.00_y0-0.000_nstar79.7.json")
     with open(ps_ast_path) as f:
         ap_data = json.load(f)
@@ -1470,23 +1471,102 @@ def plot_asteroid_ps_and_sigw(filename="fig5_asteroid_pbh", category="pbh", dpi=
 
         # Panel (a): Asteroid SR vs MS
         ax1.loglog(k_ast_sr, ps_ast_sr, "--", color=TOL["blue"], lw=1.2, label="Slow-roll approx")
-        ax1.loglog(k_ast_ms, ps_ast_ms, "-", color=TOL["teal"], lw=1.4, label="MS solver")
-        ax1.axhline(0.01, color="gray", ls=":", lw=0.8, alpha=0.7)
-        ax1.text(1e15, 0.015, r"$\mathcal{P}_{\mathcal{R}} \sim 10^{-2}$", fontsize=6.5, color="gray")
+        ax1.loglog(k_ast_ms, ps_ast_ms, "-", color=TOL["red"], lw=1.4, label="MS solver")
 
         ax1.set_xlabel(r"$k$ [Mpc$^{-1}$]")
         ax1.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$")
-        ax1.set_xlim(1e13, 1e21)
-        ax1.set_ylim(1e-9, 0.2)
+        ax1.set_xlim(1e-4, 1e28)
+        ax1.set_ylim(1e-14, 1e-3)
         ax1.grid(True, which="both", alpha=0.15, lw=0.4)
-        ax1.legend(loc="upper left", frameon=True, framealpha=0.9, fontsize=6.5)
+        ax1.legend(loc="lower left", frameon=True, framealpha=0.9, fontsize=6.5)
 
         # Panel (b): Asteroid Induced GWs
+        lisa_noise_masked = np.where(lisa_noise <= 1e-2, lisa_noise, np.nan)
         ax2.loglog(f_ast, om_ast, "-", color=TOL["teal"], lw=1.4, label="Induced GWs")
-        ax2.loglog(f_grid, lisa_noise, "--", color=TOL["blue"], lw=1.0, label="LISA (4 yr)")
-        ax2.axhline(2.47e-5, color="gray", ls=":", lw=0.8, alpha=0.7)
-        ax2.text(2e-5, 7e-6, r"Planck $\Omega_{\gamma,0} h^2$", fontsize=6.5, color="gray")
-        ax2.text(10, 2.5e-13, r"Peak $f \approx 2.6\text{ kHz}$", fontsize=7, color=TOL["teal"], fontweight="bold")
+        ax2.loglog(f_grid, lisa_noise_masked, "--", color=TOL["blue"], lw=1.0, label="LISA (4 yr)")
+        # (Planck line removed)
+        ax2.text(10, 5e-14, r"Peak $f \approx 2.6\text{ kHz}$", fontsize=7, color=TOL["teal"], fontweight="bold")
+
+        ax2.set_xlabel(r"$f$ [Hz]")
+        ax2.set_ylabel(r"$\Omega_{\text{GW},0}(f) \, h^2$")
+        ax2.set_xlim(1e-5, 1e7)
+        ax2.set_ylim(1e-18, 5e-4)
+        ax2.grid(True, which="both", alpha=0.15, lw=0.4)
+        ax2.legend(loc="upper right", frameon=True, framealpha=0.9, fontsize=6.5)
+
+        fig.tight_layout()
+        out = save_fig(fig, filename, category, dpi=dpi)
+        paper_png = os.path.join("ezquiaga", "images", f"{filename}.png")
+        fig.savefig(paper_png, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+        return out
+
+
+def plot_solar_ps_and_sigw(filename="fig_solar_pbh", category="pbh", dpi=300):
+    """Two-panel paper figure for Solar / Stellar-mass window (c=0.771, beta=4e-5, N*=65):
+    Panel (a): SR vs MS primordial power spectrum P_R(k) for solar config.
+    Panel (b): Induced GW spectrum Omega_GW,0(f) h^2 vs LISA 4-yr noise.
+    """
+    import json
+    from scripts.sigw import get_lisa_noise, run_sigw
+    from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
+    from inf_dyn_background import run_background_simulation, get_derived_quantities
+    from scripts.compute_sr_ms import compute_ps_sr
+
+    a_sol, b_sol = inflection_parameters(x_c=0.784, c=0.771, beta=4e-5)
+    model_sol = EzquiagaCHIModel(lambda_0=2.23e-7, b_lambda=a_sol*2.23e-7, xi_0=7.55, b_xi=b_sol*7.55, c=0.771)
+    model_sol.x0 = 8.0
+    model_sol.y0 = -0.0001
+    model_sol.patch_background_solver()
+
+    T_sol = np.linspace(0, model_sol.T_max, model_sol.bg_steps)
+    bg_sol = run_background_simulation(model_sol, T_sol)
+    derived_sol = get_derived_quantities(bg_sol, model_sol)
+    end_idx_sol = np.where(derived_sol["epsH"] > 1)[0]
+    end_idx_sol = end_idx_sol[0] if len(end_idx_sol) > 0 else len(T_sol) - 1
+
+    k_sr_raw_sol, ps_sol_sr, _ = compute_ps_sr(bg_sol, end_idx_sol)
+    N_sol = derived_sol["N"][:end_idx_sol+1]
+    idx_piv_sol = np.argmin(np.abs(N_sol - (N_sol[-1] - 65.0)))
+    k_sol_sr = 0.05 * (k_sr_raw_sol / k_sr_raw_sol[idx_piv_sol])
+
+    mask_sol = k_sol_sr >= 1e-4
+    k_sol_sr = k_sol_sr[mask_sol][4:]
+    ps_sol_sr = ps_sol_sr[mask_sol][4:]
+
+    ps_solar_path = get_path("pspectra", "ps_phi8.00_y0-0.000_nstar89.3.json")
+    with open(ps_solar_path) as f:
+        sp_data = json.load(f)
+    k_solar_ms = np.array(sp_data["spectrum"]["k_phys"])
+    ps_solar_ms = np.array(sp_data["spectrum"]["P_S"])
+
+    sigw_sol = run_sigw(k_solar_ms, ps_solar_ms, f_min=1e-5, f_max=1e4, num_f=250, num_grid=150, t_obs_yr=4.0)
+    f_sol = sigw_sol["frequency_hz"]
+    om_sol = sigw_sol["omega_gw_h2"]
+
+    f_grid = np.logspace(-5, 4, 400)
+    lisa_noise = get_lisa_noise(f_grid)
+    lisa_noise_masked = np.where(lisa_noise <= 1e-2, lisa_noise, np.nan)
+    purple_color = TOL.get("purple", "#882255")
+
+    with plt.rc_context(PAPER_RCPARAMS):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.0, 2.7))
+
+        # Panel (a): Solar SR vs MS
+        ax1.loglog(k_sol_sr, ps_sol_sr, "--", color=TOL["blue"], lw=1.2, label="Slow-roll approx")
+        ax1.loglog(k_solar_ms, ps_solar_ms, "-", color=purple_color, lw=1.4, label="MS solver")
+
+        ax1.set_xlabel(r"$k$ [Mpc$^{-1}$]")
+        ax1.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$")
+        ax1.set_xlim(1e-4, 1e28)
+        ax1.set_ylim(1e-14, 1e-3)
+        ax1.grid(True, which="both", alpha=0.15, lw=0.4)
+        ax1.legend(loc="lower left", frameon=True, framealpha=0.9, fontsize=6.5)
+
+        # Panel (b): Solar Induced GWs
+        ax2.loglog(f_sol, om_sol, "-", color=purple_color, lw=1.4, label="Induced GWs")
+        ax2.loglog(f_grid, lisa_noise_masked, "--", color=TOL["blue"], lw=1.0, label="LISA (4 yr)")
+        ax2.text(3e-4, 5e-13, r"Peak $f \approx 0.18\text{ mHz}$", fontsize=7, color=purple_color, fontweight="bold")
 
         ax2.set_xlabel(r"$f$ [Hz]")
         ax2.set_ylabel(r"$\Omega_{\text{GW},0}(f) \, h^2$")
@@ -1501,7 +1581,6 @@ def plot_asteroid_ps_and_sigw(filename="fig5_asteroid_pbh", category="pbh", dpi=
         fig.savefig(paper_png, dpi=dpi, bbox_inches="tight")
         plt.close(fig)
         return out
-    import argparse
     parser = argparse.ArgumentParser(
         description="CMB anomaly plotting utilities")
     sub = parser.add_subparsers(dest="command", required=True)
