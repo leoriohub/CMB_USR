@@ -40,8 +40,14 @@ except (ImportError, AttributeError):
 _LCDM_CACHE = {}
 
 @lru_cache(maxsize=4)
-def _make_camb_params(ell_max=2500):
-    """Create a CAMBparams object with Planck 2018 LCDM cosmology. Cached."""
+def _make_camb_params_template(ell_max=2500):
+    """Build a CAMBparams object with Planck 2018 LCDM cosmology (cached template).
+
+    The template is NEVER handed out directly: callers mutate the object
+    (e.g. ``set_initial_power_table``), so caching the template itself would
+    leak those mutations into later runs. Each call to ``_make_camb_params``
+    returns a fresh ``.copy()`` instead.
+    """
     import camb
     params = camb.CAMBparams()
     params.set_cosmology(
@@ -53,7 +59,12 @@ def _make_camb_params(ell_max=2500):
     params.Want_CMB = True
     params.WantScalars = True
     params.WantTensors = False
-    return params.copy()
+    return params
+
+
+def _make_camb_params(ell_max=2500):
+    """Return a fresh, mutable CAMBparams (Planck 2018 LCDM) for the given ell_max."""
+    return _make_camb_params_template(ell_max).copy()
 
 
 def _extend_pspectrum(k_phys, P_S, k_min=1e-6, k_max=10.0, n_extend=200):

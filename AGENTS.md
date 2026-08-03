@@ -233,13 +233,13 @@ Tune initial conditions (φ₀, y₀) and N_star for Higgs inflation (ξ=15000, 
 - **Punctuated Inflation** (reference model only): Creates a peak via η_H>0 amplification. Aligned at N_star=77.2 → peak at k=10⁻³. Used exclusively for solver validation and cross-checking pipeline behavior.
 
 ### Current Best Configs (full-resolution, corrected)
-- **Best χ²** (6.40,−0.475,59): χ²_full=2574.2 (+1.2 vs LCDM), D₂=918 μK² (11%↓), supp=31%. Matches LCDM essentially perfectly.
-- **Best D₂** (5.75,−0.170,55): χ²_full=2613.8 (+40.7), D₂=677 μK² (34%↓), supp=39%. Best quadrupole suppression.
-- **Best balance** (5.70,−0.170,52): χ²_full=2582.6 (+9.6), D₂=847 μK² (18%↓), supp=36%. Good χ² + meaningful D₂ suppression.
+- **Best χ²** (6.40,−0.475,59): χ²_full=2574.2 (+1.2 vs LCDM), D₂=997 μK² (3%↓), supp=31%. Matches LCDM essentially perfectly.
+- **Best D₂** (5.75,−0.170,55): χ²_full=2613.8 (+40.7), D₂=776 μK² (24%↓), supp=39%. Best quadrupole suppression (true ℓ=2 value; the older quoted 677 μK² was the ℓ=4 multipole — see §12 note).
+- **Best balance** (5.70,−0.170,52): χ²_full=2582.6 (+9.6), D₂=851 μK² (17%↓), supp=36%. Good χ² + meaningful D₂ suppression.
 - Punctuated (reference only): φ₀=12.00, y₀=0.000, N_star=77.2, m=1.1323e-7, λ=3.3299e-15
 
 ### Key Constraint
-USR suppression at CMB scales requires fine-tuned initial conditions. The mechanism works (D₂ down 34% at cost of +41 χ²) but no config outperforms LCDM across the full spectrum. Deep dips (D₂<700) come at higher χ²_full cost.
+USR suppression at CMB scales requires fine-tuned initial conditions. The mechanism works (D₂ down 24% at cost of +41 χ²) but no config outperforms LCDM across the full spectrum. Deeper low-ℓ suppression (e.g. D₄ ≈ 677 μK² at ℓ=4, 26% below LCDM) comes at higher χ²_full cost.
 
 ### Reference Files
 - `models/punctuated.py` — Punctuated inflaton (validation only) bg_steps=100k
@@ -330,13 +330,17 @@ The root-level solver files (`inf_dyn_background.py`, `inf_dyn_MS_full.py`, `psp
 
 After the `find_end_of_inflation` fix (forward-scan with permanence check), no Higgs USR config outperforms LCDM across the full spectrum. The best configs achieve significant D₂ suppression at modest χ² cost:
 
-| Config | χ²_full (ℓ=2-2508) | D₂ [μK²] | Suppression | Δχ² vs LCDM |
-|--------|-------------------|-----------|-------------|-------------|
-| 6.40,−0.475,59 | 2574.2 | 918 (−11%) | 31% | +1.2 |
-| 5.70,−0.170,52 | 2582.6 | 847 (−18%) | 36% | +9.6 |
-| 5.75,−0.170,55 | 2613.8 | 677 (−34%) | 39% | +40.7 |
-| 6.55,−0.780,50 | 2637.6 | 835 (−19%) | 47% | +64.6 |
-| LCDM | 2573.0 | 1029 | — | — |
+**D₂ column correction:** the previously quoted values (918/847/677/835) were the D_ell array elements at index 2, i.e. **ℓ=4**, not the quadrupole (ℓ=2). True quadrupoles (ℓ=2) from the same verification runs:
+
+| Config | χ²_full (ℓ=2-2508) | D₂ (ℓ=2) [μK²] | D₄ (ℓ=4) [μK²] | Suppression (P_S) | Δχ² vs LCDM |
+|--------|-------------------|----------------|-----------------|-------------------|-------------|
+| 6.40,−0.475,59 | 2574.2 | 997 | 918 | 31% | +1.2 |
+| 5.70,−0.170,52 | 2582.6 | 851 | 847 | 36% | +9.6 |
+| 5.75,−0.170,55 | 2613.8 | 784 | 677 | 39% | +40.7 |
+| 6.55,−0.780,50 | 2637.6 | 811 | 835 | 47% | +64.6 |
+| LCDM | 2573.0 | 1029 | 920 | — | — |
+
+Current pipeline (post solve_ivp refactor, T_max=500) shifts the reference config slightly: D₂=776.5 μK² (24%↓), D₄=669.5 μK² (27%↓), Δχ²_lowℓ=−1.60.
 
 **Diagnostic script:** `scripts/run_full_analysis.py` — runs full pipeline, produces broken-axis D_ℓ plot with Planck data.
 **Quick scan:** `python scripts/camb_scan.py --phase broad --quick --full-chi2` (~20 min).
