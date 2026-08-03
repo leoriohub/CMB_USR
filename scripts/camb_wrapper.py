@@ -27,12 +27,20 @@ from pspectrum_pipeline import load_pspectrum
 from scripts.planck_data import C_ell_to_d_ell
 from scripts.plotting import OUTPUT_DIRS, make_filename
 
-# Monkeypatch CAMB's BBN predictor under NumPy 2.x to avoid TypeError in set_cosmology()
+# Monkeypatch CAMB's BBN predictor under NumPy 2.x to avoid TypeError in set_cosmology().
+# CAMB returns Y_He as either a 1-D array (conda build) or a 0-d scalar (pip wheel);
+# handle both so the code runs on any CAMB install.
 try:
     import camb
     import camb.bbn
-    original_Y_He = camb.bbn.BBNPredictor.Y_He
-    camb.bbn.BBNPredictor.Y_He = lambda self, *args, **kwargs: float(original_Y_He(self, *args, **kwargs)[0])
+    import numpy as _np
+    _original_Y_He = camb.bbn.BBNPredictor.Y_He
+    def _y_he_patched(self, *args, **kwargs):
+        val = _original_Y_He(self, *args, **kwargs)
+        if _np.ndim(val) == 0:
+            return float(val)
+        return float(val[0])
+    camb.bbn.BBNPredictor.Y_He = _y_he_patched
 except (ImportError, AttributeError):
     pass
 
