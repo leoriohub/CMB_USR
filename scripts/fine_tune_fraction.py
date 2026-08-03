@@ -699,35 +699,47 @@ def report(args):
 def _plot_heatmap(points, filename="fine_tune_fraction_heatmap",
                   category="paper"):
     """Phase-space map of best-N* ratio d2/d2_lcdm over (x0, |y0|)."""
+    from scipy.interpolate import griddata
     plt.rcParams.update(PAPER_RCPARAMS)
 
-    # Build a dense grid for the image + overlay contours.
+    # Dense grid for the image + overlay contours.
     n_phi = 200
     n_y = 200
     x_centers = np.linspace(X0_MIN, X0_MAX, n_phi)
     y_abs_centers = np.linspace(0.0, 0.35, n_y)  # |y0| axis
     X_c, Y_c = np.meshgrid(x_centers, y_abs_centers)
+
+    # Gather (x0, |y0|) samples with their best ratio and N_total.
+    # Ratio: viable points only. N_total: ALL points (non-viable ones carry it
+    # too and are needed for the N_total=55 contour to actually cross 55).
+    xs, ys, rs, ns = [], [], [], []
+    for p in points.values():
+        if p.get("best_ratio") is None and p.get("N_total") is None:
+            continue
+        xs.append(p["x0"])
+        ys.append(abs(p["y0"]))
+        rs.append(p.get("best_ratio") if p.get("viable") else np.nan)
+        ns.append(p.get("N_total", np.nan))
+    xs, ys, rs, ns = map(np.asarray, (xs, ys, rs, ns))
+
     R = np.full_like(X_c, np.nan)
     N_field = np.full_like(X_c, np.nan)
-
-    # Nearest-point value per cell (best ratio + N_total over the point's records).
-    viable_keys = [p for p in points.values() if p.get("viable")]
-    for p in viable_keys:
-        best_ratio = p.get("best_ratio")
-        if best_ratio is None:
-            continue
-        i = np.argmin(np.abs(x_centers - p["x0"]))
-        j = np.argmin(np.abs(y_abs_centers - abs(p["y0"])))
-        R[j, i] = best_ratio
-        if p.get("N_total") is not None:
-            N_field[j, i] = p["N_total"]
+    if len(xs) > 0:
+        mask_r = np.isfinite(rs)
+        if mask_r.sum() >= 4:
+            R = griddata((xs[mask_r], ys[mask_r]), rs[mask_r],
+                         (X_c, Y_c), method="linear")
+        mask_n = np.isfinite(ns)
+        if mask_n.sum() >= 4:
+            N_field = griddata((xs[mask_n], ys[mask_n]), ns[mask_n],
+                               (X_c, Y_c), method="linear")
 
     x_edges = np.linspace(X0_MIN, X0_MAX, n_phi + 1)
     y_edges = np.linspace(0.0, 0.35, n_y + 1)
     X_e, Y_e = np.meshgrid(x_edges, y_edges)
 
     fig, ax = plt.subplots(figsize=(3.5, 3.0))
-    ax.set_facecolor("0.85")  # masked gray for non-viable/NaN cells
+    ax.set_facecolor("0.85")  # masked gray for non-viable/no-data cells
     mesh = ax.pcolormesh(X_e, Y_e, R, shading="flat", cmap="magma",
                          vmin=0.5, vmax=1.1)
     cbar = fig.colorbar(mesh, ax=ax)
