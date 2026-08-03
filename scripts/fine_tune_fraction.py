@@ -48,8 +48,8 @@ import matplotlib.pyplot as plt
 # Shared constants
 # ---------------------------------------------------------------------------
 S = 5e-5
-T_MAX = 500.0
-BG_STEPS = 1000
+T_MAX = 2000.0          # large enough to reach end of inflation for the relevant band (N_total<=73)
+BG_STEPS = 2000
 MS_STEPS = 5000
 K_PIVOT = 0.002
 N_DENSE = 100
@@ -57,8 +57,13 @@ N_OUTER = 50
 
 D2_LCDM_THRESHOLD_FRAC = 0.8          # >=20% suppression
 N_STAR_SWEEP = list(range(55, 71))    # 55..70 inclusive — user decision
-N_TOTAL_MIN = 55.0                     # viable iff N_total > 55 (N_star=55 runnable)
-X0_MIN, X0_MAX = 5.2, 8.0
+N_TOTAL_MIN = 55.0                    # viable iff N_total > 55 (N_star=55 runnable)
+# The USR freeze is at the very start (N_pivot ~ 1-4 from the beginning). The pivot
+# scale reaches it only if N_total - N_star ~ 1-4 for some N_star in [55,70], i.e.
+# N_total in (55, 73]. Configs with N_total > 73 have the dip on unobservably large
+# scales (CMB on the plateau -> no suppression, not relevant). See correction note.
+N_TOTAL_RELEVANT_MAX = 73.0
+X0_MIN, X0_MAX = 5.2, 6.5            # relevant band is x0 <= ~6.3 (N_total>73 beyond)
 Y0_MIN, Y0_MAX = -0.35, -0.005
 
 # Expected D2_LCDM (camb_scan.py:38); startup assert range.
@@ -497,6 +502,20 @@ def scan(args):
                     done += 1
                     continue
 
+                # Not relevant: USR freeze too far from the pivot scale (N_total > 73)
+                # -> CMB sits on the plateau, suppression impossible. Excluded from
+                # the fraction (neither numerator nor denominator).
+                if n_total is not None and n_total > N_TOTAL_RELEVANT_MAX:
+                    key = (x0, y0, None)
+                    if key not in completed:
+                        _write_record(log_file, {
+                            "x0": x0, "y0": y0, "N_star": None,
+                            "status": "not_relevant",
+                            "N_total": n_total, "t_over_v": t_over_v,
+                        })
+                    done += 1
+                    continue
+
                 n_viable += 1
                 suppressed = False
 
@@ -572,7 +591,8 @@ def _scan_points(log_path):
             if key not in points:
                 points[key] = {
                     "x0": x0, "y0": y0,
-                    "viable": False, "suppressed": False,
+                    "viable": False, "relevant": True,
+                    "suppressed": False,
                     "N_total": None, "t_over_v": None,
                     "best_ratio": None,
                     "records": [],
@@ -583,6 +603,8 @@ def _scan_points(log_path):
                 p["N_total"] = rec["N_total"]
             if rec.get("t_over_v") is not None:
                 p["t_over_v"] = rec["t_over_v"]
+            if rec.get("status") == "not_relevant":
+                p["relevant"] = False
             if rec.get("status") == "not_viable":
                 p["viable"] = False
             elif rec.get("status") == "success":
@@ -629,18 +651,23 @@ def report(args):
     print(f"Grid: x0 [{x0_min}, {x0_max}] x {n_phi0}, "
           f"y0 [{y0_min}, {y0_max}] x {n_y0}", flush=True)
 
-    viable = [p for p in points.values() if p["viable"]]
+    viable = [p for p in points.values() if p["viable"] and p["relevant"]]
     suppressed = [p for p in viable if p["suppressed"]]
-    n_viable = len(viable)
+    n_relevant = len(viable)
     n_supp = len(suppressed)
-    frac = n_supp / n_viable if n_viable else 0.0
-    sigma = math.sqrt(frac * (1 - frac) / n_viable) if n_viable else 0.0
+    n_notrelevant = sum(1 for p in points.values()
+                        if not p["relevant"])
+    frac = n_supp / n_relevant if n_relevant else 0.0
+    sigma = math.sqrt(frac * (1 - frac) / n_relevant) if n_relevant else 0.0
 
     print("\n=== REPORT ===", flush=True)
     print(f"Grid points: {len(points)}", flush=True)
-    print(f"Viable points: {n_viable}", flush=True)
+    print(f"Relevant & viable points (N_total in (55,{N_TOTAL_RELEVANT_MAX:.0f}]): "
+          f"{n_relevant}", flush=True)
+    print(f"  not relevant (N_total > {N_TOTAL_RELEVANT_MAX:.0f}): {n_notrelevant}",
+          flush=True)
     print(f"Suppressed points: {n_supp}", flush=True)
-    print(f"Fraction: {n_supp}/{n_viable} = {frac:.3f} "
+    print(f"Fraction: {n_supp}/{n_relevant} = {frac:.3f} "
           f"(binomial error {sigma:.3f})", flush=True)
     print(f"  = {100*frac:.1f}% +/- {100*sigma:.1f}%", flush=True)
 
@@ -648,7 +675,7 @@ def report(args):
     print("\nCap-sensitivity (fraction for x0 <= cap):", flush=True)
     print(f"  {'cap':>6} {'viable':>8} {'supp':>8} {'fraction':>10}", flush=True)
     sensitivity = {}
-    for cap in [6.0, 6.5, 7.0, 7.5, 8.0]:
+    for cap in [6.0, 6.5, 7.0]:
         v = [p for p in viable if p["x0"] <= cap + 1e-9]
         s = [p for p in suppressed if p["x0"] <= cap + 1e-9]
         f = len(s) / len(v) if v else 0.0
@@ -662,6 +689,7 @@ def report(args):
             "grid": {"x0": [x0_min, x0_max], "y0": [y0_min, y0_max]},
             "n_phi0": n_phi0, "n_y0": n_y0,
             "nstar_sweep": [55, 70],
+            "n_total_relevant_window": [N_TOTAL_MIN, N_TOTAL_RELEVANT_MAX],
             "d2_lcdm": d2_lcdm,
             "threshold": threshold,
             "bg_params": {"T_max": T_MAX, "bg_steps": BG_STEPS},
@@ -671,8 +699,9 @@ def report(args):
         },
         "summary": {
             "n_points": len(points),
-            "n_viable": n_viable,
+            "n_relevant_viable": n_relevant,
             "n_suppressed": n_supp,
+            "n_not_relevant": n_notrelevant,
             "fraction": frac,
             "fraction_err": sigma,
         },
@@ -714,11 +743,13 @@ def _plot_heatmap(points, filename="fine_tune_fraction_heatmap",
     # too and are needed for the N_total=55 contour to actually cross 55).
     xs, ys, rs, ns = [], [], [], []
     for p in points.values():
+        if not p.get("viable") or not p.get("relevant"):
+            continue
         if p.get("best_ratio") is None and p.get("N_total") is None:
             continue
         xs.append(p["x0"])
         ys.append(abs(p["y0"]))
-        rs.append(p.get("best_ratio") if p.get("viable") else np.nan)
+        rs.append(p.get("best_ratio", np.nan))
         ns.append(p.get("N_total", np.nan))
     xs, ys, rs, ns = map(np.asarray, (xs, ys, rs, ns))
 
@@ -757,55 +788,69 @@ def _plot_heatmap(points, filename="fine_tune_fraction_heatmap",
     if np.any(np.isfinite(N_field)):
         ax.contour(X_c, Y_c, N_field, levels=[N_TOTAL_MIN], colors=[TOL["blue"]],
                    linestyles="--", linewidths=1.2)
-    # 0.8 threshold contour (solid).
-    if np.any(np.isfinite(R)):
-        ax.contour(X_c, Y_c, R, levels=[0.8], colors=[TOL["red"]],
-                   linestyles="-", linewidths=1.5)
 
     # Reference config marker.
-    ax.plot(5.75, 0.170, marker="*", color=TOL["green"], markersize=9,
-            label="ref (5.75, -0.170)")
+    ax.plot(5.75, 0.170, marker="*", color=TOL["green"], markersize=9)
 
     ax.set_xlim(X0_MIN, X0_MAX)
     ax.set_ylim(0.0, 0.35)
     ax.set_xlabel(r"$x_0$", fontsize=9)
     ax.set_ylabel(r"$|y_0|$", fontsize=9)
-    ax.legend(loc="upper right", fontsize=7, framealpha=0.8)
+    # Explicit proxy handles (ax.legend() does not auto-collect contour labels).
+    from matplotlib.lines import Line2D
+    handles = [
+        Line2D([0], [0], color=TOL["grey"], ls="--", lw=1.2,
+               label=r"$T \leq V$"),
+        Line2D([0], [0], color=TOL["blue"], ls="--", lw=1.2,
+               label=r"$N_{\mathrm{total}} = 55$"),
+        Line2D([0], [0], marker="*", color=TOL["green"], markersize=9,
+               ls="none", label="ref (5.75, -0.170)"),
+    ]
+    ax.legend(handles=handles, loc="upper right", fontsize=6,
+              framealpha=0.8)
     fig.tight_layout()
     save_fig(fig, filename, category)
 
 
 def _plot_bar(points, viable, suppressed, args,
               filename="fine_tune_fraction_bar", category="diagnostics"):
-    """Fraction summary bar: viable split + suppressed split."""
+    """Fraction summary bar: relevant-viable split + suppressed split."""
     plt.rcParams.update(PAPER_RCPARAMS)
 
     n_total = len(points)
     n_viable = len(viable)
-    n_nonviable = n_total - n_viable
+    n_relevant = sum(1 for p in points.values()
+                     if p.get("viable") and p.get("relevant"))
+    n_notrelevant = sum(1 for p in points.values()
+                        if not p.get("relevant"))
+    n_nonviable = n_total - n_relevant - n_notrelevant
     n_supp = len(suppressed)
     n_nosupp = n_viable - n_supp
     frac = n_supp / n_viable if n_viable else 0.0
     sigma = math.sqrt(frac * (1 - frac) / n_viable) if n_viable else 0.0
 
-    # Non-viable reason split.
+    # Non-viable reason split (within the relevant window).
     n_low_n = sum(1 for p in points.values()
-                  if not p["viable"] and p.get("N_total") is not None
+                  if p.get("relevant") and not p["viable"]
+                  and p.get("N_total") is not None
                   and p["N_total"] <= N_TOTAL_MIN)
     n_tv = sum(1 for p in points.values()
-               if not p["viable"] and p.get("t_over_v") is not None
+               if p.get("relevant") and not p["viable"]
+               and p.get("t_over_v") is not None
                and p["t_over_v"] > 1.0)
 
     fig, ax = plt.subplots(figsize=(3.5, 2.2))
-    # Bar 1: all grid points viable vs non-viable.
+    # Bar 1: all grid points relevant-viable + not-relevant + non-viable.
     y1 = 1.0
-    ax.barh(y1, n_viable, color=TOL["blue"], label="viable")
-    ax.barh(y1, n_nonviable, left=n_viable, color=TOL["grey"],
-            label="non-viable")
-    ax.text(n_total + 0.5, y1, f"{n_viable}/{n_total}",
+    ax.barh(y1, n_relevant, color=TOL["blue"], label="viable & relevant")
+    ax.barh(y1, n_notrelevant, left=n_relevant, color=TOL["grey"],
+            label="not relevant (N_total>73)")
+    ax.barh(y1, n_nonviable, left=n_relevant + n_notrelevant,
+            color="#CCCCCC", label="non-viable")
+    ax.text(n_total + 0.5, y1, f"{n_relevant}/{n_total}",
             va="center", fontsize=7)
 
-    # Bar 2: viable points suppressed vs not.
+    # Bar 2: relevant-viable points suppressed vs not.
     y2 = 0.0
     ax.barh(y2, n_supp, color=TOL["red"], label="suppressed")
     ax.barh(y2, n_nosupp, left=n_supp, color=TOL["yellow"],
