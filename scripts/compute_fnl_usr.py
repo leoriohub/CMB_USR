@@ -165,13 +165,14 @@ def mode_direction(model, bg_sol, derived_bg, T_span_bg, end_idx, k_code, N_slic
 
 
 def fnl_from_response(N_x, N_y, N_xx, N_xy, N_yy, r):
-    """f_NL^(local) = (5/6)·ζ₂/ζ₁² with ζ₁ = N_x δx + N_y δy,
-    ζ₂ = ½(N_xx δx² + 2 N_xy δx δy + N_yy δy²), r = δy/δx."""
+    """f_NL^(local) = (5/3)·ζ₂/ζ₁² with ζ₁ = N_x δx + N_y δy,
+    ζ₂ = ½(N_xx δx² + 2 N_xy δx δy + N_yy δy²), r = δy/δx.
+    (ζ = ζ_G + (3/5)·f_NL·ζ_G² ⇒ f_NL = (5/3)·ζ₂/ζ₁² = (5/6)·quad/lin².)"""
     lin = N_x + N_y * r
     quad = N_xx + 2.0 * N_xy * r + N_yy * r ** 2
     if abs(lin) < 1e-300:
         return float('inf')
-    return (5.0 / 6.0) * quad / (2.0 * lin ** 2)
+    return (5.0 / 6.0) * quad / (lin ** 2)
 
 
 def main():
