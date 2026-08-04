@@ -743,14 +743,14 @@ def _plot_heatmap(points, filename="fine_tune_fraction_heatmap",
     # too and are needed for the N_total=55 contour to actually cross 55).
     xs, ys, rs, ns = [], [], [], []
     for p in points.values():
-        if not p.get("viable") or not p.get("relevant"):
-            continue
-        if p.get("best_ratio") is None and p.get("N_total") is None:
+        # R: relevant & viable only (the measured data). N_total: ALL points,
+        # so the N_total=55 and N_total=73 contours (band boundaries) render.
+        if p.get("N_total") is None:
             continue
         xs.append(p["x0"])
         ys.append(abs(p["y0"]))
-        rs.append(p.get("best_ratio", np.nan))
-        ns.append(p.get("N_total", np.nan))
+        rs.append(p.get("best_ratio") if (p.get("viable") and p.get("relevant")) else np.nan)
+        ns.append(p.get("N_total"))
     xs, ys, rs, ns = map(np.asarray, (xs, ys, rs, ns))
 
     R = np.full_like(X_c, np.nan)
@@ -784,10 +784,12 @@ def _plot_heatmap(points, filename="fine_tune_fraction_heatmap",
     yv_curve = np.sqrt(2 * model.v0 * model.f(x_curve)) / S
     ax.plot(x_curve, yv_curve, "--", color=TOL["grey"], lw=1.2,
             label=r"$T \leq V$")
-    # N_total=55 contour from the grid's N_total values (dashed).
+    # N_total=55 and N_total=73 contours (relevant band boundaries), dashed.
     if np.any(np.isfinite(N_field)):
         ax.contour(X_c, Y_c, N_field, levels=[N_TOTAL_MIN], colors=[TOL["blue"]],
                    linestyles="--", linewidths=1.2)
+        ax.contour(X_c, Y_c, N_field, levels=[N_TOTAL_RELEVANT_MAX],
+                   colors=[TOL["blue"]], linestyles="--", linewidths=1.2)
 
     # Reference config marker.
     ax.plot(5.75, 0.170, marker="*", color=TOL["green"], markersize=9)
@@ -802,7 +804,7 @@ def _plot_heatmap(points, filename="fine_tune_fraction_heatmap",
         Line2D([0], [0], color=TOL["grey"], ls="--", lw=1.2,
                label=r"$T \leq V$"),
         Line2D([0], [0], color=TOL["blue"], ls="--", lw=1.2,
-               label=r"$N_{\mathrm{total}} = 55$"),
+               label=r"$N_{\mathrm{total}} \in (55, 73]$"),
         Line2D([0], [0], marker="*", color=TOL["green"], markersize=9,
                ls="none", label="ref (5.75, -0.170)"),
     ]
