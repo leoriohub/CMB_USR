@@ -126,6 +126,12 @@ def evaluate_point(x0, y0, N_star, k_grid, executor=None, n_workers=4):
     Returns {"status", "N_total", "d2", "d2_lcdm"} on success, or
     {"status": "error", "message"} on failure.
     """
+    # Serial OMP per worker: this function runs as a ProcessPoolExecutor task, so
+    # each worker would otherwise spawn its own Fortran OMP region and oversubscribe
+    # the CPU (W workers x OMP threads). Match sweep_pbh_params precedent: 1 thread
+    # per worker, scale via --workers instead. Inherited by forked children.
+    os.environ["OMP_NUM_THREADS"] = "1"
+
     model = HiggsModel(lam=0.13, xi=15000.0)
     model.S = S
     model.x0 = x0
