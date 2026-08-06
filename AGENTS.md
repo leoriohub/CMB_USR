@@ -212,10 +212,12 @@ When setting `model.y0 = -0.736`: initial dx/dT = -0.736.
 - **Never commit temp scripts.** If you wrote `scripts/frobnicate_widgets.py` to test an idea, delete it before `git commit`. The idea that survives becomes a proper module or gets documented in AGENTS.md.
 - **Never auto-commit or auto-push.** Always ask for explicit approval before any git commit or push.
 - **Never touch `paper/images/` or `paper/` unless user explicitly asks.** Plots live in `outputs/plots/`. Only copy to `paper/images/` when user specifically requests it.
-- Heavy compute (scans, optimizations) runs on lab machine via `ssh uni`. Lab machine project path: `~/Documentos/CMB_USR/`. Sync only via GitHub push/pull — never rsync the full project.
+- Heavy compute (scans, optimizations) runs on lab machine via `ssh uni`. **Lab machine project path: `~/Projects/CMB_Anomaly/`** (NOT `~/Documentos/CMB_USR/` — that's the old machine). Sync only via GitHub push/pull — never rsync the full project.
+- **Conda is auto-activated on uni — no `source`/`conda activate` prefix needed.** Symlinks in `~/.local/bin` (already first in PATH) point `python`/`pip`/`f2py` at the `cmb-anomaly` env. The project is pip-installed in that env, so modules import from anywhere.
+- **No `cd` required.** `ROOT_DIR` is derived from `__file__` (file location), NOT cwd, so `get_path()`/`OUTPUT_DIRS` outputs land in `~/Projects/CMB_Anomaly/outputs/` no matter where the command runs. You can launch from `$HOME` or `/tmp`. Only caveat: pass **absolute paths** for `--config` and `--output-dir` (those are the only cwd-relative args).
 - **Lab execution pattern (prevents SSH hangs):**
   1. Write script locally, commit+push to GitHub
-  2. `ssh uni "cd ~/Documentos/CMB_USR && git pull && source ~/miniconda3/etc/profile.d/conda.sh && conda activate cmb-anomaly && nohup python script.py > ~/jobname.log 2>&1 & echo PID=\$!"`
+  2. `ssh uni "cd ~/Projects/CMB_Anomaly && git pull && nohup python script.py > ~/jobname.log 2>&1 & echo PID=\$!"`
   3. Track with SHORT timeouts (10-15s): `ssh uni "grep -c 'pattern' ~/jobname.log; tail -3 ~/jobname.log"`
   4. Do NOT use `sleep N && ssh ...` — blocks indefinitely. Instead use polling with short timeouts.
   5. Check completion: `ssh uni "ps aux | grep script.py | grep -v grep | wc -l"`
