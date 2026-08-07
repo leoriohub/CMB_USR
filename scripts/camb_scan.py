@@ -16,8 +16,16 @@ import time
 from datetime import datetime
 
 from functools import lru_cache
+
+# Thread caps BEFORE any threading-capable import (numpy/CAMB/fortran):
+# 1 thread per worker so --workers scales out via the process pool and the parent
+# does not initialize a full-width OpenMP pool before forking. setdefault lets a
+# power user export OMP_NUM_THREADS=N to scale up per-solve instead.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("NUMBA_NUM_THREADS", "1")
+
 import numpy as np
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from pspectrum_pipeline import (
     run_pspectrum_pipeline, find_end_of_inflation,
@@ -184,6 +192,24 @@ def evaluate_config(phi0, y0, N_star, args, k_phys_grid=None,
         entry["chi2_binned_model"] = chi2_binned_model
         entry["chi2_binned_lcdm"] = chi2_binned_lcdm
     return entry
+
+
+def _scan_config(cfg):
+    """Run evaluate_config for one config dict inside a ProcessPoolExecutor worker.
+
+    Module-level (picklable) target. ``args`` is passed as its ``__dict__`` and
+    rebuilt as a Namespace here because argparse Namespaces don't pickle reliably
+    across contexts. The model is reconstructed by evaluate_config (None), avoiding
+    pickling the HiggsModel itself.
+    """
+    ns = argparse.Namespace(**cfg["args_dict"])
+    return evaluate_config(
+        cfg["phi0"], cfg["y0"], cfg["N_star"], ns,
+        k_phys_grid=cfg["k_phys_grid"],
+        executor=None,
+        model=None,
+    )
+
 
 def run_phase1(args, completed):
     phi0_vals = np.linspace(args.phi0_range[0], args.phi0_range[1],
@@ -511,7 +537,6 @@ def run_random_scan(args):
                 round(random.uniform(args.nstar_range[0], args.nstar_range[1]), 1))
                for _ in range(args.n_random)]
 
-    model = HiggsModel(lam=args.lam, xi=args.xi)
     done = 0
 
     print(f"\n{'='*60}", flush=True)
@@ -526,10 +551,16 @@ def run_random_scan(args):
 
     with open(log_path, "a") as log_file, \
          ProcessPoolExecutor(args.workers) as executor:
-        for i, (phi0, y0, nstar) in enumerate(configs):
-            res = evaluate_config(phi0, y0, nstar, args,
-                                  k_phys_grid=k_phys,
-                                  executor=executor, model=model)
+        futures = {executor.submit(_scan_config, {
+            "phi0": phi0, "y0": y0, "N_star": nstar,
+            "args_dict": vars(args), "k_phys_grid": k_phys,
+        }): i for i, (phi0, y0, nstar) in enumerate(configs)}
+
+        processed = 0
+        for fut in as_completed(futures):
+            i = futures[fut]
+            phi0, y0, nstar = configs[i]
+            res = fut.result()
             res["_type"] = "data"
             res["phi0"] = phi0
             res["y0"] = y0
@@ -540,10 +571,11 @@ def run_random_scan(args):
             if res.get("status") == "ok":
                 done += 1
 
-            if (i + 1) % 100 == 0:
+            processed += 1
+            if processed % 100 == 0:
                 elapsed = time.time() - t0
-                eta = elapsed / (i + 1) * (args.n_random - i - 1)
-                print(f"  [{i+1}/{args.n_random}] {elapsed:.0f}s "
+                eta = elapsed / processed * (args.n_random - processed)
+                print(f"  [{processed}/{args.n_random}] {elapsed:.0f}s "
                       f"ETA {eta:.0f}s  ok={done}", flush=True)
 
     elapsed = time.time() - t0
