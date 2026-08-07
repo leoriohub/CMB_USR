@@ -23,8 +23,16 @@ import math
 import os
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
+
+# Thread caps BEFORE any threading-capable import (numpy/matplotlib/CAMB/fortran):
+# default to 1 thread per worker so --workers scales out via the process pool, and the
+# parent must NOT initialize a full-width OpenMP pool before forking. setdefault lets
+# a power user export OMP_NUM_THREADS=N to scale up per-solve instead
+# (optimize_pbh_botorch.py precedent).
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("NUMBA_NUM_THREADS", "1")
 
 import numpy as np
 
@@ -126,12 +134,6 @@ def evaluate_point(x0, y0, N_star, k_grid, executor=None, n_workers=4):
     Returns {"status", "N_total", "d2", "d2_lcdm"} on success, or
     {"status": "error", "message"} on failure.
     """
-    # Serial OMP per worker: this function runs as a ProcessPoolExecutor task, so
-    # each worker would otherwise spawn its own Fortran OMP region and oversubscribe
-    # the CPU (W workers x OMP threads). Match sweep_pbh_params precedent: 1 thread
-    # per worker, scale via --workers instead. Inherited by forked children.
-    os.environ["OMP_NUM_THREADS"] = "1"
-
     model = HiggsModel(lam=0.13, xi=15000.0)
     model.S = S
     model.x0 = x0
@@ -174,6 +176,48 @@ def evaluate_point(x0, y0, N_star, k_grid, executor=None, n_workers=4):
         "d2": d2,
         "d2_lcdm": D2_LCDM_EXPECTED,
     }
+
+
+def _scan_point(x0, y0, k_grid, n_total, threshold, d2_lcdm, t_over_v, completed):
+    """Run the N* sweep for one (x0, y0) inside a ProcessPoolExecutor worker.
+
+    Mirrors the serial per-point loop in scan(): skips already-completed
+    (resume) triples and early-exits at the first suppressed N*. Returns
+    (records, suppressed).
+
+    Must be module-level (picklable) for ProcessPoolExecutor.
+    """
+    records = []
+    suppressed = False
+    for ns in N_STAR_SWEEP:
+        if ns >= n_total:
+            break  # pipeline errors when N_star >= N_total
+        key = (x0, y0, round(float(ns), 1))
+        if key in completed:
+            continue
+        res = evaluate_point(x0, y0, ns, k_grid)
+        rec = {
+            "x0": x0, "y0": y0, "N_star": float(ns),
+            "N_total": res.get("N_total"),
+            "t_over_v": t_over_v,
+            "status": res["status"],
+            "d2": res.get("d2"),
+            "d2_lcdm": res.get("d2_lcdm", d2_lcdm),
+            "suppressed": bool(res.get("status") == "success"
+                               and res.get("d2") is not None
+                               and res["d2"] <= threshold),
+        }
+        if res["status"] == "error":
+            print(f"  WARN ({x0},{y0},N*={ns}): {res.get('message')}",
+                  file=sys.stderr)
+        else:
+            rec["suppressed"] = rec["d2"] <= threshold
+            if rec["suppressed"]:
+                suppressed = True
+        records.append(rec)
+        if suppressed:
+            break  # early exit at first suppressed N*
+    return records, suppressed
 
 
 # ---------------------------------------------------------------------------
@@ -482,6 +526,7 @@ def scan(args):
         n_viable = 0
         n_supp = 0
         t0 = time.time()
+        futures = {}
         for x0 in x0_vals:
             for y0 in y0_vals:
                 x0 = round(float(x0), 4)
@@ -523,47 +568,27 @@ def scan(args):
                     continue
 
                 n_viable += 1
-                suppressed = False
+                # One task per (x0, y0): run the N* sweep (with early-exit) in a
+                # pool worker so --workers actually parallelizes the grid points.
+                futures[executor.submit(
+                    _scan_point, x0, y0, k_grid, n_total,
+                    threshold, d2_lcdm, t_over_v, completed)] = (x0, y0)
 
-                # (1) evaluate at N_star=55 first.
-                for ns in N_STAR_SWEEP:
-                    if ns >= n_total:
-                        break  # pipeline errors when N_star >= N_total
-                    key = (x0, y0, round(float(ns), 1))
-                    if key in completed:
-                        continue
-                    res = evaluate_point(x0, y0, ns, k_grid,
-                                         executor=executor, n_workers=4)
-                    rec = {
-                        "x0": x0, "y0": y0, "N_star": float(ns),
-                        "N_total": res.get("N_total"),
-                        "t_over_v": t_over_v,
-                        "status": res["status"],
-                        "d2": res.get("d2"),
-                        "d2_lcdm": res.get("d2_lcdm", d2_lcdm),
-                        "suppressed": bool(res.get("status") == "success"
-                                           and res.get("d2") is not None
-                                           and res["d2"] <= threshold),
-                    }
-                    if res["status"] == "error":
-                        print(f"  WARN ({x0},{y0},N*={ns}): {res.get('message')}",
-                              file=sys.stderr)
-                    else:
-                        rec["suppressed"] = rec["d2"] <= threshold
-                        if rec["suppressed"]:
-                            suppressed = True
-                    _write_record(log_file, rec)
-                    if suppressed:
-                        break  # early exit at first suppressed N*
-                if suppressed:
-                    n_supp += 1
-
-                done += 1
-                if done % 50 == 0 or done == total:
-                    elapsed = time.time() - t0
-                    eta = elapsed / done * (total - done) if done else 0
-                    print(f"  [{done}/{total}] viable={n_viable} "
-                          f"supp={n_supp} ETA {eta/60:.1f}m", flush=True)
+        # Consume futures as they complete: write records incrementally
+        # (crash-safe JSONL) and tally the per-point suppression count.
+        for fut in as_completed(futures):
+            x0, y0 = futures[fut]
+            records, suppressed = fut.result()
+            for rec in records:
+                _write_record(log_file, rec)
+            if suppressed:
+                n_supp += 1
+            done += 1
+            if done % 50 == 0 or done == total:
+                elapsed = time.time() - t0
+                eta = elapsed / done * (total - done) if done else 0
+                print(f"  [{done}/{total}] viable={n_viable} "
+                      f"supp={n_supp} ETA {eta/60:.1f}m", flush=True)
 
     print(f"\nScan complete. viable={n_viable} suppressed={n_supp} "
           f"fraction={n_supp/max(1,n_viable):.3f}", flush=True)
