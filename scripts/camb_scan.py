@@ -534,8 +534,9 @@ def run_random_scan(args):
         n_outer=8 if args.quick else 70,
     )
 
+    y0_abs = sorted(abs(v) for v in args.y0_range)
     configs = [(round(random.uniform(args.phi0_range[0], args.phi0_range[1]), 2),
-                round(-random.uniform(abs(args.y0_range[1]), abs(args.y0_range[0])), 3),
+                round(-random.uniform(y0_abs[0], y0_abs[1]), 3),
                 round(random.uniform(args.nstar_range[0], args.nstar_range[1]), 1))
                for _ in range(args.n_random)]
 
