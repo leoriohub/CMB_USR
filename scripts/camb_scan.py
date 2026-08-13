@@ -233,7 +233,7 @@ def run_phase1(args, completed):
     if getattr(args, 'quick', False):
         k_phys = build_weighted_kgrid(
             args.k_min, args.k_max, k_pivot_phys,
-            dense_zone=(1e-4, 1e-2), n_dense=20, n_outer=8,
+            dense_min=1e-4, dense_max=1e-2, n_dense=20, n_outer=8,
         )
         ells_grid = np.arange(args.ell_max + 1)
     else:
@@ -418,7 +418,7 @@ def run_phase2(args, completed, regions):
     if getattr(args, 'quick', False):
         k_phys = build_weighted_kgrid(
             args.k_min, args.k_max, k_pivot_phys,
-            dense_zone=(1e-4, 1e-2), n_dense=20, n_outer=8,
+            dense_min=1e-4, dense_max=1e-2, n_dense=20, n_outer=8,
         )
         ells_grid = np.arange(args.ell_max + 1)
     else:
@@ -443,6 +443,7 @@ def run_phase2(args, completed, regions):
         total_est = len(regions) * args.n_phi0_fine * args.n_y0_fine * args.n_nstar_fine
         t0 = time.time()
         done = [0]
+        n_ok = 0
 
         for reg_idx, (phi0_center, y0_center, ns_center) in enumerate(regions):
             phi0_vals = np.linspace(phi0_center - args.phi0_fine_window,
@@ -484,14 +485,15 @@ def run_phase2(args, completed, regions):
                         entry.pop("k_phys", None)
                         entry.pop("ells", None)
 
+                        if res.get("status") == "ok":
+                            n_ok += 1
+
                         _write_log(log_file, entry)
 
                         eta = (time.time() - t0) / done[0] * (total_est - done[0]) if done[0] else 0
                         chi2_str = (f"chi2={res.get('chi2', '?'):.1f}"
                                     if res.get("status") == "ok"
                                     else f"SKIP")
-                        n_ok = sum(1 for r in open(log_path).readlines()
-                                   if '"status": "ok"' in r) if os.path.exists(log_path) else 0
                         print(f"\r  [{done[0]:4d}/{total_est}] R{reg_idx+1} "
                               f"phi0={phi0:.2f} y0={y0:+.3f} N*={N_star:.0f} "
                               f"{chi2_str}  ok={n_ok}  ETA {eta/60:.0f}m",
@@ -527,7 +529,7 @@ def run_random_scan(args):
 
     k_phys = build_weighted_kgrid(
         args.k_min, args.k_max, k_pivot_phys,
-        dense_zone=(1e-4, 1e-2),
+        dense_min=1e-4, dense_max=1e-2,
         n_dense=20 if args.quick else 140,
         n_outer=8 if args.quick else 70,
     )
