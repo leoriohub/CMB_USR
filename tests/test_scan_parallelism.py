@@ -10,6 +10,7 @@ Cover the fix that made ``--workers`` real in ``fine_tune_fraction.py`` and
   results as ``--workers 1`` (real pipeline, not run in the pre-commit gate).
 """
 import json
+import argparse
 import os
 import subprocess
 import sys
@@ -154,6 +155,45 @@ def test_scan_config_rebuilds_args_and_calls_evaluate(monkeypatch):
     assert received["model"] is None              # reconstructed, not pickled
     assert received["executor"] is None           # no nested pool use
     assert received["k_phys_grid"] is k
+
+
+@pytest.mark.fast
+def test_phase2_ok_counter(monkeypatch, tmp_path, capsys):
+    """Progress 'ok=' must equal the number of ok evals (counter, not log re-read)."""
+    state = {"calls": 0}
+    def fake_eval(phi0, y0, N_star, args, **kw):
+        state["calls"] += 1
+        return ({"status": "ok", "chi2": 20.0} if state["calls"] % 2
+                else {"status": "pipe_error", "error": "stub"})
+    monkeypatch.setattr(cs, "evaluate_config", fake_eval)
+    monkeypatch.setattr(cs, "get_path", lambda cat, name: str(tmp_path / name))
+    args = argparse.Namespace(
+        quick=True, k_min=1e-5, k_max=1.0, ell_max=30, num_k=50,
+        phi0_fine_window=0.05, y0_fine_window=0.02, nstar_fine_window=1.0,
+        n_phi0_fine=2, n_y0_fine=1, n_nstar_fine=2,
+        xi=15000.0, lam=0.13,
+    )
+    cs.run_phase2(args, set(), [(6.4, -0.5, 55)])
+    assert "ok=2" in capsys.readouterr().out
+
+
+@pytest.mark.fast
+def test_random_scan_ascending_y0_range(monkeypatch, tmp_path):
+    """Ascending --y0-range must sample correctly, not crash (uniform lo>hi)."""
+    monkeypatch.setattr(cs, "evaluate_config",
+                        lambda phi0, y0, N_star, args, **kw: {"status": "ok", "chi2": 1.0})
+    monkeypatch.setattr(cs, "get_path", lambda cat, name: str(tmp_path / name))
+    args = argparse.Namespace(
+        workers=1, n_random=6, random_seed=42,
+        phi0_range=[5.5, 7.0], y0_range=[-0.01, -1.0], nstar_range=[50.0, 60.0],
+        k_min=1e-5, k_max=1.0, quick=True, ell_max=30, xi=15000.0, lam=0.13,
+    )
+    log_path = cs.run_random_scan(args)
+    with open(log_path) as f:
+        ys = [json.loads(line)["y0"] for line in f
+              if '"status": "ok"' in line]
+    assert len(ys) == 6
+    assert all(-1.0 <= y <= -0.01 for y in ys)
 
 
 # ---------------------------------------------------------------------------
