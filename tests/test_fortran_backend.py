@@ -86,6 +86,38 @@ def relative_diff(a, b, eps=1e-30):
     return np.abs(a - b) / np.maximum(np.abs(b), eps)
 
 
+def _assert_valid_ps(res, backend_label):
+    """Fail naming the backend if a pipeline run returned invalid P_S.
+
+    The pipeline swallows per-mode solver failures into metadata["n_failed"]
+    and leaves NaN in P_S for failed modes; the downstream NaN-diff asserts
+    are cryptic. This pinpoints the failing backend first.
+    """
+    ps = np.asarray(res["P_S"], dtype=float)
+    meta = res.get("metadata") or {}
+    assert res.get("status") == "success", (
+        f"{backend_label}: pipeline status={res.get('status')} "
+        f"msg={res.get('message')}")
+    assert np.isfinite(ps).all(), (
+        f"{backend_label}: non-finite P_S "
+        f"({int(np.isnan(ps).sum())} NaN of {ps.size} modes)")
+    assert meta.get("n_failed", 0) == 0, (
+        f"{backend_label}: {meta.get('n_failed')} failed modes")
+
+
+@pytest.mark.fast
+def test_assert_valid_ps_accepts_valid():
+    _assert_valid_ps({"status": "success", "P_S": np.full(81, 2.0e-9),
+                      "metadata": {"n_failed": 0}}, "numba")
+
+
+@pytest.mark.fast
+def test_assert_valid_ps_flags_nan_backend():
+    with pytest.raises(AssertionError, match="numba"):
+        _assert_valid_ps({"status": "success", "P_S": np.full(81, np.nan),
+                          "metadata": {"n_failed": 81}}, "numba")
+
+
 # ── helpers ──────────────────────────────────────────────────────────────
 
 
@@ -314,6 +346,9 @@ def test_level2_grid_agreement(phi0, y0, nstar, label):
         use_numba=False, backend='fortran', save_outputs=False,
     )
 
+    _assert_valid_ps(res_nb, "numba")
+    _assert_valid_ps(res_ft, "fortran")
+
     ps_nb, ps_ft = res_nb["P_S"], res_ft["P_S"]
     pt_nb, pt_ft = res_nb["P_T"], res_ft["P_T"]
 
@@ -344,6 +379,9 @@ def test_level3_camb_agreement(phi0, y0, nstar):
         model=model, phi0=phi0, y0=y0, N_star=nstar,
         use_numba=False, backend='fortran', save_outputs=False,
     )
+
+    _assert_valid_ps(res_nb, "numba")
+    _assert_valid_ps(res_ft, "fortran")
 
     for label, ps_data in [("Numba", {"k_phys": res_nb["k_phys"], "P_S": res_nb["P_S"]}),
                            ("Fortran", {"k_phys": res_ft["k_phys"], "P_S": res_ft["P_S"]})]:
