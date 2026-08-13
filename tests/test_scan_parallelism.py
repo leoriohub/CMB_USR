@@ -177,6 +177,25 @@ def test_phase2_ok_counter(monkeypatch, tmp_path, capsys):
     assert "ok=2" in capsys.readouterr().out
 
 
+@pytest.mark.fast
+def test_random_scan_ascending_y0_range(monkeypatch, tmp_path):
+    """Ascending --y0-range must sample correctly, not crash (uniform lo>hi)."""
+    monkeypatch.setattr(cs, "evaluate_config",
+                        lambda phi0, y0, N_star, args, **kw: {"status": "ok", "chi2": 1.0})
+    monkeypatch.setattr(cs, "get_path", lambda cat, name: str(tmp_path / name))
+    args = argparse.Namespace(
+        workers=1, n_random=6, random_seed=42,
+        phi0_range=[5.5, 7.0], y0_range=[-0.01, -1.0], nstar_range=[50.0, 60.0],
+        k_min=1e-5, k_max=1.0, quick=True, ell_max=30, xi=15000.0, lam=0.13,
+    )
+    log_path = cs.run_random_scan(args)
+    with open(log_path) as f:
+        ys = [json.loads(line)["y0"] for line in f
+              if '"status": "ok"' in line]
+    assert len(ys) == 6
+    assert all(-1.0 <= y <= -0.01 for y in ys)
+
+
 # ---------------------------------------------------------------------------
 # Module thread-cap contract (subprocess-isolated — no global mutation)
 # ---------------------------------------------------------------------------
