@@ -455,7 +455,7 @@ SR never sees this: it samples one N, one formula, no running.
 | **P_S_peak/As** | **2.3×10⁴** | **5.0×10⁴** | 2.2× |
 
 **Key notes:**
-- The paper's **rounded** parameters (a=5.381, b=1.523) give β_eff = 1 − b_paper/b_exact = **−2.5×10⁻³** (negative → local minimum at x≈0.808, field stalls, N_total=182). The trap is **not** an energy deficit: the field arrives with K/ΔV ≈ 3.2, but Hubble friction dissipates 91% of that kinetic energy during the ΔN≈0.8 climb, so it turns around after clearing 30% of the barrier. All runs use `inflection_parameters()` for self-consistent (a, b).
+- The paper's **rounded** parameters (a=5.381, b=1.523) give β_eff = 1 − b_paper/b_exact = **−2.5×10⁻³** (negative → local minimum at x≈0.808 bracketed by a maximum at x≈0.760; field stalls, N_total=182, ε_H never reaches 1). All runs use `inflection_parameters()` for self-consistent (a, b).
 - Our MS solver with the same stated parameters gives the same P_S amplitude (1.04×10⁻⁴ peak) but places the peak at k ≈ 3×10¹⁰ Mpc⁻¹, not k ≈ 6×10⁹. This is a solver implementation difference.
 - ζ_c=0.077 is within the paper's stated uncertainty range ζ_c ∈ (0.05, 1) [Sec III].
 - Archive at `outputs/Ezquiaga/` contains configs, plots, MS outputs, sweep logs.

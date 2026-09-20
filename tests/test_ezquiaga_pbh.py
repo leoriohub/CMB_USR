@@ -89,8 +89,7 @@ def test_subsolar_pipeline_output():
 # Locks the physics claim of ezquiaga/main.tex Sec. III: substituting the
 # literature's 2-3 significant-figure couplings produces a local minimum at
 # x~0.808 from which the inflaton cannot escape, so eps_H never reaches 1
-# and inflation never ends.  Also locks the *mechanism*: the trap is Hubble
-# friction, not an energy deficit (the field arrives with K/dV ~ 3.2).
+# and inflation never ends.
 # ---------------------------------------------------------------------------
 PAPER_COUPLINGS = dict(lambda_0=2.23e-7, b_lambda=1.2e-6, xi_0=7.55,
                        b_xi=11.5, c=0.77)
@@ -146,31 +145,3 @@ def test_paper_primitives_have_local_minimum():
     assert X_BARRIER_MAX < 0.784 < X_BASIN_MIN
     assert float(m._dVdx(X_BASIN_MIN)) == pytest.approx(0.0, abs=1e-6)
     assert float(m._dVdx(X_BARRIER_MAX)) == pytest.approx(0.0, abs=1e-6)
-
-
-@pytest.mark.fast
-def test_trap_is_friction_not_energy_deficit():
-    """The field arrives with K/dV > 1: the trap is friction, not an
-
-    energy deficit.  main.tex Sec. III claims K/dV ~ 3.2 at basin arrival.
-    """
-    m = _build_paper_model()
-    m.bg_steps = 200000  # resolve the arrival epoch
-    sol, q = _solve(m)
-    epsH, chi = q["epsH"], sol[0]
-    x = m._x_of_chi(chi)
-
-    arr = np.where(x < X_BASIN_MIN)[0]
-    assert arr.size > 0, "field never reached the basin bottom"
-    i_arr = int(arr[0])
-
-    V = lambda z: float(m._V(z))
-    dv_barrier = V(X_BARRIER_MAX) - V(X_BASIN_MIN)
-    K_arr = epsH[i_arr] / 3.0 * V(x[i_arr])
-    assert K_arr / dv_barrier > 1.0, (
-        f"field should arrive with K > barrier (friction trap); "
-        f"got K/dV={K_arr/dv_barrier:.3f}"
-    )
-    assert K_arr / dv_barrier == pytest.approx(3.2, rel=0.25), (
-        f"K/dV at arrival should be ~3.2, got {K_arr/dv_barrier:.3f}"
-    )
