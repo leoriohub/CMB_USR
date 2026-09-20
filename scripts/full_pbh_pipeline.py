@@ -216,7 +216,12 @@ def run_full_pbh_pipeline(
 
     # ── 3. P_S(k): cache check or MS solver ────────────────────────────
     n_tr = round(N_total, 1)
-    fname = make_filename("ps", chi0, y0, n_tr, ".json")
+    # Include the inflection shape parameters: two configs sharing
+    # (chi0, y0, N_total) but differing in (c, beta) -- e.g. beta=1e-5 vs
+    # 4.4e-5 -- would otherwise collide on the same cache path and silently
+    # serve one configuration's spectrum to the other.
+    _extra = {"c": f"{c:g}", "b": f"{model.b:.6g}"}
+    fname = make_filename("ps", chi0, y0, n_tr, ".json", **_extra)
     ps_dir = os.path.join(ROOT_DIR, "outputs/simulations/pspectra")
     os.makedirs(ps_dir, exist_ok=True)
     ps_path = os.path.join(ps_dir, fname)
