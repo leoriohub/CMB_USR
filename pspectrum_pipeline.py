@@ -596,7 +596,19 @@ def run_pspectrum_pipeline(
     if save_outputs:
         os.makedirs(output_dir, exist_ok=True)
         N_star = metadata["N_star"]
-        filename = make_filename("ps", model.x0, model.y0, N_star, ".json")
+        # Include the inflection shape parameters so configs that differ only
+        # in (c, beta) -- e.g. beta=1e-5 vs 4.4e-5 at the same N_star -- do
+        # not overwrite each other's spectrum. b encodes beta via
+        # b = (1-beta) b_exact, so (c, b) uniquely identifies the shape.
+        # Models lacking these attributes (e.g. HiggsModel) get no extra
+        # segment, preserving the base naming convention.
+        _extra = {}
+        if getattr(model, "c", None) is not None:
+            _extra["c"] = f"{model.c:g}"
+        if getattr(model, "b", None) is not None:
+            _extra["b"] = f"{model.b:.6g}"
+        filename = make_filename("ps", model.x0, model.y0, N_star, ".json",
+                                 **_extra)
         output_path = os.path.join(output_dir, filename)
 
         def convert(val):
@@ -813,11 +825,28 @@ def main():
     output_dir = _resolve("output_dir", args.output_dir, config) or "outputs/simulations/pspectra"
     k_start_factor = _resolve("k_start_factor", args.k_start_factor, config) or 100.0
     backend = _resolve("backend", args.backend, config) or "fortran"
+    # Pivot resolution. Precedence: CLI > config > package default.
+    #
+    # k_pivot_phys and N_star are NOT independent: the pivot is the mode
+    # that exits N_star e-folds before the end, and its physical scale is
+    # k = aH(N_pivot) evaluated at that N_star. Declaring one while the
+    # other came from a different source silently re-quotes A_s on a
+    # rescaled k axis (delta ln k = ln(k_pivot_new/k_pivot_old)), which
+    # moves every derived mass by (k_new/k_old)^-2. Because the shift is
+    # a pure relabeling it is invisible in P_S(k) itself, so it must be
+    # reported rather than assumed.
+    _piv_cfg = _resolve("k_pivot_phys", args.k_pivot_phys, config)
+    k_pivot_phys = _piv_cfg if _piv_cfg is not None else k_pivot_phys
+    _piv_src = ("--k-pivot-phys" if args.k_pivot_phys is not None
+                else "config" if _piv_cfg is not None
+                else "package default")
+    print(f"  k_pivot_phys={k_pivot_phys:g} Mpc^-1 (from {_piv_src}), "
+          f"N_star={N_star:g} -> pivot exits at N={N_star:g} before end")
 
     k_grid = None
     if use_weighted:
         k_grid = build_weighted_kgrid(
-            k_min, k_max, k_pivot_phys or k_pivot_phys,
+            k_min, k_max, k_pivot_phys,
             dense_min=dense_min, dense_max=dense_max,
             n_dense=n_dense, n_outer=n_outer,
         )
@@ -829,7 +858,7 @@ def main():
         k_min=k_min,
         k_max=k_max,
         num_k=num_k,
-        k_pivot_phys=k_pivot_phys or k_pivot_phys,
+        k_pivot_phys=k_pivot_phys,
         N_star=N_star,
         k_start_factor=k_start_factor,
         T_span_bg=None,
