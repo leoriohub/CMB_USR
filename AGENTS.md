@@ -369,7 +369,7 @@ Parameters (paper's published, ROUNDED):
 - `a_exact = 5.335304` (0.86% lower than published)
 - `b_exact = 1.519340` (0.25% lower than published)
 
-The paper's rounded parameters give β≈−0.018 (negative — creates a bump, not an inflection), so the field gets trapped at a local minimum. Use `inflection_parameters(x_c, c, β)` from `models/ezquiaga_chi.py` to compute self-consistent values:
+The paper's rounded primitives give **β_eff = 1 − b_paper/b_exact = −2.5×10⁻³** at (x_c=0.784, c=0.77) — ~250× the stated β=10⁻⁵ and of the **opposite sign**. Negative β means a **local minimum**, not a bump: V'(x_c) = −5.655×10⁻³ < 0 and V''(x_c) = +5.221×10⁻³ > 0, with a minimum at x≈0.808 bracketed by a maximum at x≈0.760. The field rolling in from large x falls into that basin and stalls — ε_H never reaches 1, so inflation never ends (N_total≈182 at the integration cutoff). Use `inflection_parameters(x_c, c, β)` from `models/ezquiaga_chi.py` to compute self-consistent values:
 
 ```python
 from models.ezquiaga_chi import inflection_parameters
