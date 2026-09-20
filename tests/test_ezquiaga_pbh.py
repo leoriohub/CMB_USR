@@ -81,3 +81,96 @@ def test_subsolar_pipeline_output():
         assert peak_ratio > 100, (
             f"No USR peak: P_S amplification factor = {peak_ratio:.1e}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Trajectory tests: the published ROUNDED primitives must trap the field.
+#
+# Locks the physics claim of ezquiaga/main.tex Sec. III: substituting the
+# literature's 2-3 significant-figure couplings produces a local minimum at
+# x~0.808 from which the inflaton cannot escape, so eps_H never reaches 1
+# and inflation never ends.  Also locks the *mechanism*: the trap is Hubble
+# friction, not an energy deficit (the field arrives with K/dV ~ 3.2).
+# ---------------------------------------------------------------------------
+PAPER_COUPLINGS = dict(lambda_0=2.23e-7, b_lambda=1.2e-6, xi_0=7.55,
+                       b_xi=11.5, c=0.77)
+X_BASIN_MIN = 0.808486    # local minimum of V(x) for the printed couplings
+X_BARRIER_MAX = 0.759567  # adjacent local maximum (barrier top)
+
+
+def _build_paper_model():
+    """Model built from the LITERAL rounded couplings (no inflection match)."""
+    m = EzquiagaCHIModel(**PAPER_COUPLINGS)
+    m.x0, m.y0 = 8.0, -1e-4
+    m.T_max, m.bg_steps = 1000.0, 5000
+    return m
+
+
+def _solve(model):
+    T_span = np.linspace(0.0, model.T_max, model.bg_steps)
+    sol = bg_solver.run_background_simulation(model, T_span)
+    q = bg_solver.get_derived_quantities(sol, model)
+    return sol, q
+
+
+@pytest.mark.fast
+def test_paper_primitives_stall():
+    """The rounded couplings trap the field: eps_H never reaches 1."""
+    m = _build_paper_model()
+    sol, q = _solve(m)
+    epsH = q["epsH"]
+
+    assert np.all(np.isfinite(epsH)), "eps_H contains NaN/Inf"
+    assert float(np.nanmax(epsH)) < 1.0, (
+        f"printed couplings should never reach eps_H=1, "
+        f"got max={np.nanmax(epsH):.3e}"
+    )
+
+    x_final = float(m._x_of_chi(sol[0][-1]))
+    assert x_final == pytest.approx(X_BASIN_MIN, abs=1e-3), (
+        f"field should settle at the basin bottom x~0.8085, got {x_final:.5f}"
+    )
+
+
+@pytest.mark.fast
+def test_paper_primitives_have_local_minimum():
+    """V(x) for the printed couplings has a min/max pair bracketing x_c."""
+    m = _build_paper_model()
+
+    vp_c = float(m._dVdx(0.784))
+    vpp_c = float(m._d2Vdx2(0.784))
+    assert vp_c < 0, f"V'(x_c) should be negative, got {vp_c:.3e}"
+    assert vpp_c > 0, f"V''(x_c) should be positive (minimum), got {vpp_c:.3e}"
+
+    # The two stationary points must straddle x_c.
+    assert X_BARRIER_MAX < 0.784 < X_BASIN_MIN
+    assert float(m._dVdx(X_BASIN_MIN)) == pytest.approx(0.0, abs=1e-6)
+    assert float(m._dVdx(X_BARRIER_MAX)) == pytest.approx(0.0, abs=1e-6)
+
+
+@pytest.mark.fast
+def test_trap_is_friction_not_energy_deficit():
+    """The field arrives with K/dV > 1: the trap is friction, not an
+
+    energy deficit.  main.tex Sec. III claims K/dV ~ 3.2 at basin arrival.
+    """
+    m = _build_paper_model()
+    m.bg_steps = 200000  # resolve the arrival epoch
+    sol, q = _solve(m)
+    epsH, chi = q["epsH"], sol[0]
+    x = m._x_of_chi(chi)
+
+    arr = np.where(x < X_BASIN_MIN)[0]
+    assert arr.size > 0, "field never reached the basin bottom"
+    i_arr = int(arr[0])
+
+    V = lambda z: float(m._V(z))
+    dv_barrier = V(X_BARRIER_MAX) - V(X_BASIN_MIN)
+    K_arr = epsH[i_arr] / 3.0 * V(x[i_arr])
+    assert K_arr / dv_barrier > 1.0, (
+        f"field should arrive with K > barrier (friction trap); "
+        f"got K/dV={K_arr/dv_barrier:.3f}"
+    )
+    assert K_arr / dv_barrier == pytest.approx(3.2, rel=0.25), (
+        f"K/dV at arrival should be ~3.2, got {K_arr/dv_barrier:.3f}"
+    )
