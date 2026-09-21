@@ -289,7 +289,15 @@ fit half-width `ns_window` is the only separate knob.
 | Workflow | Default k_pivot | Default ns_window | Fit window |
 |----------|---------------|------------------|------------|
 | Higgs / power suppression | 0.002 Mpc⁻¹ | 4.0 | [5×10⁻⁴, 8×10⁻³] |
-| Ezquiaga / PBH | 0.05 Mpc⁻¹ | 3.0 | [0.017, 0.15] |
+| Ezquiaga / PBH | 0.002 Mpc⁻¹ | 3.0 | [5×10⁻⁴, 8×10⁻³] |
+
+> **Pivot and N_star are degenerate.** The pivot fixes the code→Mpc⁻¹
+> conversion `C = k_pivot_phys / k_pivot_code`, with
+> `k_pivot_code = aH(N_total − N_star)` falling as `exp(−N_star)`. Holding
+> `C` fixed requires `N_star_new = N_star_old + ln(k_pivot_old/k_pivot_new)`,
+> so moving the pivot alone rescales every derived mass by
+> `(k_new/k_old)^-2` — 625× for 0.05 → 0.002. Declare the pivot in the
+> config, never override it on the CLI for a config that already sets it.
 
 **CLI flags (on every script that uses the pivot):**
 ```
@@ -458,7 +466,13 @@ SR never sees this: it samples one N, one formula, no running.
 - The paper's **rounded** parameters (a=5.381, b=1.523) give β_eff = 1 − b_paper/b_exact = **−2.5×10⁻³** (negative → local minimum at x≈0.808 bracketed by a maximum at x≈0.760; field stalls, N_total=182, ε_H never reaches 1). All runs use `inflection_parameters()` for self-consistent (a, b).
 - Our MS solver with the same stated parameters gives the same P_S amplitude (1.04×10⁻⁴ peak) but places the peak at k ≈ 3×10¹⁰ Mpc⁻¹, not k ≈ 6×10⁹. This is a solver implementation difference.
 - ζ_c=0.077 is within the paper's stated uncertainty range ζ_c ∈ (0.05, 1) [Sec III].
+
 - Archive at `outputs/Ezquiaga/` contains configs, plots, MS outputs, sweep logs.
+
+> **The reference work states no pivot.** arXiv:1705.04861 fixes its scale
+> through e-folds only (`N=65`, `ΔN=33.5`, `μ_PBH ∼ 10 M_⊙ e^{2(N_peak−28.8)}`).
+> Our configs adopt `k_pivot=0.002`, which is what makes `N_star=65`
+> reproduce their quoted `μ_PBH ≈ 11 M_⊙`.
 
 ### 17. No Inline Python Code
 
@@ -581,10 +595,15 @@ Both were computed with the legacy **Press-Schechter** formation + **Chisholm** 
 
 | Region | Config | M_peak [M⊙] | f_total | ζ_c | n_s | Formation | Accretion | File |
 |--------|--------|-------------|---------|-----|-----|-----------|-----------|------|
-| **Sub-solar** | β=2e-5, N*=66 | 1.97e-05 | 0.183 | 0.0765 | 0.9501 | Press-Schechter | Chisholm | `configs/ezquiaga/subsolar_pbh.json` |
-| **Asteroid** | β=1.8e-4, N*=72 | 1.29e-16 | 0.128 | 0.0488 | 0.9663 | Press-Schechter | Chisholm | `configs/ezquiaga/asteroid_pbh.json` |
+| **Sub-solar** | β=2e-5, N*=69.23 | 1.97e-05 | 0.183 | 0.0765 | 0.9501 | Press-Schechter | Chisholm | `configs/ezquiaga/subsolar_pbh.json` |
+| **Asteroid** | β=1.8e-4, N*=75.22 | 1.29e-16 | 0.128 | 0.0488 | 0.9663 | Press-Schechter | Chisholm | `configs/ezquiaga/asteroid_pbh.json` |
 
-Both at χ₀=8.0, x_c=0.784, c=0.77. Reproduce with:
+Both at χ₀=8.0, x_c=0.784, c=0.77, `k_pivot_phys=0.002`. Both run
+**config-only**; do not override `--k-pivot` on the CLI. Reproduce with:
+```bash
+python scripts/full_pbh_pipeline.py --config configs/ezquiaga/subsolar_pbh.json --tag rank02
+python scripts/full_pbh_pipeline.py --config configs/ezquiaga/asteroid_pbh.json --tag rank07
+```
 ```bash
 python scripts/full_pbh_pipeline.py --config configs/ezquiaga/subsolar_pbh.json --tag rank02
 python scripts/full_pbh_pipeline.py --config configs/ezquiaga/asteroid_pbh.json --tag rank07
