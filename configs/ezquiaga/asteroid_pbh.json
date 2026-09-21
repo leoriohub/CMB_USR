@@ -1,6 +1,6 @@
 {
   "model": "EzquiagaCHIModel",
-  "description": "Asteroid PBH: β=1.8e-4, N*=72, M~1e-16, f=0.13 n_s=0.966. Computed with Press-Schechter + Chisholm.",
+  "description": "Asteroid PBH: β=1.8e-4, N*=75.22, M~1e-16, f=0.13 n_s=0.966. Computed with Press-Schechter + Chisholm.",
   "formation": "press_schechter",
   "accretion": "Chisholm",
   "model_params": {
@@ -17,11 +17,11 @@
     "y0": -0.0001
   },
   "pipeline": {
-    "N_star": 72,
+    "N_star": 75.22,
     "k_min": 1e-10,
     "k_max": 1e+28,
     "num_k": 500,
-    "k_pivot_phys": 0.05,
+    "k_pivot_phys": 0.002,
     "n_cores": 8,
     "no_plot": false,
     "normalize_to_As": false,
