@@ -145,3 +145,40 @@ def test_paper_primitives_have_local_minimum():
     assert X_BARRIER_MAX < 0.784 < X_BASIN_MIN
     assert float(m._dVdx(X_BASIN_MIN)) == pytest.approx(0.0, abs=1e-6)
     assert float(m._dVdx(X_BARRIER_MAX)) == pytest.approx(0.0, abs=1e-6)
+
+
+@pytest.mark.fast
+def test_resolve_kgrid_honors_declared_bounds():
+    """A declared grid wins; the PBH-weighted grid is only a fallback."""
+    from scripts.full_pbh_pipeline import resolve_kgrid
+
+    g = resolve_kgrid(1e-10, 1e28, 501)
+    assert len(g) == 501
+    assert g.min() == pytest.approx(1e-10, rel=1e-12)
+    assert g.max() == pytest.approx(1e28, rel=1e-12)
+
+    # Partial declaration fills the missing piece from the canonical default.
+    g2 = resolve_kgrid(k_max=1e28)
+    assert g2.max() == pytest.approx(1e28, rel=1e-12)
+    assert g2.min() == pytest.approx(1e-10, rel=1e-12)
+
+    # No declaration at all -> PBH-weighted fallback (CMB to PBH scales).
+    g3 = resolve_kgrid()
+    assert g3.min() < 1e-2 and g3.max() >= 1e22
+    assert len(g3) != 501
+
+
+@pytest.mark.fast
+def test_cache_filename_encodes_grid():
+    """Two grids must not share a cache path."""
+    from scripts.plotting import make_filename
+
+    def name(lo, hi, n):
+        return make_filename("ps", 8.0, -1e-4, 89.0, ".json",
+                             c="0.771", b="1.51783",
+                             kmin=f"{lo:.0e}", kmax=f"{hi:.0e}", nk=str(n))
+
+    canonical = name(1e-10, 1e28, 501)
+    other = name(1e-5, 1.0, 200)
+    assert canonical != other
+    assert "kmin1e-10" in canonical and "kmax1e+28" in canonical and "nk501" in canonical
