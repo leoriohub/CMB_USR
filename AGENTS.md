@@ -431,9 +431,15 @@ SR never sees this: it samples one N, one formula, no running.
 
 ### 16. Figure 3 Reproduction — PBH Abundance (1705.04861)
 
-**Config:** `configs/ezquiaga_fig3.json`
-**Plot:** `outputs/plots/pbh/pbh_phi8.00_y0-0.000_nstar87.4.png`
-**Run:** `python scripts/pspectrum_pipeline.py --config configs/ezquiaga_fig3.json && python scripts/pbh_abundance.py --ms-json outputs/simulations/pspectra/ps_phi8.00_y0-0.000_nstar65.0.json --zeta-c 0.077`
+Two distinct configs share this section, so they are named separately:
+
+| | config | role |
+|---|---|---|
+| **numbers below** | `configs/ezquiaga/fig3.json` | β=1e-5 reference; spectrum only (`no_plot: true`) |
+| **the figure** | `configs/ezquiaga/best_match_ezquiaga_height.json` | β=4.4e-5, ζ_c=0.07372; `f_PBH`=0.42, crest 0.178 |
+
+**Run (figure):** `python scripts/full_pbh_pipeline.py --config configs/ezquiaga/best_match_ezquiaga_height.json`
+→ `outputs/simulations/pspectra/pbh_phi8.00_y0-0.000_nstar89.0_psch_Chs_beta4.4e-05_zc0.07372.png`
 
 **All Ezquiaga-related outputs archived in:** `outputs/Ezquiaga/` (with README)
 
@@ -451,20 +457,20 @@ SR never sees this: it samples one N, one formula, no running.
 | **γ** (efficiency) | 0.4 | 0.4 | — |
 | **Accretion factor** | 3×10⁷ | 3×10⁷ | — |
 | **N_star** | **65** | **65** | ✓ (same) |
-| **k_pivot** | **0.05 Mpc⁻¹** | **0.05 Mpc⁻¹** | ✓ (same) |
+| **k_pivot** | — (paper states none) | **0.002 Mpc⁻¹** | — |
 
 **Result comparison:**
 
 | Metric | Paper Ref | Our code | Δ |
 |--------|-----------|----------|---|
 | **Ω_PBH^eq** | **0.42** | **0.27** | 1.6× |
-| **μ (peak M_present)** | **~11 M_⊙** | **0.4 M_⊙** | 28× |
+| **μ (peak M_present)** | **~11 M_⊙** | **0.46 M_⊙** | 24× |
 | **P_S_peak** | **4.8×10⁻⁵** | **1.04×10⁻⁴** | 2.2× |
 | **P_S_peak/As** | **2.3×10⁴** | **5.0×10⁴** | 2.2× |
 
 **Key notes:**
 - The paper's **rounded** parameters (a=5.381, b=1.523) give β_eff = 1 − b_paper/b_exact = **−2.5×10⁻³** (negative → local minimum at x≈0.808 bracketed by a maximum at x≈0.760; field stalls, N_total=182, ε_H never reaches 1). All runs use `inflection_parameters()` for self-consistent (a, b).
-- Our MS solver with the same stated parameters gives the same P_S amplitude (1.04×10⁻⁴ peak) but places the peak at k ≈ 3×10¹⁰ Mpc⁻¹, not k ≈ 6×10⁹. This is a solver implementation difference.
+- Our MS solver with the same stated parameters gives the same P_S amplitude (1.04×10⁻⁴ peak) but places the peak at k ≈ 2.9×10¹⁰ Mpc⁻¹, not k ≈ 6×10⁹. This is a solver implementation difference. (`M_peak=0.46 M_⊙` is the P_S-peak convention: `mass_from_k(k_peak)×3×10⁷`; the f(M) crest is 0.38.)
 - ζ_c=0.077 is within the paper's stated uncertainty range ζ_c ∈ (0.05, 1) [Sec III].
 
 - Archive at `outputs/Ezquiaga/` contains configs, plots, MS outputs, sweep logs.
@@ -478,7 +484,7 @@ SR never sees this: it samples one N, one formula, no running.
 
 **NEVER** run inline `python -c "..."` or `python <<EOF` for physics analysis. It is non-reproducible, un-tracked, and un-reviewable. Use one of:
 - **Config file** + `pspectrum_pipeline.py` for MS computation
-- **`scripts/pbh_abundance.py --ms-json`** for PBH abundance
+- **`scripts/full_pbh_pipeline.py --config <cfg>`** for PBH abundance + mass function
 - **`scripts/sweep_pbh_params.py`** for parameter sweeps
 - **`scripts/plotting.py`** for plotting
 
@@ -595,15 +601,13 @@ Both were computed with the legacy **Press-Schechter** formation + **Chisholm** 
 
 | Region | Config | M_peak [M⊙] | f_total | ζ_c | n_s | Formation | Accretion | File |
 |--------|--------|-------------|---------|-----|-----|-----------|-----------|------|
-| **Sub-solar** | β=2e-5, N*=69.23 | 1.97e-05 | 0.183 | 0.0765 | 0.9501 | Press-Schechter | Chisholm | `configs/ezquiaga/subsolar_pbh.json` |
-| **Asteroid** | β=1.8e-4, N*=75.22 | 1.29e-16 | 0.128 | 0.0488 | 0.9663 | Press-Schechter | Chisholm | `configs/ezquiaga/asteroid_pbh.json` |
+| **Sub-solar** | β=2e-5, N*=69.23 | 2.11e-05 | 0.183 | 0.0765 | 0.9501 | Press-Schechter | Chisholm | `configs/ezquiaga/subsolar_pbh.json` |
+| **Asteroid** | β=1.8e-4, N*=75.22 | 1.16e-16 | 0.127 | 0.0488 | 0.9663 | Press-Schechter | Chisholm | `configs/ezquiaga/asteroid_pbh.json` |
 
-Both at χ₀=8.0, x_c=0.784, c=0.77, `k_pivot_phys=0.002`. Both run
-**config-only**; do not override `--k-pivot` on the CLI. Reproduce with:
-```bash
-python scripts/full_pbh_pipeline.py --config configs/ezquiaga/subsolar_pbh.json --tag rank02
-python scripts/full_pbh_pipeline.py --config configs/ezquiaga/asteroid_pbh.json --tag rank07
-```
+Both at χ₀=8.0, x_c=0.784, c=0.77, `k_pivot_phys=0.002`, `num_k=1000`.
+`M_peak` here is the **f(M) crest** (`compute_pbh_metrics`), matching the
+paper's Fig. 5/6 captions; the P_S-peak mass is ~19% higher (2.52e-05 /
+1.39e-16). Both run **config-only**; do not override `--k-pivot`:
 ```bash
 python scripts/full_pbh_pipeline.py --config configs/ezquiaga/subsolar_pbh.json --tag rank02
 python scripts/full_pbh_pipeline.py --config configs/ezquiaga/asteroid_pbh.json --tag rank07
