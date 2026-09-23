@@ -267,19 +267,33 @@ class PR_Accretion(PBHAccretion):
 
 
 class ChisholmAccretion(PBHAccretion):
-    """Legacy constant-factor accretion (Chisholm 2006, 3×10⁷).
+    """Legacy constant-factor accretion (Chisholm 2006).
 
-    At z=0 mass is multiplied by 3×10⁷; elsewhere no growth.
+    At z=0 the mass is multiplied by *factor*; elsewhere no growth.  The
+    default factor, :data:`ACCRETION` = 3×10⁷, is the maximal-growth
+    value of Chisholm (2006).  ``factor=1`` suppresses growth entirely,
+    so the present-day mass equals the formation mass.
+
+    Parameters
+    ----------
+    factor : float
+        Present-day mass enhancement (default 3×10⁷).
+    model : str
+        Label (default ``'Chisholm'``).
     """
 
-    _CHISHOLM_FACTOR: Final[float] = ACCRETION
+    def __init__(self, factor: float = ACCRETION, model: str = 'Chisholm') -> None:
+        if factor <= 0.0:
+            raise PBHAccretionError(f'factor must be > 0, got {factor}')
+        super().__init__(model=model)
+        self.factor = factor
 
     def M_of_redshift(  # noqa: PLR0913
         self, M_form: float, z_obs: float, z_form: float | None = None,
     ) -> float:
         if M_form <= 0.0:
             raise PBHAccretionError(f'M_form must be > 0, got {M_form}')
-        return M_form * self._CHISHOLM_FACTOR if z_obs == 0.0 else M_form
+        return M_form * self.factor if z_obs == 0.0 else M_form
 
     def evolve(  # noqa: PLR0913
         self, M_form: float, z_form: float | None = None,
@@ -293,14 +307,14 @@ class ChisholmAccretion(PBHAccretion):
             z_form = 3400.0
         z_span = np.linspace(z_form, z_final, n_steps)
         M_hist = np.array([
-            M_form * self._CHISHOLM_FACTOR if np.isclose(zi, 0.0) else M_form
+            M_form * self.factor if np.isclose(zi, 0.0) else M_form
             for zi in z_span
         ])
         return M_hist, z_span
 
     def mass_growth_factor(self, M_form: float, z_obs: float,
                            z_form: float | None = None) -> float:
-        return self._CHISHOLM_FACTOR if z_obs == 0.0 else 1.0
+        return self.factor if z_obs == 0.0 else 1.0
 
 
 # ── Eddington-limited accretion (DM halo enhanced) ────────────────────────

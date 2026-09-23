@@ -193,6 +193,7 @@ _ACCRETION_CODES: dict[str, str] = {
     "BHL": "BHL",
     "Eddington": "Edd",
     "Chisholm": "Chs",
+    "Chisholm1": "Chs1",
     "Merger": "Mrg",
 }
 

@@ -133,7 +133,7 @@ class TestMakePbhFilename:
         }
         assert _ACCRETION_CODES == {
             "PR": "PR", "BHL": "BHL", "Eddington": "Edd",
-            "Chisholm": "Chs", "Merger": "Mrg",
+            "Chisholm": "Chs", "Chisholm1": "Chs1", "Merger": "Mrg",
         }
 
     def test_compaction_PR(self) -> None:
@@ -151,6 +151,14 @@ class TestMakePbhFilename:
             formation="press_schechter", accretion="Chisholm", ext=".json",
         )
         assert result == "pbh_phi8.00_y0-0.000_nstar72.0_psch_Chs.json"
+
+    def test_press_schechter_Chisholm1(self) -> None:
+        """press_schechter + Chisholm1 maps to psch_Chs1, distinct from Chs."""
+        result = make_pbh_filename(
+            "pbh", 8.0, -1e-4, 72.0,
+            formation="press_schechter", accretion="Chisholm1", ext=".json",
+        )
+        assert result == "pbh_phi8.00_y0-0.000_nstar72.0_psch_Chs1.json"
 
     def test_unknown_name_passes_through(self) -> None:
         """Unknown formation name passes through unchanged."""
