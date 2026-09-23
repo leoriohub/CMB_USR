@@ -17,7 +17,7 @@
     "N_star": 65,
     "k_min": 1e-10,
     "k_max": 1e+28,
-    "num_k": 501,
+    "num_k": 1000,
     "k_pivot_phys": 0.002,
     "n_cores": 8,
     "no_plot": true,

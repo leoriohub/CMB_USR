@@ -17,7 +17,7 @@
     "N_star": 65,
     "k_min": 1e-10,
     "k_max": 1e+28,
-    "num_k": 501,
+    "num_k": 1000,
     "k_pivot_phys": 0.002,
     "n_cores": 8,
     "no_plot": false,
@@ -25,8 +25,8 @@
     "output_dir": "outputs/simulations/pspectra",
     "ns_window": 3.0
   },
-  "zeta_c": 0.0747,
+  "zeta_c": 0.07372,
   "formation": "press_schechter",
   "accretion": "Chisholm",
-  "description": "Best-match CHI config at zeta_c=0.0747: reproduces the height of Ezquiaga Fig. 3 (crest 0.085) at the stellar window. Companion to best_match_pbh.json (zeta_c=0.0728)."
+  "description": "Best-match CHI config at zeta_c=0.07372: f_PBH=0.419 (crest 0.178). Companion to best_match_pbh.json (zeta_c=0.0728)."
 }
