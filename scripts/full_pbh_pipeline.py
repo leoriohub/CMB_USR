@@ -361,6 +361,7 @@ def run_full_pbh_pipeline(
         "PR": PR_Accretion,
         "BHL": PBHAccretion,
         "Chisholm": ChisholmAccretion,
+        "Chisholm1": ChisholmAccretion,
         "Eddington": EddingtonAccretion,
     }
 
@@ -369,6 +370,8 @@ def run_full_pbh_pipeline(
 
     if accretion_model == "BHL":
         accretion = PBHAccretion(model="BHL", lambda_acc=0.1)
+    elif accretion_model == "Chisholm1":
+        accretion = ChisholmAccretion(factor=1.0)
     else:
         accretion = _ACCRETION_FACTORY[accretion_model]()
 
@@ -385,8 +388,8 @@ def run_full_pbh_pipeline(
             f_pbh = np.asarray(pbh["f_pbh"], dtype=float)
 
             # Apply accretion
-            if accretion_model == "Chisholm":
-                M_present = M_form * 3e7
+            if isinstance(accretion, ChisholmAccretion):
+                M_present = M_form * accretion.factor
             else:
                 M_present = np.array([
                     accretion.M_of_redshift(float(m), 0.0) for m in M_form
@@ -458,7 +461,7 @@ def run_full_pbh_pipeline(
     if plot and zeta_c_best is not None and len(M_best) > 0:
         from scripts.plotting import make_pbh_filename
 
-        if formation_model == "press_schechter" and accretion_model == "Chisholm":
+        if formation_model == "press_schechter" and isinstance(accretion, ChisholmAccretion):
             from scripts.plotting import plot_pbh_abundance
             plot_pbh_abundance(
                 M_best,
@@ -468,7 +471,7 @@ def run_full_pbh_pipeline(
                 model_label=f"Ezquiaga CHI χ₀={chi0}, β={beta:.0e}, ζ_c={zeta_c_best}",
                 filename=make_pbh_filename(
                     "pbh", chi0, y0, N_total,
-                    formation="press_schechter", accretion="Chisholm",
+                    formation="press_schechter", accretion=accretion_model,
                     beta=beta, zc=zeta_c_best,
                 ),
                 category="pbh",
@@ -632,9 +635,10 @@ if __name__ == "__main__":
     )
     p.add_argument(
         "--accretion",
-        choices=["PR", "BHL", "Chisholm", "Eddington"],
+        choices=["PR", "BHL", "Chisholm", "Chisholm1", "Eddington"],
         default=None,
-        help="Accretion model (default: Chisholm)",
+        help="Accretion model (default: Chisholm). Chisholm1 is the same "
+             "constant-factor model with factor=1 (no growth).",
     )
     p.add_argument(
         "--formation",
@@ -709,7 +713,7 @@ if __name__ == "__main__":
                 beta=args.beta, zc=zc,
             )
             
-            if formation_val == "press_schechter" and accretion_val == "Chisholm":
+            if formation_val == "press_schechter" and accretion_val in ("Chisholm", "Chisholm1"):
                 from scripts.plotting import plot_pbh_abundance
                 plot_pbh_abundance(
                     zc_data["M"], zc_data["f_pbh"],
@@ -736,10 +740,13 @@ if __name__ == "__main__":
                     "PR": PR_Accretion,
                     "BHL": PBHAccretion,
                     "Chisholm": ChisholmAccretion,
+                    "Chisholm1": ChisholmAccretion,
                     "Eddington": EddingtonAccretion,
                 }
                 if accretion_val == "BHL":
                     accretion_inst = PBHAccretion(model="BHL", lambda_acc=0.1)
+                elif accretion_val == "Chisholm1":
+                    accretion_inst = ChisholmAccretion(factor=1.0)
                 else:
                     accretion_inst = _FACTORY[accretion_val]()
                     

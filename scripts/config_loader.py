@@ -100,5 +100,12 @@ def load_config(path):
         flat["zeta_c"] = raw["zeta_c"] if isinstance(raw["zeta_c"], list) else [raw["zeta_c"]]
     if "output_dir" in raw and "output_dir" not in flat:
         flat["output_dir"] = raw["output_dir"]
+    # Formation / accretion models are top-level keys in the canonical
+    # format.  Without this they are dropped and the pipeline silently
+    # falls back to its CLI default (Chisholm), so a config declaring e.g.
+    # "accretion": "PR" would run as Chisholm without warning.
+    for key in ("accretion", "formation"):
+        if key in raw and key not in flat:
+            flat[key] = raw[key]
 
     return flat
