@@ -11,13 +11,16 @@ This is the "classifier" — takes P_S(k) array, returns:
 import numpy as np
 from scipy.special import erfc
 
-# Constants
-A_S_REF = 2.1e-9
+from scripts.constants import (
+    As_planck as A_S_REF,
+    k_eq_default as K_EQ,
+    M_eq_default as M_EQ,
+    gamma_default as GAMMA,
+    ACCRETION,
+)
+
+# k_pivot for n_s extraction (Planck high-ell default).
 K_PIVOT = 0.05
-K_EQ = 1.0
-M_EQ = 1.0
-GAMMA = 0.4
-ACCRETION = 3e7
 
 
 def extract_ns(k_phys, P_S, pivot_k=K_PIVOT, window=3.0):

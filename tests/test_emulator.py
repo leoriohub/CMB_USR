@@ -1,5 +1,6 @@
 """Tests for the NN emulator pipeline."""
 import numpy as np
+import pytest
 from scripts.emulator.grid import FIXED_K_GRID
 from scripts.emulator.postprocess import (
     extract_ns, find_peak, classify_usr, classify_mass,
@@ -63,8 +64,20 @@ def test_classify_mass():
 
 
 def test_mass_from_k():
-    m = mass_from_k(1e10)
-    assert m > 0
+    """Must use the canonical scripts.constants conversion, not local values.
+
+    Regression guard: K_EQ/M_EQ were once hardcoded to 1.0 here, making this
+    helper disagree with full_pbh_pipeline.mass_from_k by 3.2e13 and
+    misclassifying stellar-mass PBHs as "intermediate".
+    """
+    from scripts.constants import ACCRETION, gamma_default, k_eq_default, M_eq_default
+    from scripts.full_pbh_pipeline import mass_from_k as canonical_mass_from_k
+
+    for k in (1e6, 1e10, 5.75e9):
+        expected = gamma_default * M_eq_default * (k_eq_default / k) ** 2 * ACCRETION
+        assert mass_from_k(k) == pytest.approx(expected, rel=1e-12)
+        # and must agree with the other shipped implementation
+        assert mass_from_k(k) == pytest.approx(canonical_mass_from_k(k) * ACCRETION, rel=1e-12)
 
 
 def test_compute_f_total():

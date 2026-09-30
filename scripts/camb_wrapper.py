@@ -27,12 +27,20 @@ from pspectrum_pipeline import load_pspectrum
 from scripts.planck_data import C_ell_to_d_ell
 from scripts.plotting import OUTPUT_DIRS, make_filename
 
-# Monkeypatch CAMB's BBN predictor under NumPy 2.x to avoid TypeError in set_cosmology()
+# Monkeypatch CAMB's BBN predictor under NumPy 2.x to avoid TypeError in set_cosmology().
+# CAMB returns Y_He as either a 1-D array (conda build) or a 0-d scalar (pip wheel);
+# handle both so the code runs on any CAMB install.
 try:
     import camb
     import camb.bbn
-    original_Y_He = camb.bbn.BBNPredictor.Y_He
-    camb.bbn.BBNPredictor.Y_He = lambda self, *args, **kwargs: float(original_Y_He(self, *args, **kwargs)[0])
+    import numpy as _np
+    _original_Y_He = camb.bbn.BBNPredictor.Y_He
+    def _y_he_patched(self, *args, **kwargs):
+        val = _original_Y_He(self, *args, **kwargs)
+        if _np.ndim(val) == 0:
+            return float(val)
+        return float(val[0])
+    camb.bbn.BBNPredictor.Y_He = _y_he_patched
 except (ImportError, AttributeError):
     pass
 
@@ -40,8 +48,14 @@ except (ImportError, AttributeError):
 _LCDM_CACHE = {}
 
 @lru_cache(maxsize=4)
-def _make_camb_params(ell_max=2500):
-    """Create a CAMBparams object with Planck 2018 LCDM cosmology. Cached."""
+def _make_camb_params_template(ell_max=2500):
+    """Build a CAMBparams object with Planck 2018 LCDM cosmology (cached template).
+
+    The template is NEVER handed out directly: callers mutate the object
+    (e.g. ``set_initial_power_table``), so caching the template itself would
+    leak those mutations into later runs. Each call to ``_make_camb_params``
+    returns a fresh ``.copy()`` instead.
+    """
     import camb
     params = camb.CAMBparams()
     params.set_cosmology(
@@ -53,7 +67,12 @@ def _make_camb_params(ell_max=2500):
     params.Want_CMB = True
     params.WantScalars = True
     params.WantTensors = False
-    return params.copy()
+    return params
+
+
+def _make_camb_params(ell_max=2500):
+    """Return a fresh, mutable CAMBparams (Planck 2018 LCDM) for the given ell_max."""
+    return _make_camb_params_template(ell_max).copy()
 
 
 def _extend_pspectrum(k_phys, P_S, k_min=1e-6, k_max=10.0, n_extend=200):

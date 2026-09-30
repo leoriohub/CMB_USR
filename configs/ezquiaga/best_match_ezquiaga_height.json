@@ -3,11 +3,11 @@
   "model_params": {
     "lambda_0": 2.23e-07,
     "xi_0": 7.55,
-    "c": 0.77
+    "c": 0.771
   },
   "inflection": {
     "x_c": 0.784,
-    "beta": 1e-05
+    "beta": 4.4e-05
   },
   "ics": {
     "x0": 8.0,
@@ -20,8 +20,13 @@
     "num_k": 1000,
     "k_pivot_phys": 0.002,
     "n_cores": 8,
-    "no_plot": true,
+    "no_plot": false,
     "normalize_to_As": false,
+    "output_dir": "outputs/simulations/pspectra",
     "ns_window": 3.0
-  }
+  },
+  "zeta_c": 0.07372,
+  "formation": "press_schechter",
+  "accretion": "Chisholm",
+  "description": "Best-match CHI config at zeta_c=0.07372: f_PBH=0.419 (crest 0.178). Companion to best_match_pbh.json (zeta_c=0.0728)."
 }

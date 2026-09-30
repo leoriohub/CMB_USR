@@ -179,8 +179,8 @@ Rule of thumb: if you would not put it on arXiv, do not put it in a .md file.
 ### 6. Higgs and Ezquiaga Scope
 
 The project covers two inflation models:
-- **Higgs inflation** (ξ=15000, λ=0.13) — primary target for CMB low-ℓ anomaly analysis.
-- **Ezquiaga CHI** (`models/ezquiaga_chi.py`) — critical Higgs inflation with RG-running λ(ξ), PBH-focused, validated against paper reference.
+- **Higgs inflation** (ξ=15000, λ=0.13) — primary target for CMB low-ℓ anomaly analysis. This file.
+- **Ezquiaga CHI** (`models/ezquiaga_chi.py`) — critical Higgs inflation with RG-running couplings, PBH-focused. Public configuration guidance is in §17 below.
 
 Punctuated inflation (m=1.1323e-7, λ=3.3299e-15) is a reference model used **only** for validating solvers and cross-checking pipeline behavior — not as a primary target for analysis, optimization, or plotting. Do not run, tune, or analyze punctuated inflation unprompted.
 
@@ -212,10 +212,12 @@ When setting `model.y0 = -0.736`: initial dx/dT = -0.736.
 - **Never commit temp scripts.** If you wrote `scripts/frobnicate_widgets.py` to test an idea, delete it before `git commit`. The idea that survives becomes a proper module or gets documented in AGENTS.md.
 - **Never auto-commit or auto-push.** Always ask for explicit approval before any git commit or push.
 - **Never touch `paper/images/` or `paper/` unless user explicitly asks.** Plots live in `outputs/plots/`. Only copy to `paper/images/` when user specifically requests it.
-- Heavy compute (scans, optimizations) runs on lab machine via `ssh uni`. Lab machine project path: `~/Documentos/CMB_USR/`. Sync only via GitHub push/pull — never rsync the full project.
+- Heavy compute (scans, optimizations) runs on lab machine via `ssh uni`. **Lab machine project path: `~/Projects/CMB_Anomaly/`** (NOT `~/Documentos/CMB_USR/` — that's the old machine). Sync only via GitHub push/pull — never rsync the full project.
+- **Conda is auto-activated on uni — no `source`/`conda activate` prefix needed.** Symlinks in `~/.local/bin` (already first in PATH) point `python`/`pip`/`f2py` at the `cmb-anomaly` env. The project is pip-installed in that env, so modules import from anywhere.
+- **No `cd` required.** `ROOT_DIR` is derived from `__file__` (file location), NOT cwd, so `get_path()`/`OUTPUT_DIRS` outputs land in `~/Projects/CMB_Anomaly/outputs/` no matter where the command runs. You can launch from `$HOME` or `/tmp`. Only caveat: pass **absolute paths** for `--config` and `--output-dir` (those are the only cwd-relative args).
 - **Lab execution pattern (prevents SSH hangs):**
   1. Write script locally, commit+push to GitHub
-  2. `ssh uni "cd ~/Documentos/CMB_USR && git pull && source ~/miniconda3/etc/profile.d/conda.sh && conda activate cmb-anomaly && nohup python script.py > ~/jobname.log 2>&1 & echo PID=\$!"`
+  2. `ssh uni "cd ~/Projects/CMB_Anomaly && git pull && nohup python script.py > ~/jobname.log 2>&1 & echo PID=\$!"`
   3. Track with SHORT timeouts (10-15s): `ssh uni "grep -c 'pattern' ~/jobname.log; tail -3 ~/jobname.log"`
   4. Do NOT use `sleep N && ssh ...` — blocks indefinitely. Instead use polling with short timeouts.
   5. Check completion: `ssh uni "ps aux | grep script.py | grep -v grep | wc -l"`
@@ -233,13 +235,13 @@ Tune initial conditions (φ₀, y₀) and N_star for Higgs inflation (ξ=15000, 
 - **Punctuated Inflation** (reference model only): Creates a peak via η_H>0 amplification. Aligned at N_star=77.2 → peak at k=10⁻³. Used exclusively for solver validation and cross-checking pipeline behavior.
 
 ### Current Best Configs (full-resolution, corrected)
-- **Best χ²** (6.40,−0.475,59): χ²_full=2574.2 (+1.2 vs LCDM), D₂=918 μK² (11%↓), supp=31%. Matches LCDM essentially perfectly.
-- **Best D₂** (5.75,−0.170,55): χ²_full=2613.8 (+40.7), D₂=677 μK² (34%↓), supp=39%. Best quadrupole suppression.
-- **Best balance** (5.70,−0.170,52): χ²_full=2582.6 (+9.6), D₂=847 μK² (18%↓), supp=36%. Good χ² + meaningful D₂ suppression.
+- **Best χ²** (6.40,−0.475,59): χ²_full=2574.2 (+1.2 vs LCDM), D₂=997 μK² (3%↓), supp=31%. Matches LCDM essentially perfectly.
+- **Best D₂** (5.75,−0.170,55): χ²_full=2613.8 (+40.7), D₂=776 μK² (24%↓), supp=39%. Best quadrupole suppression (true ℓ=2 value; the older quoted 677 μK² was the ℓ=4 multipole — see §12 note).
+- **Best balance** (5.70,−0.170,52): χ²_full=2582.6 (+9.6), D₂=851 μK² (17%↓), supp=36%. Good χ² + meaningful D₂ suppression.
 - Punctuated (reference only): φ₀=12.00, y₀=0.000, N_star=77.2, m=1.1323e-7, λ=3.3299e-15
 
 ### Key Constraint
-USR suppression at CMB scales requires fine-tuned initial conditions. The mechanism works (D₂ down 34% at cost of +41 χ²) but no config outperforms LCDM across the full spectrum. Deep dips (D₂<700) come at higher χ²_full cost.
+USR suppression at CMB scales requires fine-tuned initial conditions. The mechanism works (D₂ down 24% at cost of +41 χ²) but no config outperforms LCDM across the full spectrum. Deeper low-ℓ suppression (e.g. D₄ ≈ 677 μK² at ℓ=4, 26% below LCDM) comes at higher χ²_full cost.
 
 ### Reference Files
 - `models/punctuated.py` — Punctuated inflaton (validation only) bg_steps=100k
@@ -287,7 +289,15 @@ fit half-width `ns_window` is the only separate knob.
 | Workflow | Default k_pivot | Default ns_window | Fit window |
 |----------|---------------|------------------|------------|
 | Higgs / power suppression | 0.002 Mpc⁻¹ | 4.0 | [5×10⁻⁴, 8×10⁻³] |
-| Ezquiaga / PBH | 0.05 Mpc⁻¹ | 3.0 | [0.017, 0.15] |
+| Ezquiaga / PBH | 0.002 Mpc⁻¹ | 3.0 | [5×10⁻⁴, 8×10⁻³] |
+
+> **Pivot and N_star are degenerate.** The pivot fixes the code→Mpc⁻¹
+> conversion `C = k_pivot_phys / k_pivot_code`, with
+> `k_pivot_code = aH(N_total − N_star)` falling as `exp(−N_star)`. Holding
+> `C` fixed requires `N_star_new = N_star_old + ln(k_pivot_old/k_pivot_new)`,
+> so moving the pivot alone rescales every derived mass by
+> `(k_new/k_old)^-2` — 625× for 0.05 → 0.002. Declare the pivot in the
+> config, never override it on the CLI for a config that already sets it.
 
 **CLI flags (on every script that uses the pivot):**
 ```
@@ -330,13 +340,17 @@ The root-level solver files (`inf_dyn_background.py`, `inf_dyn_MS_full.py`, `psp
 
 After the `find_end_of_inflation` fix (forward-scan with permanence check), no Higgs USR config outperforms LCDM across the full spectrum. The best configs achieve significant D₂ suppression at modest χ² cost:
 
-| Config | χ²_full (ℓ=2-2508) | D₂ [μK²] | Suppression | Δχ² vs LCDM |
-|--------|-------------------|-----------|-------------|-------------|
-| 6.40,−0.475,59 | 2574.2 | 918 (−11%) | 31% | +1.2 |
-| 5.70,−0.170,52 | 2582.6 | 847 (−18%) | 36% | +9.6 |
-| 5.75,−0.170,55 | 2613.8 | 677 (−34%) | 39% | +40.7 |
-| 6.55,−0.780,50 | 2637.6 | 835 (−19%) | 47% | +64.6 |
-| LCDM | 2573.0 | 1029 | — | — |
+**D₂ column correction:** the previously quoted values (918/847/677/835) were the D_ell array elements at index 2, i.e. **ℓ=4**, not the quadrupole (ℓ=2). True quadrupoles (ℓ=2) from the same verification runs:
+
+| Config | χ²_full (ℓ=2-2508) | D₂ (ℓ=2) [μK²] | D₄ (ℓ=4) [μK²] | Suppression (P_S) | Δχ² vs LCDM |
+|--------|-------------------|----------------|-----------------|-------------------|-------------|
+| 6.40,−0.475,59 | 2574.2 | 997 | 918 | 31% | +1.2 |
+| 5.70,−0.170,52 | 2582.6 | 851 | 847 | 36% | +9.6 |
+| 5.75,−0.170,55 | 2613.8 | 784 | 677 | 39% | +40.7 |
+| 6.55,−0.780,50 | 2637.6 | 811 | 835 | 47% | +64.6 |
+| LCDM | 2573.0 | 1029 | 920 | — | — |
+
+Current pipeline (post solve_ivp refactor, T_max=500) shifts the reference config slightly: D₂=776.5 μK² (24%↓), D₄=669.5 μK² (27%↓), Δχ²_lowℓ=−1.60.
 
 **Diagnostic script:** `scripts/run_full_analysis.py` — runs full pipeline, produces broken-axis D_ℓ plot with Planck data.
 **Quick scan:** `python scripts/camb_scan.py --phase broad --quick --full-chi2` (~20 min).
@@ -346,51 +360,23 @@ After the `find_end_of_inflation` fix (forward-scan with permanence check), no H
 - Unbinned TT/TE/EE spectrum (ℓ=2-2508)
 - Low-ℓ Commander data (ℓ=2-29)
 
-### 13. Background Evolution — Standard Higgs vs Ezquiaga CHI
+### 13. Background Evolution — Standard Higgs
 
-**Standard Higgs** (`models/higgs.py:HiggsModel`): ODE variable `x = φ` (Jordan frame). Potential `f(x) = (1 - e^{-αx})²`, monotonic decreasing, no features. USR is **kinetic-driven** — comes from initial `y₀` (small `|y₀|` causes a freeze). Kinetic dominance at start (`ε_H≈3`), Hubble friction kills velocity in <0.1 e-fold, field freezes (`ε_H` dips to ~10⁻³), then catches SR attractor. Tunable via `y₀`.
+**Standard Higgs** (`models/higgs.py:HiggsModel`): ODE variable `x = φ` (Jordan
+frame). Potential `f(x) = (1 - e^{-αx})²`, monotonic decreasing, no features. USR
+is **kinetic-driven** — comes from initial `y₀` (small `|y₀|` causes a freeze).
+Kinetic dominance at start (`ε_H≈3`), Hubble friction kills velocity in <0.1
+e-fold, field freezes (`ε_H` dips to ~10⁻³), then catches the SR attractor.
+Tunable via `y₀`.
 
-**Ezquiaga CHI** (`models/ezquiaga_chi.py:EzquiagaCHIModel`): Physics described in Jordan frame with `x = φ/μ`. ODE integration uses canonically normalized Einstein frame field χ (numerical spline φ↔χ). Potential (Eq. 6) has a near-inflection from RG running of both λ(x) and ξ(x). Plot potential as V/V₀ vs `x = φ/μ` (paper convention). USR is **potential-driven** — η_H crosses zero from the inflection. Default χ₀=6.0 maps to φ₀≈1.94 M_P. NaN-patches required because field can stall near inflection.
+**Key contrast:** Standard Higgs USR is an initial-condition effect (tune `y₀`),
+whereas Ezquiaga CHI USR is structural (near-inflection from RG running).
 
-**Why χ exists:** The Jordan frame action has a non-minimal coupling ξ(φ)φ²R. Conformal transforming to the Einstein frame makes gravity canonical but the scalar kinetic term becomes non-canonical. The field redefinition φ→χ (Eq. 5) absorbs this back into a canonical `-½(∂χ)²`. This lets the ODE solver use the standard Klein-Gordon equation `χ'' + 3Hχ' + V'(χ) = 0` without knowing about ξ, the conformal factor Ω, or the transformation chain. The φ↔χ spline is purely computational plumbing — all physics (potential shape, inflection, slow-roll) is in the Jordan frame x = φ/μ.
+> **Ezquiaga CHI** — use the tracked model, configs and pipeline modules described
+> in §17. A fresh clone must not depend on ignored manuscript directories or
+> machine-local reproduction notes.
 
-Parameters (paper's published, ROUNDED):
-- `λ₀ = 2.23×10⁻⁷`, `b_λ = 1.2×10⁻⁶` → `a = 5.3812`
-- `ξ₀ = 7.55`, `b_ξ = 11.5` → `b = 1.5232`
-- `c = 0.77`, `x_c = 0.784`, `κ²μ² = 0.102`
-
-**CRITICAL:** The published values are rounded and do NOT satisfy the inflection conditions (paper's Eqs. a-b). For x_c=0.784, c=0.77, the exact inflection values are:
-- `a_exact = 5.335304` (0.86% lower than published)
-- `b_exact = 1.519340` (0.25% lower than published)
-
-The paper's rounded parameters give β≈−0.018 (negative — creates a bump, not an inflection), so the field gets trapped at a local minimum. Use `inflection_parameters(x_c, c, β)` from `models/ezquiaga_chi.py` to compute self-consistent values:
-
-```python
-from models.ezquiaga_chi import inflection_parameters
-a, b = inflection_parameters(0.784, 0.77, beta=1e-5)
-# a=5.33530386, b=1.51932465
-b_lambda = a * lambda_0   # e.g. 1.190e-6 for lambda_0=2.23e-7
-b_xi = b * xi_0           # e.g. 11.471 for xi_0=7.55
-```
-
-**Working configurations** (paper's reference: β=10⁻⁵, x_c=0.784, c=0.77):
-
-| χ₀ | φ₀ (M_P) | N_total | k=0.002 at χ | n_s (k=0.002) | n_s (k=0.05) | Match to ref |
-|----|----------|---------|-------------|---------------|--------------|-------------|
-| 6.5 | 2.31 | 64.1 | 4.82 | 0.85 | 0.79 | Too red, CMB off plateau |
-| 7.5 | 3.27 | 78.6 | 6.40 | 0.940 | 0.931 | Close |
-| **8.0** | **3.90** | **87.4** | **7.06** | **0.957** | **0.952** | **Matches paper n_s=0.952** |
-| 8.5 | 4.69 | 97.0 | 7.69 | 0.967 | 0.964 | Slightly too blue |
-
-With χ₀=8.0, k=0.05 (Planck pivot) at χ≈6.8 gives n_s=0.952 — exact match to paper's reference. The paper's N=65 e-folds and n_s=0.952 require enough plateau before the inflection (χ₀≥8) so CMB scales stay on the flat part.
-
-**Critical: pivot finding by k = a·H, not hardcoded N=55.** The standard N=55 convention assumes a specific expansion history that doesn't hold here. The inflection steals ~33.5 e-folds (ΔN), shifting the k↔N mapping. Always find the pivot by matching k = a·H to the target scale.
-
-**Diagnostic plots**: `scripts.plotting.plot_ezquiaga_diagnostics()` — N-χ, V/V₀ vs x, P_S(N).
-**SR vs MS comparison**: `scripts.plotting.plot_ps_sr_ms_comparison()` — P_S(k) overlay with ratio panel.
-Pivot found by k=a·H.
-
-**Key contrast**: Standard Higgs USR = initial-condition effect (tune `y₀`). Ezquiaga USR = structural (near-inflection from RG running). PBH-focused — the peak is at small scales (k∼10¹⁴ Mpc⁻¹) for PBH formation (0.01-100 M_⊙).### 15. MS n_s Oscillation vs Smooth SR — Physics, Not Numerical
+### 14. MS n_s Oscillation vs Smooth SR — Physics, Not Numerical
 
 When sweeping x₀ at fixed y₀, SR n_s varies **monotonically** while MS n_s shows
 a small **oscillation** (~0.008 amplitude, ~0.004 x₀ period). This is real
@@ -415,209 +401,17 @@ SR never sees this: it samples one N, one formula, no running.
 - bg_steps 1000 vs 10000 → same oscillation (not from grid resolution)
 - Perfectly reproducible: same x₀ gives same n_s to float64 precision
 
-### 16. Figure 3 Reproduction — PBH Abundance (1705.04861)
-
-**Config:** `configs/ezquiaga_fig3.json`
-**Plot:** `outputs/plots/pbh/pbh_phi8.00_y0-0.000_nstar87.4.png`
-**Run:** `python scripts/pspectrum_pipeline.py --config configs/ezquiaga_fig3.json && python scripts/pbh_abundance.py --ms-json outputs/simulations/pspectra/ps_phi8.00_y0-0.000_nstar65.0.json --zeta-c 0.077`
-
-**All Ezquiaga-related outputs archived in:** `outputs/Ezquiaga/` (with README)
-
-**Parameter comparison vs paper reference:**
-
-| Parameter | Paper Ref | Our Fig3 Config | Δ |
-|-----------|-----------|-----------------|---|
-| **x_c** (critical point) | 0.784 | 0.784 | — |
-| **c** (ξ₀κ²μ²) | 0.77 | 0.77 | — |
-| **β** (deviation from inflection) | 10⁻⁵ | 10⁻⁵ | — |
-| **χ₀** (initial field) | 8.0 | 8.0 | — |
-| **y₀** (initial velocity) | ~0 | -10⁻⁴ | — |
-| **λ₀** | 2.23×10⁻⁷ | 2.23×10⁻⁷ | — |
-| **ζ_c** (collapse threshold) | 0.052 | **0.077** | +48% |
-| **γ** (efficiency) | 0.4 | 0.4 | — |
-| **Accretion factor** | 3×10⁷ | 3×10⁷ | — |
-| **N_star** | **65** | **65** | ✓ (same) |
-| **k_pivot** | **0.05 Mpc⁻¹** | **0.05 Mpc⁻¹** | ✓ (same) |
-
-**Result comparison:**
-
-| Metric | Paper Ref | Our code | Δ |
-|--------|-----------|----------|---|
-| **Ω_PBH^eq** | **0.42** | **0.27** | 1.6× |
-| **μ (peak M_present)** | **~11 M_⊙** | **0.4 M_⊙** | 28× |
-| **P_S_peak** | **4.8×10⁻⁵** | **1.04×10⁻⁴** | 2.2× |
-| **P_S_peak/As** | **2.3×10⁴** | **5.0×10⁴** | 2.2× |
-
-**Key notes:**
-- The paper's **rounded** parameters (a=5.381, b=1.523) give β≈-0.018 (bump, not inflection → field stalls, N_total=182). All runs use `inflection_parameters()` for self-consistent (a, b).
-- Our MS solver with the same stated parameters gives the same P_S amplitude (1.04×10⁻⁴ peak) but places the peak at k ≈ 3×10¹⁰ Mpc⁻¹, not k ≈ 6×10⁹. This is a solver implementation difference.
-- ζ_c=0.077 is within the paper's stated uncertainty range ζ_c ∈ (0.05, 1) [Sec III].
-- Archive at `outputs/Ezquiaga/` contains configs, plots, MS outputs, sweep logs.
-
-### 17. No Inline Python Code
+### 15. No Inline Python Code
 
 **NEVER** run inline `python -c "..."` or `python <<EOF` for physics analysis. It is non-reproducible, un-tracked, and un-reviewable. Use one of:
 - **Config file** + `pspectrum_pipeline.py` for MS computation
-- **`scripts/pbh_abundance.py --ms-json`** for PBH abundance
+- **`scripts/full_pbh_pipeline.py --config <cfg>`** for PBH abundance + mass function
 - **`scripts/sweep_pbh_params.py`** for parameter sweeps
 - **`scripts/plotting.py`** for plotting
 
 The one exception: short (≤5 line) diagnostics to check file contents or list directories. Any physics computation must use the proper scripts.
 
-### 18. Ezquiaga PBH Mass Shift — LIGO Constraint
-
-The Ezquiaga CHI paper's reference configuration (x_c=0.784, c=0.77, β=10⁻⁵) produces PBHs with present-day mass ~0.4-11 M_⊙ (stellar range), which is **ruled out by LIGO** bounds on PBH dark matter in the 1-100 M_⊙ range.
-
-**Primary project goal for Ezquiaga:** Find parameters that shift the PBH mass distribution to **lower masses** (higher k_peak), targeting the sub-solar gap [10⁻⁶, 10⁻²] M_⊙ or the asteroid gap [10⁻¹⁷, 10⁻¹⁵] M_⊙. These mass ranges are not ruled out by current observations.
-
-**n_s compatibility with Planck is secondary.** The priority is mass range placement, not spectral index fitting.
-
-**Mass ↔ k_peak mapping** (with accretion factor 3×10⁷):
-
-| Target | M_present [M_⊙] | k_peak [Mpc⁻¹] |
-|--------|-----------------|----------------|
-| LIGO range (ruled out) | 0.1-100 | 2×10⁹–6×10¹⁰ |
-| Sub-solar gap | 10⁻⁶–10⁻² | 2×10¹¹–2×10¹³ |
-| Asteroid gap | 10⁻¹⁷–10⁻¹⁵ | 6×10¹⁷–6×10¹⁸ |
-
-### 19. Empirical Results from Systematic Sweeps
-
-#### Parameter trends
-
-| Trend | Effect on k_peak | Effect on n_s |
-|-------|-----------------|---------------|
-| ↑ xc | ↑ higher k (lower M, left) | ↑ bluer |
-| ↓ xc | ↓ lower k (higher M, right) | ↓ redder (fails near b<0 bound) |
-| ↑ c | ↑ higher k (lower M, left) | ↓ redder (asymptotes ~1.018) |
-| ↑ β | ↓ lower k (higher M, right) or kills peak | ↓ redder |
-| ↑ N_star | ↑ higher k (lower M, left) | ↑ bluer |
-| ↑ χ₀ | saturates for N_total > 165 | tiny effect |
-
-#### Note on x_c effect
-
-At first glance, higher x_c should mean the inflection is reached **sooner** (fewer e-folds from start), so the scales exiting at the inflection should be **larger** (higher mass). However, our sweeps show higher x_c → **higher k (lower mass)**. This is because changing x_c also changes `a` and `b` via `inflection_parameters(x_c, c, beta)`, which redesigns the entire potential — not just shifts the inflection position. The plateau gets qualitatively longer/steeper at higher x_c, which dominates over the simple field-position argument. Two competing effects:
-
-1. *Naive effect:* Higher x_c → inflection reached sooner → larger scales (higher M)
-2. *Potential reshaping effect:* Higher x_c → (a, b) change → plateau stretches → more e-folds → smaller scales (lower M)
-
-Effect 2 dominates in our model.
-
-#### USR peak existence criterion
-
-A real USR peak (k_peak > 1e6) appears when **BOTH** conditions hold:
-1. N_total > 165 (sufficient e-folds)
-2. β < β_critical ≈ 4×10⁻⁴ (at c=1.86, xc=0.79), where β_critical depends on (xc, c)
-
-The physical threshold is the residual slope V'(x_c) at the inflection:
-- V'(xc) < ~5×10⁻⁵ → USR peak forms
-- V'(xc) > ~7×10⁻⁵ → no USR peak
-
-β controls this slope linearly: V'(xc) ≈ 1.4 × 10⁻⁴ × (β/9×10⁻⁴) at (xc=0.79, c=1.86).
-
-#### High-c, high-β regime
-
-At c=1.86, the plateau is very stretched and the inflection is at a different position in field space. This gave the first **resolved** (non-grid-boundary) peak at k=9.12×10¹⁷ with:
-- β=3e-4 → n_s=1.012, asteroid peak at k=9.1e17, M=4.7e-16 M_⊙
-- β=5e-4 → n_s=1.000, no USR peak
-- β=9e-4 → n_s=0.966, no USR peak
-
-#### What β actually does
-
-β creates a **positive slope** at the inflection point x_c in the potential V(x):
-- β=0: V'(xc) ≈ 0 (exact inflection, field stalls → strong USR → asteroid peak)
-- β=3e-4: V'(xc) ≈ +4.2×10⁻⁵ (weak USR → weak peak at k=9e17)
-- β=9e-4: V'(xc) ≈ +1.25×10⁻⁴ (no USR → no peak, field rolls through)
-
-The potential value V(x_c) changes by only 0.02% across the full β range. The slope at x_c is the key parameter.
-
-**N_star is the dominant knob for PBH mass targeting.** β controls USR strength (peak amplitude), but N* shifts the entire P_S(k) along the k-axis via the k↔N pivot mapping. δ(N*) = +1 shifts k_peak by ×e ≈ ×2.7. The difference between sub-solar (k~10¹¹) and asteroid (k~10¹⁸) masses is δ(N*) ≈ +6 at fixed β. β fine-tunes which specific mass bin within the target regime — N* selects the regime.
-
-### 20. Ezquiaga SM-Allowed Parameter Ranges (from 1705.04861)
-
-From paper lines 302-303 (ΔN ∈ (30,35) for viable PBH production):
-
-| Parameter | Paper Ref | SM-Allowed Range | Derived |
-|-----------|-----------|------------------|---------|
-| λ₀ | 2.23×10⁻⁷ | (0.01–8)×10⁻⁷ | Higgs quartic at critical scale |
-| ξ₀ | 7.55 | **0.5–15** | Non-minimal coupling |
-| κ²μ² | 0.102 | **0.05–1.2** | Critical scale squared |
-| b_λ | 1.2×10⁻⁶ | (0.008–4)×10⁻⁶ | β_λ running coefficient |
-| b_ξ | 11.5 | **1–18** | β_ξ running coefficient |
-| **c = ξ₀·κ²μ²** | **0.77** | **[0.025, 18]** | Combined: 0.5×0.05 ≤ c ≤ 15×1.2 |
-| β | 10⁻⁵ | **(0.1–9)×10⁻⁴** | From Fig 2 (n_s, r plane) |
-| ΔN | 33.5 | **10–45** | From Fig 2 right panel |
-
-**Note:** The paper constrains these to ΔN ∈ (30,35) for "large PBH production." Our solver shows viable USR peaks at lower ΔN as well, so this range is a guide, not a hard limit.
-
-**Sweep coverage of allowed parameter space:**
-
-| Parameter | Allowed | Swept | Fraction |
-|-----------|---------|-------|----------|
-| c | [0.025, 18] | [0.5, 10] | ~50% |
-| β | [10⁻⁶, 9×10⁻⁴] | [10⁻⁶, 9×10⁻⁴] | **100%** |
-| x_c | ~[0.75, 0.85] | [0.75, 0.85] | **100%** |
-| χ₀ | > x_c | [4.0, 8.0] | partial |
-| N_star | [50, 70] | [50, 70] | **100%** |
-
-**Empirical from our sweeps (updated):**
-- USR peak appears only when N_total > 165 AND β < β_critical (depends on xc, c)
-- n_s asymptotes toward ~1.018 for very high c (5.0+), never crossing below 1
-- n_s can cross below 1 only when USR peak is absent (β > β_critical)
-- k_peak = 1e18 (asteroid) is stable across c ∈ [0.77, 5.0] at xc≥0.79 (grid boundary)
-- First resolved (non-grid-boundary) peak at k=9.1×10¹⁷ at c=1.86, β=3e-4, xc=0.79
-- The search plan is documented in `docs/pbh_search_plan.md`
-
-### 21. Best PBH Configs — Sub-solar & Asteroid (Press-Schechter + Chisholm legacy)
-
-Two independently-verified configs producing real (non-boundary) USR peaks with
-clean observational-constraint fits, companion JSONs auto-generated on plot output.
-Both were computed with the legacy **Press-Schechter** formation + **Chisholm** (3×10⁷) accretion:
-
-| Region | Config | M_peak [M⊙] | f_total | ζ_c | n_s | Formation | Accretion | File |
-|--------|--------|-------------|---------|-----|-----|-----------|-----------|------|
-| **Sub-solar** | β=2e-5, N*=66 | 1.97e-05 | 0.183 | 0.0765 | 0.9501 | Press-Schechter | Chisholm | `configs/ezquiaga/subsolar_pbh.json` |
-| **Asteroid** | β=1.8e-4, N*=72 | 1.29e-16 | 0.128 | 0.0488 | 0.9663 | Press-Schechter | Chisholm | `configs/ezquiaga/asteroid_pbh.json` |
-
-Both at χ₀=8.0, x_c=0.784, c=0.77. Reproduce with:
-```bash
-python scripts/full_pbh_pipeline.py --config configs/ezquiaga/subsolar_pbh.json --tag rank02
-python scripts/full_pbh_pipeline.py --config configs/ezquiaga/asteroid_pbh.json --tag rank07
-```
-
-### 22. Ezquiaga Parameter Relationships & Config Structure
-
-**Fundamental potential parameters:**
-- `a = b_λ / λ₀`, `b = b_ξ / ξ₀` — dimensionless RG ratios. These define the potential shape.
-- `λ₀`, `ξ₀` — absolute scale. `λ₀=2.23e-7, ξ₀=7.55` are fixed from SM RG running (paper values).
-- `c = ξ₀·κ²μ²` — plateau width. This is the tunable scale parameter.
-- `V₀ = λ₀·μ⁴/4` — overall potential energy scale.
-
-**Two ways to specify a config:**
-
-1. **Raw RG coefficients** (`paper.json`): store `b_λ, b_ξ, λ₀, ξ₀, c` directly. Constructor computes `a=b_λ/λ₀`, `b=b_ξ/ξ₀`. No inflection block. This is what the paper literally published — the numbers produce a local minimum (β≈−0.018), not an inflection. Field stalls at N≈182.
-
-2. **Inflection parametrization** (all other configs): store `x_c, c, β`. Pipeline calls `inflection_parameters(x_c, c, β)` which computes the exact `a, b` that satisfy V'(x_c)=V''(x_c)=0 (for β=0) or a controlled deviation (β>0). These override whatever the constructor computed from `b_λ`/`b_ξ`. The `b_λ`/`b_ξ` defaults are irrelevant in this path.
-
-**Key consequence:** The `inflection` parametrization assumes `a = a_exact(x_c,c)`. It ONLY varies `b` via `b = (1-β)·b_exact`. If both `a` and `b` are wrong (as in the paper's published numbers), this parametrization cannot represent them — you need the raw RG path instead.
-
-**Config directory structure:**
-- `configs/ezquiaga/` — single-run configs, all in canonical nested format.
-  - `paper.json` — raw RG path (NO inflection block). Stalls. Documents the paper's literal published numbers.
-  - All others — inflection path (HAS inflection block). Produce USR. Differ only in `c` and `β`.
-- `configs/sweeps/pbh/` — grid sweep configs for `sweep_pbh_params.py` (different flat schema).
-
-**What actually varies across working configs:**
-| Config | c | β | a_eff | b_eff | b_λ_eff | b_ξ_eff |
-|--------|---|---|---|---|---|---|
-| beta1e-5 | 0.77 | 1e-5 | 5.335304 | 1.519325 | 1.190e-6 | 11.471 |
-| perfect | 0.77 | 0 | 5.335304 | 1.519340 | 1.190e-6 | 11.471 |
-| tweaked | 0.771 | 4e-5 | 5.330933 | 1.517840 | 1.189e-6 | 11.460 |
-| subsolar | 0.77 | 2e-5 | 5.335304 | 1.519339 | 1.190e-6 | 11.471 |
-| asteroid | 0.77 | 1.8e-4 | 5.335304 | 1.519334 | 1.190e-6 | 11.471 |
-
-`λ₀=2.23e-7, ξ₀=7.55` are universal across all. `a_eff` barely varies (only via `c`). The radical physics differences come from `b_eff` at the 6th decimal (controlled by `β`).
-
-### 23. Fortran MS Solver Backend — Primary Backend
+### 16. Fortran MS Solver Backend — Primary Backend
 
 The Hot Path comoving MS grid integration is ported to native Fortran 90 (`fortran/ms_solver.f90`) with OpenMP multi-threaded parallelization over comoving modes.
 
@@ -630,31 +424,33 @@ The Hot Path comoving MS grid integration is ported to native Fortran 90 (`fortr
 - Old solvers: `inf_dyn_MS_full.py` (Python/scipy) and `numba_ms_solver.py` (Numba) are **not deleted**. They serve as reference implementations and debugging fallbacks.
 - Validation: `fortran/test_vs_numba.py` checks single-mode trajectory correctness, full comoving grid agreement across three key configurations (within relative difference < 1e-4), and CAMB observable compatibility.
 
-### 24. PBH Config Formation & Accretion Metadata
+### 17. Ezquiaga CHI / PBH — Public Configuration Contract
 
-Config JSONs can carry **formation** and **accretion** top-level keys recording
-which models were used to compute the results:
-
-```json
-{
-  "model": "EzquiagaCHIModel",
-  "formation": "press_schechter",
-  "accretion": "Chisholm",
-  ...
-}
-```
-
-**Supported values:**
-- `formation`: `"compaction"` (Escrivà 2021/2022 profile-dependent) or `"press_schechter"` (legacy erfc ζ_c formula)
-- `accretion`: `"PR"` (Park-Ricotti with radiative feedback), `"BHL"` (Bondi-Hoyle-Lyttleton), `"Chisholm"` (legacy 3×10⁷ factor), `"Eddington"` (Eddington-limited with DM halo boost), `"Merger"` (hierarchical merger history, reserved/not yet wired in CLI)
-
-**CLI precedence:**
-- `--formation` / `--accretion` CLI flags override config values with a warning
-- Omit the flag to let config value apply
-- When both are absent: `"press_schechter"` + `"PR"` (defaults)
-
-**Filename convention (managed by `scripts.plotting.make_pbh_filename`):**
-Formation codes: `cmp` (compaction), `psch` (press_schechter)
-Accretion codes: `PR`, `BHL`, `Edd` (Eddington), `Chs` (Chisholm), `Mrg` (Merger)
-Pattern: `{prefix}_phi{phi0}_y0{y0}_nstar{nstar}_{formation}_{accretion}{ext}`
-Example: `pbh_phi8.00_y0-0.000_nstar72.0_cmp_PR.png`
+- Model implementation: `models/ezquiaga_chi.py:EzquiagaCHIModel`. The potential
+  uses the Jordan-frame variable `x = φ/μ`; the ODE field and initial
+  `ics.x0` are the canonically normalized Einstein-frame field χ.
+- Raw RG inputs specify `lambda_0`, `b_lambda`, `xi_0`, `b_xi` and `c` in
+  `model_params`. The model derives `a = b_lambda/lambda_0` and `b = b_xi/xi_0`.
+- For self-consistent inflection inputs, use
+  `models.ezquiaga_chi.inflection_parameters(x_c, c, beta)`. Do not substitute
+  rounded raw RG coefficients for this parametrization. The helper fixes
+  `a = a_exact(x_c, c)` and sets `b = (1-beta) * b_exact(x_c, c)`.
+- Single-run configs live in `configs/ezquiaga/`: `model`, `model_params`,
+  optional `inflection`, `ics` and `pipeline` form the nested config.
+  `scripts/config_loader.py` maps these fields to CLI defaults.
+- Declare `pipeline.k_pivot_phys`, `N_star` and the k-grid in the config.
+  The same pivot must drive A_s normalization and n_s extraction. Do not
+  override a config's pivot when reproducing its scale mapping.
+- Run `python scripts/full_pbh_pipeline.py --config <config.json>` for PBH
+  abundance, or `python scripts/reproduce_ezquiaga_paper_params.py` to check
+  the published rounded-coupling parametrization.
+- Top-level `formation` and `accretion` select the corresponding models;
+  explicit CLI flags take precedence. `Chisholm1` means unit accretion growth,
+  not the legacy `Chisholm` growth factor. See `scripts/accretion.py` for
+  implementations and the pipeline's `--help` for supported CLI choices.
+- Report which mass convention is used: the crest of the PBH distribution
+  `f(M)` is distinct from the mass inferred from the primordial `k_peak`.
+  Name the formation and accretion models when quoting a result.
+- Keep manuscript material and local reproduction results outside tracked
+  documentation. This section, tracked configs and source files supply the
+  public contract; no ignored directory is required.

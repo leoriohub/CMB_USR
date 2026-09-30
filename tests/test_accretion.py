@@ -210,6 +210,30 @@ class TestChisholmAccretion:
         assert M_hist[-1] == pytest.approx(1e-10)
         assert z_hist[-1] == pytest.approx(100.0)
 
+    def test_factor_one_is_identity(self) -> None:
+        """factor=1 leaves the mass unchanged at every z."""
+        acc = ChisholmAccretion(factor=1.0)
+        assert acc.factor == pytest.approx(1.0)
+        assert acc.M_of_redshift(42.0, 0.0) == pytest.approx(42.0)
+        assert acc.M_of_redshift(42.0, 100.0) == pytest.approx(42.0)
+        assert acc.mass_growth_factor(42.0, z_obs=0.0) == pytest.approx(1.0)
+
+    def test_custom_factor_scales_linearly(self) -> None:
+        """M_of_redshift(z=0) scales linearly with the configured factor."""
+        assert ChisholmAccretion(factor=1e3).M_of_redshift(2.0, 0.0) == pytest.approx(2e3)
+        assert ChisholmAccretion(factor=7.0).M_of_redshift(3.0, 0.0) == pytest.approx(21.0)
+
+    def test_invalid_factor_rejected(self) -> None:
+        """factor <= 0 raises PBHAccretionError."""
+        with pytest.raises(PBHAccretionError, match="factor"):
+            ChisholmAccretion(factor=0.0)
+        with pytest.raises(PBHAccretionError, match="factor"):
+            ChisholmAccretion(factor=-1.0)
+
+    def test_default_factor_is_chisholm(self) -> None:
+        """Default factor preserves the Chisholm (2006) 3x10^7 growth."""
+        assert ChisholmAccretion().factor == pytest.approx(3.0e7)
+
     def test_Chisholm_validation(self) -> None:
         """Chisholm raises PBHAccretionError for invalid inputs."""
         acc = ChisholmAccretion()

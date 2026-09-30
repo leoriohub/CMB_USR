@@ -1,5 +1,8 @@
 {
   "model": "EzquiagaCHIModel",
+  "description": "Sub-solar-window PBH at A=1 (no accretion growth): beta=2e-5, N*=60, M~6.5e-5, f=0.18.",
+  "formation": "press_schechter",
+  "accretion": "Chisholm1",
   "model_params": {
     "lambda_0": 2.23e-07,
     "xi_0": 7.55,
@@ -7,21 +10,23 @@
   },
   "inflection": {
     "x_c": 0.784,
-    "beta": 1e-05
+    "beta": 2e-05
   },
   "ics": {
     "x0": 8.0,
     "y0": -0.0001
   },
   "pipeline": {
-    "N_star": 65,
+    "N_star": 60.0,
     "k_min": 1e-10,
-    "k_max": 1e+28,
+    "k_max": 1e20,
     "num_k": 1000,
     "k_pivot_phys": 0.002,
     "n_cores": 8,
-    "no_plot": true,
+    "no_plot": false,
     "normalize_to_As": false,
+    "output_dir": "outputs/plots/pbh/a1",
     "ns_window": 3.0
-  }
+  },
+  "zeta_c": 0.065685
 }

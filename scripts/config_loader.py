@@ -83,6 +83,15 @@ def load_config(path):
         elif k == "zeta_c":
             # Could be single float or list
             flat["zeta_c"] = v if isinstance(v, list) else [v]
+        elif k == "k_pivot_phys":
+            # Canonical config key is k_pivot_phys, but some scripts expose
+            # the flag as --k-pivot (dest 'k_pivot') while pspectrum_pipeline
+            # uses --k-pivot-phys (dest 'k_pivot_phys'). Emit both so
+            # set_defaults binds the value whichever name the parser uses;
+            # without this the pivot silently keeps its CLI default and
+            # re-anchors every derived mass by (k_new/k_old)^-2.
+            flat["k_pivot_phys"] = v
+            flat["k_pivot"] = v
         else:
             flat[k] = v
 
@@ -91,5 +100,12 @@ def load_config(path):
         flat["zeta_c"] = raw["zeta_c"] if isinstance(raw["zeta_c"], list) else [raw["zeta_c"]]
     if "output_dir" in raw and "output_dir" not in flat:
         flat["output_dir"] = raw["output_dir"]
+    # Formation / accretion models are top-level keys in the canonical
+    # format.  Without this they are dropped and the pipeline silently
+    # falls back to its CLI default (Chisholm), so a config declaring e.g.
+    # "accretion": "PR" would run as Chisholm without warning.
+    for key in ("accretion", "formation"):
+        if key in raw and key not in flat:
+            flat[key] = raw[key]
 
     return flat

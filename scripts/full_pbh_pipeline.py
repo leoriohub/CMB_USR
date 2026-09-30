@@ -64,6 +64,23 @@ def _pbh_weighted_kgrid():
     return np.unique(np.concatenate([k_cmb_ns, k_pbh]))
 
 
+# Canonical Ezquiaga CHI grid. An explicit grid from a config/CLI wins, since
+# the grid sets the P_S peak location and hence every derived PBH mass.
+K_MIN_DEFAULT = 1e-10
+K_MAX_DEFAULT = 1e28
+NUM_K_DEFAULT = 501
+
+
+def resolve_kgrid(k_min=None, k_max=None, num_k=None):
+    """Log-uniform grid over declared bounds; PBH-weighted fallback if none."""
+    if k_min is None and k_max is None and num_k is None:
+        return _pbh_weighted_kgrid()
+    lo = K_MIN_DEFAULT if k_min is None else float(k_min)
+    hi = K_MAX_DEFAULT if k_max is None else float(k_max)
+    n = NUM_K_DEFAULT if num_k is None else int(num_k)
+    return np.logspace(np.log10(lo), np.log10(hi), n)
+
+
 # ── Press-Schechter helpers ────────────────────────────────────────────────
 
 
@@ -123,6 +140,9 @@ def run_full_pbh_pipeline(
     use_old_bounds=False,
     smooth_bounds=False,
     force=False,
+    k_min=None,
+    k_max=None,
+    num_k=None,
     k_pivot=0.05,
     ns_window=3.0,
     ns_method="lsq",
@@ -216,7 +236,17 @@ def run_full_pbh_pipeline(
 
     # ── 3. P_S(k): cache check or MS solver ────────────────────────────
     n_tr = round(N_total, 1)
-    fname = make_filename("ps", chi0, y0, n_tr, ".json")
+    # Filename identifies everything that changes P_S(k): the shape (c, beta)
+    # and the grid (which sets the peak location).
+    _kgrid = resolve_kgrid(k_min, k_max, num_k)
+    _extra = {
+        "c": f"{c:g}",
+        "b": f"{model.b:.6g}",
+        "kmin": f"{_kgrid.min():.0e}",
+        "kmax": f"{_kgrid.max():.0e}",
+        "nk": str(len(_kgrid)),
+    }
+    fname = make_filename("ps", chi0, y0, n_tr, ".json", **_extra)
     ps_dir = os.path.join(ROOT_DIR, "outputs/simulations/pspectra")
     os.makedirs(ps_dir, exist_ok=True)
     ps_path = os.path.join(ps_dir, fname)
@@ -228,11 +258,22 @@ def run_full_pbh_pipeline(
             rec = json.load(f)
         k_phys = np.array(rec["spectrum"]["k_phys"])
         P_S = np.array(rec["spectrum"]["P_S"])
+        # Legacy/hand-edited caches may not match; a wrong grid moves the peak.
+        if len(_kgrid) > 1 and (
+            not np.isclose(k_phys.min(), _kgrid.min(), rtol=1e-6)
+            or not np.isclose(k_phys.max(), _kgrid.max(), rtol=1e-6)
+        ):
+            raise RuntimeError(
+                f"Cached spectrum {ps_path} spans [{k_phys.min():.2e}, {k_phys.max():.2e}] "
+                f"but the requested grid spans [{_kgrid.min():.2e}, {_kgrid.max():.2e}]. "
+                f"Delete the stale cache or re-run with --force."
+            )
         cached = True
         print(f"Loaded cached P_S(k): {ps_path}")
     else:
-        k_grid = _pbh_weighted_kgrid()
-        print(f"MS solver: {len(k_grid)} k-modes, {workers} workers")
+        k_grid = _kgrid
+        print(f"MS solver: {len(k_grid)} k-modes "
+              f"[{k_grid.min():.1e}, {k_grid.max():.1e}], {workers} workers")
 
         if fast_sr:
             from scripts.plotting import compute_ps_sr
@@ -320,6 +361,7 @@ def run_full_pbh_pipeline(
         "PR": PR_Accretion,
         "BHL": PBHAccretion,
         "Chisholm": ChisholmAccretion,
+        "Chisholm1": ChisholmAccretion,
         "Eddington": EddingtonAccretion,
     }
 
@@ -328,6 +370,8 @@ def run_full_pbh_pipeline(
 
     if accretion_model == "BHL":
         accretion = PBHAccretion(model="BHL", lambda_acc=0.1)
+    elif accretion_model == "Chisholm1":
+        accretion = ChisholmAccretion(factor=1.0)
     else:
         accretion = _ACCRETION_FACTORY[accretion_model]()
 
@@ -344,8 +388,8 @@ def run_full_pbh_pipeline(
             f_pbh = np.asarray(pbh["f_pbh"], dtype=float)
 
             # Apply accretion
-            if accretion_model == "Chisholm":
-                M_present = M_form * 3e7
+            if isinstance(accretion, ChisholmAccretion):
+                M_present = M_form * accretion.factor
             else:
                 M_present = np.array([
                     accretion.M_of_redshift(float(m), 0.0) for m in M_form
@@ -417,7 +461,7 @@ def run_full_pbh_pipeline(
     if plot and zeta_c_best is not None and len(M_best) > 0:
         from scripts.plotting import make_pbh_filename
 
-        if formation_model == "press_schechter" and accretion_model == "Chisholm":
+        if formation_model == "press_schechter" and isinstance(accretion, ChisholmAccretion):
             from scripts.plotting import plot_pbh_abundance
             plot_pbh_abundance(
                 M_best,
@@ -427,7 +471,7 @@ def run_full_pbh_pipeline(
                 model_label=f"Ezquiaga CHI χ₀={chi0}, β={beta:.0e}, ζ_c={zeta_c_best}",
                 filename=make_pbh_filename(
                     "pbh", chi0, y0, N_total,
-                    formation="press_schechter", accretion="Chisholm",
+                    formation="press_schechter", accretion=accretion_model,
                     beta=beta, zc=zeta_c_best,
                 ),
                 category="pbh",
@@ -564,6 +608,12 @@ if __name__ == "__main__":
     p.add_argument("--tag", type=str, default=None,
                     help="Prefix for output filenames (e.g. 'rank07')")
     p.add_argument("--no-plot", action="store_true")
+    p.add_argument("--k-min", type=float, default=None,
+                   help="Min physical k [Mpc^-1]; overrides the PBH-weighted fallback grid.")
+    p.add_argument("--k-max", type=float, default=None,
+                   help="Max physical k [Mpc^-1]; overrides the PBH-weighted fallback grid.")
+    p.add_argument("--num-k", type=int, default=None,
+                   help="Number of k-modes when building a log-uniform grid.")
     p.add_argument(
         "--k-pivot",
         type=float,
@@ -585,9 +635,10 @@ if __name__ == "__main__":
     )
     p.add_argument(
         "--accretion",
-        choices=["PR", "BHL", "Chisholm", "Eddington"],
+        choices=["PR", "BHL", "Chisholm", "Chisholm1", "Eddington"],
         default=None,
-        help="Accretion model (default: Chisholm)",
+        help="Accretion model (default: Chisholm). Chisholm1 is the same "
+             "constant-factor model with factor=1 (no growth).",
     )
     p.add_argument(
         "--formation",
@@ -626,6 +677,7 @@ if __name__ == "__main__":
         beta=args.beta, xc=args.xc, c=args.c,
         workers=args.workers, zeta_c_vals=args.zeta_c,
         plot=not args.no_plot, force=args.force,
+        k_min=args.k_min, k_max=args.k_max, num_k=args.num_k,
         k_pivot=args.k_pivot, ns_window=args.ns_window,
         ns_method=args.ns_method,
         formation_model=formation_val,
@@ -661,7 +713,7 @@ if __name__ == "__main__":
                 beta=args.beta, zc=zc,
             )
             
-            if formation_val == "press_schechter" and accretion_val == "Chisholm":
+            if formation_val == "press_schechter" and accretion_val in ("Chisholm", "Chisholm1"):
                 from scripts.plotting import plot_pbh_abundance
                 plot_pbh_abundance(
                     zc_data["M"], zc_data["f_pbh"],
@@ -688,10 +740,13 @@ if __name__ == "__main__":
                     "PR": PR_Accretion,
                     "BHL": PBHAccretion,
                     "Chisholm": ChisholmAccretion,
+                    "Chisholm1": ChisholmAccretion,
                     "Eddington": EddingtonAccretion,
                 }
                 if accretion_val == "BHL":
                     accretion_inst = PBHAccretion(model="BHL", lambda_acc=0.1)
+                elif accretion_val == "Chisholm1":
+                    accretion_inst = ChisholmAccretion(factor=1.0)
                 else:
                     accretion_inst = _FACTORY[accretion_val]()
                     

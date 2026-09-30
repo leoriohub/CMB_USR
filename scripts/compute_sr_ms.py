@@ -56,8 +56,16 @@ def _output_dir():
 
 
 def _make_output_filename(model, chi0, y0):
+    """Cache key for SR+MS results.
+
+    MUST include the inflection shape parameters (c, a, b) as well as the
+    initial conditions: two configs differing only in beta (hence in a and b)
+    produce different spectra but share the same (chi0, y0), so omitting them
+    silently serves one configuration's cached spectrum to the other.
+    """
     x0 = chi0 if chi0 is not None else model.x0
-    return f"sr_ms_chi{x0:.2f}_y0{y0:+.3f}.json"
+    return (f"sr_ms_chi{x0:.2f}_y0{y0:+.3f}"
+            f"_c{model.c:.4f}_a{model.a:.6f}_b{model.b:.6f}.json")
 
 
 def save_sr_ms_output(data, model, chi0, y0):

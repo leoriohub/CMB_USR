@@ -1,6 +1,6 @@
 {
   "model": "EzquiagaCHIModel",
-  "description": "Sub-solar PBH: β=2e-5, N*=66, best balance of n_s and abundance. Computed with Press-Schechter + Chisholm.",
+  "description": "Sub-solar PBH: β=2e-5, N*=69.23, best balance of n_s and abundance. Computed with Press-Schechter + Chisholm.",
   "formation": "press_schechter",
   "accretion": "Chisholm",
   "model_params": {
@@ -17,16 +17,15 @@
     "y0": -0.0001
   },
   "pipeline": {
-    "N_star": 66,
+    "N_star": 69.23,
     "k_min": 1e-10,
     "k_max": 1e+28,
-    "num_k": 500,
-    "k_pivot_phys": 0.05,
+    "num_k": 1000,
+    "k_pivot_phys": 0.002,
     "n_cores": 8,
     "no_plot": false,
     "normalize_to_As": false,
     "zeta_c": [
-      0.076,
       0.0765
     ],
     "output_dir": "outputs/plots/pbh/top_configs",

@@ -16,8 +16,16 @@ import time
 from datetime import datetime
 
 from functools import lru_cache
+
+# Thread caps BEFORE any threading-capable import (numpy/CAMB/fortran):
+# 1 thread per worker so --workers scales out via the process pool and the parent
+# does not initialize a full-width OpenMP pool before forking. setdefault lets a
+# power user export OMP_NUM_THREADS=N to scale up per-solve instead.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("NUMBA_NUM_THREADS", "1")
+
 import numpy as np
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from pspectrum_pipeline import (
     run_pspectrum_pipeline, find_end_of_inflation,
@@ -185,6 +193,24 @@ def evaluate_config(phi0, y0, N_star, args, k_phys_grid=None,
         entry["chi2_binned_lcdm"] = chi2_binned_lcdm
     return entry
 
+
+def _scan_config(cfg):
+    """Run evaluate_config for one config dict inside a ProcessPoolExecutor worker.
+
+    Module-level (picklable) target. ``args`` is passed as its ``__dict__`` and
+    rebuilt as a Namespace here because argparse Namespaces don't pickle reliably
+    across contexts. The model is reconstructed by evaluate_config (None), avoiding
+    pickling the HiggsModel itself.
+    """
+    ns = argparse.Namespace(**cfg["args_dict"])
+    return evaluate_config(
+        cfg["phi0"], cfg["y0"], cfg["N_star"], ns,
+        k_phys_grid=cfg["k_phys_grid"],
+        executor=None,
+        model=None,
+    )
+
+
 def run_phase1(args, completed):
     phi0_vals = np.linspace(args.phi0_range[0], args.phi0_range[1],
                             args.n_phi0)
@@ -207,7 +233,7 @@ def run_phase1(args, completed):
     if getattr(args, 'quick', False):
         k_phys = build_weighted_kgrid(
             args.k_min, args.k_max, k_pivot_phys,
-            dense_zone=(1e-4, 1e-2), n_dense=20, n_outer=8,
+            dense_min=1e-4, dense_max=1e-2, n_dense=20, n_outer=8,
         )
         ells_grid = np.arange(args.ell_max + 1)
     else:
@@ -392,7 +418,7 @@ def run_phase2(args, completed, regions):
     if getattr(args, 'quick', False):
         k_phys = build_weighted_kgrid(
             args.k_min, args.k_max, k_pivot_phys,
-            dense_zone=(1e-4, 1e-2), n_dense=20, n_outer=8,
+            dense_min=1e-4, dense_max=1e-2, n_dense=20, n_outer=8,
         )
         ells_grid = np.arange(args.ell_max + 1)
     else:
@@ -417,6 +443,7 @@ def run_phase2(args, completed, regions):
         total_est = len(regions) * args.n_phi0_fine * args.n_y0_fine * args.n_nstar_fine
         t0 = time.time()
         done = [0]
+        n_ok = 0
 
         for reg_idx, (phi0_center, y0_center, ns_center) in enumerate(regions):
             phi0_vals = np.linspace(phi0_center - args.phi0_fine_window,
@@ -458,14 +485,15 @@ def run_phase2(args, completed, regions):
                         entry.pop("k_phys", None)
                         entry.pop("ells", None)
 
+                        if res.get("status") == "ok":
+                            n_ok += 1
+
                         _write_log(log_file, entry)
 
                         eta = (time.time() - t0) / done[0] * (total_est - done[0]) if done[0] else 0
                         chi2_str = (f"chi2={res.get('chi2', '?'):.1f}"
                                     if res.get("status") == "ok"
                                     else f"SKIP")
-                        n_ok = sum(1 for r in open(log_path).readlines()
-                                   if '"status": "ok"' in r) if os.path.exists(log_path) else 0
                         print(f"\r  [{done[0]:4d}/{total_est}] R{reg_idx+1} "
                               f"phi0={phi0:.2f} y0={y0:+.3f} N*={N_star:.0f} "
                               f"{chi2_str}  ok={n_ok}  ETA {eta/60:.0f}m",
@@ -501,17 +529,17 @@ def run_random_scan(args):
 
     k_phys = build_weighted_kgrid(
         args.k_min, args.k_max, k_pivot_phys,
-        dense_zone=(1e-4, 1e-2),
+        dense_min=1e-4, dense_max=1e-2,
         n_dense=20 if args.quick else 140,
         n_outer=8 if args.quick else 70,
     )
 
+    y0_abs = sorted(abs(v) for v in args.y0_range)
     configs = [(round(random.uniform(args.phi0_range[0], args.phi0_range[1]), 2),
-                round(-random.uniform(abs(args.y0_range[1]), abs(args.y0_range[0])), 3),
+                round(-random.uniform(y0_abs[0], y0_abs[1]), 3),
                 round(random.uniform(args.nstar_range[0], args.nstar_range[1]), 1))
                for _ in range(args.n_random)]
 
-    model = HiggsModel(lam=args.lam, xi=args.xi)
     done = 0
 
     print(f"\n{'='*60}", flush=True)
@@ -526,10 +554,16 @@ def run_random_scan(args):
 
     with open(log_path, "a") as log_file, \
          ProcessPoolExecutor(args.workers) as executor:
-        for i, (phi0, y0, nstar) in enumerate(configs):
-            res = evaluate_config(phi0, y0, nstar, args,
-                                  k_phys_grid=k_phys,
-                                  executor=executor, model=model)
+        futures = {executor.submit(_scan_config, {
+            "phi0": phi0, "y0": y0, "N_star": nstar,
+            "args_dict": vars(args), "k_phys_grid": k_phys,
+        }): i for i, (phi0, y0, nstar) in enumerate(configs)}
+
+        processed = 0
+        for fut in as_completed(futures):
+            i = futures[fut]
+            phi0, y0, nstar = configs[i]
+            res = fut.result()
             res["_type"] = "data"
             res["phi0"] = phi0
             res["y0"] = y0
@@ -540,10 +574,11 @@ def run_random_scan(args):
             if res.get("status") == "ok":
                 done += 1
 
-            if (i + 1) % 100 == 0:
+            processed += 1
+            if processed % 100 == 0:
                 elapsed = time.time() - t0
-                eta = elapsed / (i + 1) * (args.n_random - i - 1)
-                print(f"  [{i+1}/{args.n_random}] {elapsed:.0f}s "
+                eta = elapsed / processed * (args.n_random - processed)
+                print(f"  [{processed}/{args.n_random}] {elapsed:.0f}s "
                       f"ETA {eta:.0f}s  ok={done}", flush=True)
 
     elapsed = time.time() - t0
