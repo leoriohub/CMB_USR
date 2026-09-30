@@ -40,12 +40,18 @@ skills-lock.json
 .worktrees/
 cmb_anomaly.egg-info/
 paper.bak/
-# Notebooks with paper-figure exploration code (project-internal, not for version control)
-notebooks/*.ipynb
+# Local notebooks and analysis artifacts
+notebooks/
 node_modules/
 
 # One-off analysis scripts (non-reproducible)
 scripts/legacy/
+scripts/bench_beta_f_methods.py
+scripts/bench_compaction.py
+scripts/compaction_diagnostics.py
+scripts/run_comparison.py
+scripts/run_modern_pbh.py
+scripts/sweep_ns_mass_balance.py
 
 # Ezquiaga inflection parameters manuscript (root-level manuscript + outputs)
 /ezquiaga/
