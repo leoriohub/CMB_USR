@@ -180,7 +180,7 @@ Rule of thumb: if you would not put it on arXiv, do not put it in a .md file.
 
 The project covers two inflation models:
 - **Higgs inflation** (ξ=15000, λ=0.13) — primary target for CMB low-ℓ anomaly analysis. This file.
-- **Ezquiaga CHI** (`models/ezquiaga_chi.py`) — critical Higgs inflation with RG-running λ(ξ), PBH-focused. See `ezquiaga/AGENTS.md`.
+- **Ezquiaga CHI** (`models/ezquiaga_chi.py`) — critical Higgs inflation with RG-running couplings, PBH-focused. Public configuration guidance is in §17 below.
 
 Punctuated inflation (m=1.1323e-7, λ=3.3299e-15) is a reference model used **only** for validating solvers and cross-checking pipeline behavior — not as a primary target for analysis, optimization, or plotting. Do not run, tune, or analyze punctuated inflation unprompted.
 
@@ -372,9 +372,9 @@ Tunable via `y₀`.
 **Key contrast:** Standard Higgs USR is an initial-condition effect (tune `y₀`),
 whereas Ezquiaga CHI USR is structural (near-inflection from RG running).
 
-> **Ezquiaga CHI** — model parameters, the inflection conditions, config
-> structure, parameter trends, allowed ranges, PBH windows and formation/accretion
-> metadata — is documented in `ezquiaga/AGENTS.md`. Do not duplicate it here.
+> **Ezquiaga CHI** — use the tracked model, configs and pipeline modules described
+> in §17. A fresh clone must not depend on ignored manuscript directories or
+> machine-local reproduction notes.
 
 ### 14. MS n_s Oscillation vs Smooth SR — Physics, Not Numerical
 
@@ -424,7 +424,33 @@ The Hot Path comoving MS grid integration is ported to native Fortran 90 (`fortr
 - Old solvers: `inf_dyn_MS_full.py` (Python/scipy) and `numba_ms_solver.py` (Numba) are **not deleted**. They serve as reference implementations and debugging fallbacks.
 - Validation: `fortran/test_vs_numba.py` checks single-mode trajectory correctness, full comoving grid agreement across three key configurations (within relative difference < 1e-4), and CAMB observable compatibility.
 
----
+### 17. Ezquiaga CHI / PBH — Public Configuration Contract
 
-**Ezquiaga CHI / PBH work — model, configs, parameter ranges, windows, formation
-& accretion metadata — lives in `ezquiaga/AGENTS.md`.**
+- Model implementation: `models/ezquiaga_chi.py:EzquiagaCHIModel`. The potential
+  uses the Jordan-frame variable `x = φ/μ`; the ODE field and initial
+  `ics.x0` are the canonically normalized Einstein-frame field χ.
+- Raw RG inputs specify `lambda_0`, `b_lambda`, `xi_0`, `b_xi` and `c` in
+  `model_params`. The model derives `a = b_lambda/lambda_0` and `b = b_xi/xi_0`.
+- For self-consistent inflection inputs, use
+  `models.ezquiaga_chi.inflection_parameters(x_c, c, beta)`. Do not substitute
+  rounded raw RG coefficients for this parametrization. The helper fixes
+  `a = a_exact(x_c, c)` and sets `b = (1-beta) * b_exact(x_c, c)`.
+- Single-run configs live in `configs/ezquiaga/`: `model`, `model_params`,
+  optional `inflection`, `ics` and `pipeline` form the nested config.
+  `scripts/config_loader.py` maps these fields to CLI defaults.
+- Declare `pipeline.k_pivot_phys`, `N_star` and the k-grid in the config.
+  The same pivot must drive A_s normalization and n_s extraction. Do not
+  override a config's pivot when reproducing its scale mapping.
+- Run `python scripts/full_pbh_pipeline.py --config <config.json>` for PBH
+  abundance, or `python scripts/reproduce_ezquiaga_paper_params.py` to check
+  the published rounded-coupling parametrization.
+- Top-level `formation` and `accretion` select the corresponding models;
+  explicit CLI flags take precedence. `Chisholm1` means unit accretion growth,
+  not the legacy `Chisholm` growth factor. See `scripts/accretion.py` for
+  implementations and the pipeline's `--help` for supported CLI choices.
+- Report which mass convention is used: the crest of the PBH distribution
+  `f(M)` is distinct from the mass inferred from the primordial `k_peak`.
+  Name the formation and accretion models when quoting a result.
+- Keep manuscript material and local reproduction results outside tracked
+  documentation. This section, tracked configs and source files supply the
+  public contract; no ignored directory is required.

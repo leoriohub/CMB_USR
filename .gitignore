@@ -46,12 +46,6 @@ node_modules/
 
 # One-off analysis scripts (non-reproducible)
 scripts/legacy/
-scripts/bench_beta_f_methods.py
-scripts/bench_compaction.py
-scripts/compaction_diagnostics.py
-scripts/run_comparison.py
-scripts/run_modern_pbh.py
-scripts/sweep_ns_mass_balance.py
 
 # Ezquiaga inflection parameters manuscript (root-level manuscript + outputs)
 /ezquiaga/
