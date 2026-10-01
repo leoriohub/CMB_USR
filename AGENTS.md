@@ -451,6 +451,20 @@ The Hot Path comoving MS grid integration is ported to native Fortran 90 (`fortr
 - Report which mass convention is used: the crest of the PBH distribution
   `f(M)` is distinct from the mass inferred from the primordial `k_peak`.
   Name the formation and accretion models when quoting a result.
+- P_S(k) reuse is provenance-gated. `scripts/full_pbh_pipeline.py` owns its PBH
+  spectrum cache and writes records that carry a full-precision
+  `cache_identity` (writer, identity version, and the model, pivot, background,
+  requested k-grid, and solver recipe) alongside `metadata` and `spectrum`.
+  A cached file is reused only when its identity equals the current request
+  exactly; a missing, foreign, or mismatched identity is a miss and the
+  spectrum is recomputed (and the record overwritten). The human-readable
+  filename is not provenance, so rounded filename collisions cannot serve an
+  incompatible spectrum; the API's `force=True` bypasses the read. Formation, accretion,
+  ζ_c, plotting, SIGW, and worker count do not enter the identity — they are
+  recomputed for every request.
+- PBH abundance integration sorts the filtered (mass, abundance) pairs by mass
+  before the integral and the peak/viability selection, so totals are
+  independent of input order for distinct masses and the peak mass stays paired with its abundance.
 - Keep manuscript material and local reproduction results outside tracked
   documentation. This section, tracked configs and source files supply the
   public contract; no ignored directory is required.
