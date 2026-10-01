@@ -166,19 +166,3 @@ def test_resolve_kgrid_honors_declared_bounds():
     g3 = resolve_kgrid()
     assert g3.min() < 1e-2 and g3.max() >= 1e22
     assert len(g3) != 501
-
-
-@pytest.mark.fast
-def test_cache_filename_encodes_grid():
-    """Two grids must not share a cache path."""
-    from scripts.plotting import make_filename
-
-    def name(lo, hi, n):
-        return make_filename("ps", 8.0, -1e-4, 89.0, ".json",
-                             c="0.771", b="1.51783",
-                             kmin=f"{lo:.0e}", kmax=f"{hi:.0e}", nk=str(n))
-
-    canonical = name(1e-10, 1e28, 501)
-    other = name(1e-5, 1.0, 200)
-    assert canonical != other
-    assert "kmin1e-10" in canonical and "kmax1e+28" in canonical and "nk501" in canonical

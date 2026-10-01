@@ -14,6 +14,7 @@ Returns everything needed for downstream use.
 import json
 import os
 import time
+from typing import Any
 
 import numpy as np
 try:
@@ -31,8 +32,94 @@ from scripts.constants import (
     ACCRETION,
     NumpyJSONEncoder,
 )
-from scripts.plotting import make_filename
+from scripts.plotting import get_path, make_filename
 from scripts.observables import extract_ns, interpolate_As
+
+# ── P_S(k) cache provenance ────────────────────────────────────────────────
+#
+# The cache filename is human-readable and reuses rounded fields (c, b, grid
+# endpoints/count), so it is NOT provenance. Every reuse decision is made by
+# comparing a full-precision request identity embedded in the record. A
+# missing/foreign/mismatched identity is a miss and forces recomputation.
+_PS_CACHE_WRITER = "full_pbh_pipeline"
+_PS_CACHE_IDENTITY_VERSION = 1
+_PS_RECIPE_VERSION = 1
+
+# Fixed MS solver recipe. These exact values are both recorded in the request
+# identity and bound at the run_pspectrum_pipeline call, so an implicit default
+# drift cannot silently invalidate a cache that claims to match.
+_MS_RECIPE = {
+    "backend": "fortran",
+    "ms_method": "dp5",
+    "k_start_factor": 100.0,
+    "ms_steps": 5000,
+    "normalize_to_As": False,
+}
+
+
+def _ps_cache_identity(
+    model, *, chi0, y0, N_star, N_total, k_pivot, xc, beta, k_grid, fast_sr
+):
+    """Return JSON-serializable spectrum-affecting request provenance.
+
+    The identity covers everything that changes the stored primordial
+    P_S(k): initial conditions, pivot, model/potential parameters, background
+    settings, the resolved *requested* k-grid, and the solver recipe. It
+    deliberately excludes formation/accretion/ζ_c/plotting/SIGW settings and
+    workers, which only affect downstream observables.
+    """
+    solver: dict[str, object] = {
+        "source": "SR" if fast_sr else "MS",
+        "recipe_version": _PS_RECIPE_VERSION,
+    }
+    if not fast_sr:
+        solver.update(_MS_RECIPE)
+    return {
+        "model": {
+            "c": float(model.c),
+            "x_c": float(xc),
+            "beta": float(beta),
+            "lambda_0": float(model.lambda_0),
+            "b_lambda": float(model.b_lambda),
+            "xi_0": float(model.xi_0),
+            "b_xi": float(model.b_xi),
+            "a": float(model.a),
+            "b": float(model.b),
+            "v0": float(model.v0),
+        },
+        "ics": {"chi0": float(chi0), "y0": float(y0)},
+        "pivot": {"N_star": float(N_star), "k_pivot_Mpc": float(k_pivot)},
+        "background": {
+            "T_max": float(model.T_max),
+            "bg_steps": int(model.bg_steps),
+            "N_total": float(N_total),
+            "S": float(S),
+        },
+        "grid": [float(k) for k in np.asarray(k_grid, dtype=float).ravel()],
+        "solver": solver,
+    }
+
+
+def _ps_cache_matches(record, expected_identity):
+    """Return whether this pipeline owns a cache for this exact request.
+
+    Exact full-precision equality of the serialized identity governs reuse;
+    there is no tolerance and no hash. Missing type/writer/version/identity and
+    any differing spectrum input are all mismatches.
+    """
+    if not isinstance(record, dict):
+        return False
+    if record.get("_type") != "pspectrum":
+        return False
+    if record.get("writer") != _PS_CACHE_WRITER:
+        return False
+    if record.get("cache_identity_version") != _PS_CACHE_IDENTITY_VERSION:
+        return False
+    stored = record.get("cache_identity")
+    if not isinstance(stored, dict):
+        return False
+    return stored == expected_identity
+
 
 # ── Default ζ_c sweep ─────────────────────────────────────────────────────
 
@@ -235,9 +322,9 @@ def run_full_pbh_pipeline(
     print(f"Background: N_total={N_total:.4f}, end_idx={end_idx}")
 
     # ── 3. P_S(k): cache check or MS solver ────────────────────────────
-    n_tr = round(N_total, 1)
-    # Filename identifies everything that changes P_S(k): the shape (c, beta)
-    # and the grid (which sets the peak location).
+    # The filename is a deterministic, human-readable namespace; provenance
+    # lives in the record's full-precision cache_identity, so rounded filename
+    # collisions cannot silently accept an incompatible spectrum.
     _kgrid = resolve_kgrid(k_min, k_max, num_k)
     _extra = {
         "c": f"{c:g}",
@@ -246,30 +333,30 @@ def run_full_pbh_pipeline(
         "kmax": f"{_kgrid.max():.0e}",
         "nk": str(len(_kgrid)),
     }
-    fname = make_filename("ps", chi0, y0, n_tr, ".json", **_extra)
-    ps_dir = os.path.join(ROOT_DIR, "outputs/simulations/pspectra")
-    os.makedirs(ps_dir, exist_ok=True)
-    ps_path = os.path.join(ps_dir, fname)
+    ps_path = get_path(
+        "pspectra",
+        make_filename("ps_pbh", chi0, y0, N_star, ".json", **_extra),
+    )
+    identity = _ps_cache_identity(
+        model, chi0=chi0, y0=y0, N_star=N_star, N_total=N_total,
+        k_pivot=pivot_k, xc=xc, beta=beta, k_grid=_kgrid, fast_sr=fast_sr,
+    )
 
     cached = False
-    rec: dict = {}
+    rec: dict[str, Any] = {}
     if os.path.exists(ps_path) and not force:
         with open(ps_path) as f:
             rec = json.load(f)
+        if _ps_cache_matches(rec, identity):
+            cached = True
+            print(f"Loaded cached P_S(k): {ps_path}")
+        else:
+            rec = {}
+            print(f"Cache miss (incompatible provenance), recomputing: {ps_path}")
+
+    if cached:
         k_phys = np.array(rec["spectrum"]["k_phys"])
         P_S = np.array(rec["spectrum"]["P_S"])
-        # Legacy/hand-edited caches may not match; a wrong grid moves the peak.
-        if len(_kgrid) > 1 and (
-            not np.isclose(k_phys.min(), _kgrid.min(), rtol=1e-6)
-            or not np.isclose(k_phys.max(), _kgrid.max(), rtol=1e-6)
-        ):
-            raise RuntimeError(
-                f"Cached spectrum {ps_path} spans [{k_phys.min():.2e}, {k_phys.max():.2e}] "
-                f"but the requested grid spans [{_kgrid.min():.2e}, {_kgrid.max():.2e}]. "
-                f"Delete the stale cache or re-run with --force."
-            )
-        cached = True
-        print(f"Loaded cached P_S(k): {ps_path}")
     else:
         k_grid = _kgrid
         print(f"MS solver: {len(k_grid)} k-modes "
@@ -304,9 +391,11 @@ def run_full_pbh_pipeline(
                 k_phys_grid=k_grid,
                 k_pivot_phys=pivot_k,
                 N_star=N_star,
-                k_start_factor=100.0,
-                ms_steps=5000,
-                normalize_to_As=False,
+                k_start_factor=_MS_RECIPE["k_start_factor"],
+                ms_steps=_MS_RECIPE["ms_steps"],
+                normalize_to_As=_MS_RECIPE["normalize_to_As"],
+                backend=_MS_RECIPE["backend"],
+                ms_method=_MS_RECIPE["ms_method"],
                 save_outputs=True,
                 n_workers=workers,
             )
@@ -338,6 +427,9 @@ def run_full_pbh_pipeline(
         save_rec = {
             "_type": "pspectrum",
             "format_version": 1,
+            "writer": _PS_CACHE_WRITER,
+            "cache_identity_version": _PS_CACHE_IDENTITY_VERSION,
+            "cache_identity": identity,
             "metadata": metadata,
             "spectrum": {"k_phys": k_phys.tolist(), "P_S": P_S.tolist()},
         }
@@ -426,6 +518,12 @@ def run_full_pbh_pipeline(
             print(f"  ζ_c={zc:.3f}: f_total=0 (no collapse)")
             continue
 
+        # Sort ascending by mass, applying the same order to the paired
+        # abundance so trapz/argmax/peak are computed on a monotonic axis.
+        order = np.argsort(M_ok, kind="stable")
+        M_ok = M_ok[order]
+        fp_ok = fp_ok[order]
+
         f_total = float(trapz(fp_ok, np.log(np.maximum(M_ok, 1e-300))))
         peak_i = int(np.argmax(fp_ok))
         M_peak = float(M_ok[peak_i]) if len(M_ok) > 0 else np.nan
@@ -483,7 +581,6 @@ def run_full_pbh_pipeline(
             matplotlib.use("Agg")
             import matplotlib.pyplot as plt
             from scripts import constraint_mapping
-            from scripts.plotting import get_path
 
             fname = make_pbh_filename(
                 "pbh", chi0, y0, N_total,
@@ -525,7 +622,7 @@ def run_full_pbh_pipeline(
         print(f"  SNR (LISA, {sigw_t_obs_yr} yr) = {sigw_results['snr']:.2f}")
 
         # Save SIGW JSON
-        from scripts.plotting import get_path, make_pbh_filename
+        from scripts.plotting import make_pbh_filename
         data_dir = get_path("sigw_data", "")
         os.makedirs(data_dir, exist_ok=True)
         fname = make_pbh_filename(
