@@ -1582,6 +1582,11 @@ def plot_solar_ps_and_sigw(filename="fig_solar_pbh", category="pbh", dpi=300):
         fig.savefig(paper_png, dpi=dpi, bbox_inches="tight")
         plt.close(fig)
         return out
+
+
+def main():
+    import argparse
+
     parser = argparse.ArgumentParser(
         description="CMB anomaly plotting utilities")
     sub = parser.add_subparsers(dest="command", required=True)
