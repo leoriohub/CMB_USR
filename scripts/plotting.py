@@ -131,6 +131,7 @@ def save_fig(fig, filename, category="diagnostics", dpi=300):
     fig.savefig(path, dpi=dpi, bbox_inches="tight")
     print(f"  Saved: {path}")
     plt.close(fig)
+    return path
 
 
 def make_filename(
@@ -1584,6 +1585,66 @@ def plot_solar_ps_and_sigw(filename="fig_solar_pbh", category="pbh", dpi=300):
         return out
 
 
+def plot_potential_compare(xi=15000.0, lam=0.13,
+                           filename="potential_compare_metric_palatini",
+                           xi_list=(10.0, 100.0, 1000.0, 15000.0, 1e5, 1e7),
+                           dpi=300):
+    """Fig: metric vs Palatini Einstein-frame potential shape, and the xi knob.
+
+    Both potentials are normalised to their own plateau height v0 = lam/(4 xi^2),
+    so the panels compare SHAPE only. That is the quantity that decides whether a
+    frozen field can re-accelerate onto the slow-roll attractor: the plateau is
+    approached as exp(-sqrt(2/3) chi) in the metric case and exp(-2 sqrt(xi) chi)
+    in the Palatini case, so at large xi the Palatini restoring slope is
+    exponentially weaker. Axes are log-log so every xi stays visible.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from models import HiggsModel
+    from models.higgs_palatini import PalatiniHiggsModel
+
+    plt.rcParams.update(PAPER_RCPARAMS)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.0, 2.7))
+
+    chi = np.logspace(-5, 1, 1200)
+
+    met = HiggsModel(lam=lam, xi=xi)
+    f_met = met.f(chi)
+    pal = PalatiniHiggsModel(lam=lam, xi=xi)
+    f_pal = pal.f(chi)
+
+    ax1.plot(chi, f_met, color=TOL["blue"], lw=1.4,
+             label=fr"metric $(1-e^{{-\sqrt{{2/3}}\chi}})^2$")
+    ax1.plot(chi, f_pal, color=TOL["red"], lw=1.4,
+             label=fr"Palatini $\tanh^4(\sqrt{{\xi}}\chi)$, $\xi={xi:g}$")
+    ax1.set_xscale("log")
+    ax1.set_yscale("log")
+    ax1.set_xlabel(r"canonical field $\chi$  $[M_{\rm Pl}]$")
+    ax1.set_ylabel(r"$U(\chi)\,/\,U_{\rm plateau}$")
+    ax1.set_title("(a) shape at " + fr"$\xi={xi:g}$", fontsize=10)
+    ax1.set_ylim(1e-30, 3)
+    ax1.legend(frameon=False, fontsize=6)
+
+    cmap = [TOL["blue"], TOL["green"], TOL["yellow"], TOL["red"],
+            TOL["purple"], TOL["teal"]]
+    for i, x in enumerate(xi_list):
+        p = PalatiniHiggsModel(lam=lam, xi=x)
+        ax2.plot(chi, p.f(chi), color=cmap[i % len(cmap)], lw=1.2,
+                 label=fr"$\xi={x:g}$")
+    ax2.set_xscale("log")
+    ax2.set_yscale("log")
+    ax2.set_xlabel(r"canonical field $\chi$  $[M_{\rm Pl}]$")
+    ax2.set_ylabel(r"$U(\chi)\,/\,U_{\rm plateau}$")
+    ax2.set_title("(b) Palatini: $\\xi$ sets the flatness", fontsize=10)
+    ax2.set_ylim(1e-30, 3)
+    ax2.legend(frameon=False, fontsize=6, ncol=2)
+
+    fig.tight_layout()
+    return save_fig(fig, filename, category="diagnostics", dpi=dpi)
+
+
 def main():
     import argparse
 
@@ -1602,6 +1663,14 @@ def main():
     p.add_argument("--nstar", type=float, default=60)
     p.add_argument("--xi", type=float, default=15000.0)
     p.add_argument("--lam", type=float, default=0.13)
+
+    p = sub.add_parser("potential-compare",
+                       help="Metric vs Palatini potential shape, plus the xi knob")
+    p.add_argument("--xi", type=float, default=15000.0)
+    p.add_argument("--lam", type=float, default=0.13)
+    p.add_argument("--filename", default="potential_compare_metric_palatini")
+    p.add_argument("--xi-list", nargs="+", type=float,
+                   default=[10.0, 100.0, 1000.0, 15000.0, 1e5, 1e7])
 
     p = sub.add_parser("usr-map", help="Fig 3: USR duration heatmap")
     p.add_argument("--phi-min", type=float, default=5.18)
@@ -1640,6 +1709,10 @@ def main():
         _cli_epsilon2(phi0=args.phi0, y0=args.y0, xi=args.xi, lam=args.lam)
     elif args.command == "potential":
         _cli_potential(phi0=args.phi0, nstar=args.nstar, xi=args.xi, lam=args.lam)
+    elif args.command == "potential-compare":
+        plot_potential_compare(xi=args.xi, lam=args.lam,
+                               filename=args.filename,
+                               xi_list=args.xi_list)
     elif args.command == "usr-map":
         _cli_usr_map(
             phi_min=args.phi_min, phi_max=args.phi_max, n_phi=args.n_phi,
