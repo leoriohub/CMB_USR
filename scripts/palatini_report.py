@@ -33,7 +33,8 @@ def main():
         rows = [json.loads(line) for line in fh if line.strip()]
     rows.sort(key=lambda r: (r.get("model", ""), r.get("config_file", "")))
 
-    hdr = (f"{'config':<30}{'model':<22}{'status':<12}{'chi2':>11}{'dchi2':>10}"
+    hdr = (f"{'config':<30}{'model':<22}{'status':<12}{'x0':>9}{'y0':>11}{'N*':>6}"
+           f"{'chi2':>11}{'dchi2':>10}"
            f"{'D2':>10}{'k_dip':>12}{'supp%':>8}{'Ntot':>8}{'P_S hash':>15}")
     print(hdr)
     print("-" * len(hdr))
@@ -41,6 +42,9 @@ def main():
         fp, n = fingerprint(r.get("P_S"))
         print(f"{str(r.get('config_file','?')):<30}{str(r.get('model','?')):<22}"
               f"{str(r.get('status','?')):<12}"
+              f"{float(r.get('x0', float('nan'))):>9.4g}"
+              f"{float(r.get('y0', float('nan'))):>11.5g}"
+              f"{float(r.get('N_star', float('nan'))):>6.1f}"
               f"{float(r.get('chi2', float('nan'))):>11.1f}"
               f"{float(r.get('dchi2', float('nan'))):>10.1f}"
               f"{float(r.get('d2', float('nan'))):>10.1f}"

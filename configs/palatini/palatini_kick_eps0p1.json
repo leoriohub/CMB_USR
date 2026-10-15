@@ -11,5 +11,10 @@
     "x0": 0.07,
     "eps_init": 0.1
   },
-  "N_star": 3.0
+  "pipeline": {
+    "N_star": 3.0,
+    "k_pivot_phys": 0.002,
+    "ns_window": 4.0,
+    "backend": "fortran"
+  }
 }

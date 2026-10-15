@@ -51,9 +51,14 @@ METRIC_REFERENCE = {
 def load_config(path):
     with open(path) as fh:
         cfg = json.load(fh)
-    for key in ("model", "N_star"):
-        if key not in cfg:
-            raise ValueError(f"{path}: missing required key {key!r}")
+    if "model" not in cfg:
+        raise ValueError(f"{path}: missing required key 'model'")
+    pipe = cfg.get("pipeline", {})
+    # N_star is a pipeline parameter by project convention, but accept the
+    # top-level form too so a hand-written config is not silently ignored.
+    cfg["N_star"] = pipe.get("N_star", cfg.get("N_star"))
+    if cfg["N_star"] is None:
+        raise ValueError(f"{path}: missing 'pipeline.N_star'")
     return cfg
 
 
@@ -69,6 +74,9 @@ def run_one(job):
     n_star = float(cfg["N_star"])
 
     ns = argparse.Namespace(**args_dict)
+    # NOTE: evaluate_config resolves the pivot from scripts.camb_scan's module
+    # level k_pivot_phys, not from `args`. It is 0.002 Mpc^-1, which matches the
+    # configs here; changing it requires editing camb_scan, not these configs.
     out = evaluate_config(x0, y0, n_star, ns, model=model)
     out["config_file"] = os.path.basename(path)
     out["model"] = cfg["model"]
