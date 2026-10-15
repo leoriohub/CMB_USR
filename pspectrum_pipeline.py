@@ -34,7 +34,7 @@ from scripts.plotting import make_filename
 
 import inf_dyn_background as bg_solver
 import inf_dyn_MS_full as ms_solver
-from models import HiggsModel, FullHiggsModel, PunctuatedInflationModel, EzquiagaCHIModel, StarobinskyModel, inflection_parameters
+from models.registry import MODEL_REGISTRY, model_names
 from numba_ms_solver import numba_run_ms, build_numba_splines, numba_run_ms_grid, _find_crossing_index
 
 # Fast CubicSpline-based interpolator (avoids interp1d overhead for per-step calls)
@@ -675,35 +675,10 @@ def model_from_config(config):
     ics = config.get("ics", {})
     inflection = config.get("inflection", {})
 
-    if model_name == "HiggsModel":
-        model = HiggsModel(lam=params.get("lam", 0.13), xi=params.get("xi", 15000.0))
-    elif model_name == "FullHiggsModel":
-        model = FullHiggsModel(lam=params.get("lam", 0.1), xi=params.get("xi", 1000.0), v_vev=params.get("v_vev", 0.0))
-    elif model_name == "PunctuatedInflationModel":
-        model = PunctuatedInflationModel(m=params.get("m", 1.1323e-7), lam=params.get("lam", 3.3299e-15), phi0=params.get("phi0_inflection", None))
-    elif model_name == "EzquiagaCHIModel":
-        model = EzquiagaCHIModel(
-            lambda_0=params.get("lambda_0", 2.23e-7),
-            b_lambda=params.get("b_lambda", 1.2e-6),
-            xi_0=params.get("xi_0", 7.55),
-            b_xi=params.get("b_xi", 11.5),
-            c=params.get("c", 0.77),
-            n_grid=params.get("n_grid", 5000),
-        )
-        x_c = inflection.get("x_c")
-        if x_c is not None:
-            beta = inflection.get("beta", 1e-5)
-            a_new, b_new = inflection_parameters(x_c, params.get("c", 0.77), beta)
-            model.a = a_new
-            model.b = b_new
-            model.v0 = model._V0 * model.a / (model.b * model.c)**2
-            print(f"  Self-consistent inflection params: a={a_new:.4f}, b={b_new:.6f}")
-        model.patch_background_solver()
-    elif model_name == "StarobinskyModel":
-        v0 = params.get("v0", 4.5e-11)
-        model = StarobinskyModel(v0=v0)
-    else:
+    factory = MODEL_REGISTRY.get(model_name)
+    if factory is None:
         raise ValueError(f"Unknown model: {model_name}")
+    model = factory(params, inflection)
 
     if "x0" in ics:
         model.x0 = ics["x0"]
@@ -729,10 +704,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Compute P_S(k) across k grid for a model.")
     parser.add_argument("--config", type=str, default=None,
                         help="JSON config file with model params, ICs, and pipeline settings")
-    parser.add_argument("--model", default=None, choices=[
-        "HiggsModel", "FullHiggsModel", "PunctuatedInflationModel",
-        "EzquiagaCHIModel", "StarobinskyModel"
-    ])
+    parser.add_argument("--model", default=None, choices=model_names())
     parser.add_argument("--phi0", type=float, default=None)
     parser.add_argument("--y0", type=float, default=None)
 

@@ -88,7 +88,8 @@ Setup: `bash setup.sh`
 ### Package structure
 
 Project is pip-installable (`pip install -e .`):
-- `models/` — inflation model classes (Higgs, Punctuated, Quadratic, SmoothUSR)
+- `models/` — inflation model classes (Higgs, FullHiggs, PalatiniHiggs, Punctuated, Quadratic, SmoothUSR, CriticalHiggs, EzquiagaCHI, Starobinsky)
+- `models/registry.py` — **single source of truth for config → model construction** (`MODEL_REGISTRY`, `model_names()`). Adding a model is one factory function plus one export in `models/__init__.py`. Do not re-introduce per-model `if/elif` dispatch in `pspectrum_pipeline.py`.
 - `scripts/` — analysis pipeline modules (pspectrum, Sachs-Wolfe, Planck data, optimizers)
 - Root-level solvers (`inf_dyn_background.py`, `inf_dyn_MS_full.py`, `numerical_observables_calculation.py`) — importable globally after install
 - **No `sys.path` hacks** — all 14 hacks removed; imports work from any directory
@@ -335,6 +336,8 @@ logs include `k_pivot` and `ns_window` per record.
 
 ### 11. Core Solver Architecture — DO NOT MODIFY
 The root-level solver files (`inf_dyn_background.py`, `inf_dyn_MS_full.py`, `pspectrum_pipeline.py`) are the physics core of the project. Do NOT move, rename, refactor, or modify these files unless explicitly asked by the user. They contain the ODE integration, Mukhanov-Sasaki solver, and pipeline orchestration that every downstream script depends on. Changes to these files can silently break every consumer without visible errors in the modified file itself.
+
+**Exception — model dispatch:** `pspectrum_pipeline.model_from_config()` and the CLI `--model` choices are thin wrappers over `models/registry.py`. Register a new model there; the dispatch itself needs no edit.
 
 ### 12. Best Config — χ²-Competitive Suppression
 
