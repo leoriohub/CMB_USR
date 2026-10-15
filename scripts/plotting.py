@@ -1585,18 +1585,57 @@ def plot_solar_ps_and_sigw(filename="fig_solar_pbh", category="pbh", dpi=300):
         return out
 
 
+def _deviation_metric(chi, alpha):
+    """1 - (1 - e^{-alpha chi})^2 written to avoid cancellation at large chi."""
+    e = np.exp(-alpha * chi)
+    return 2.0 * e - e * e
+
+
+def _deviation_palatini(chi, sqrt_xi):
+    """1 - tanh^4(sqrt(xi) chi), evaluated without float64 tanh saturation.
+
+    tanh(u) returns exactly 1.0 for u > ~19, so 1 - tanh(u)**4 loses the whole
+    deviation to underflow for large xi. Writing sech^2(u) = 4q/(1+q)^2 with
+    q = e^{-2u} keeps it exact until sech^2 itself underflows.
+    """
+    u = sqrt_xi * chi
+    q = np.exp(-2.0 * u)
+    sech2 = 4.0 * q / (1.0 + q) ** 2
+    t = (1.0 - q) / (1.0 + q)
+    return np.clip(sech2 * (1.0 + t * t), 1e-300, None)
+
+
+def _tol_sequence(n):
+    """n distinct, ordered, colourblind-safe colours (repo TOL palette first)."""
+    base = [TOL["blue"], TOL["green"], TOL["yellow"], TOL["red"],
+            TOL["purple"], TOL["teal"], TOL["grey"]]
+    if n <= len(base):
+        return base[:n]
+    import matplotlib.pyplot as plt
+    return list(plt.cm.viridis(np.linspace(0.05, 0.9, n)))
+
+
 def plot_potential_compare(xi=15000.0, lam=0.13,
                            filename="potential_compare_metric_palatini",
                            xi_list=(10.0, 100.0, 1000.0, 15000.0, 1e5, 1e7),
                            dpi=300):
-    """Fig: metric vs Palatini Einstein-frame potential shape, and the xi knob.
+    """Fig: how fast the metric and Palatini Einstein-frame potentials flatten.
 
-    Both potentials are normalised to their own plateau height v0 = lam/(4 xi^2),
-    so the panels compare SHAPE only. That is the quantity that decides whether a
-    frozen field can re-accelerate onto the slow-roll attractor: the plateau is
-    approached as exp(-sqrt(2/3) chi) in the metric case and exp(-2 sqrt(xi) chi)
-    in the Palatini case, so at large xi the Palatini restoring slope is
-    exponentially weaker. Axes are log-log so every xi stays visible.
+    Shape, not normalisation, decides whether a frozen field can re-accelerate
+    onto the slow-roll attractor, so both potentials are normalised to their own
+    plateau height. Near the plateau f -> 1; the informative quantity is
+    therefore the deviation 1 - f, NOT f itself. Plotting f on a log axis
+    compresses the deviation into a sliver and instead shows the small-chi
+    power-law rise, which is irrelevant here.
+
+    Both x axes are LINEAR. Log is used only on y, where the deviation spans
+    decades by construction.
+
+      (a) 1 - U/U_plateau for both potentials on the Palatini scale, so the
+          contrast in approach rate is visible: the metric curve is still near
+          unity where the Palatini curve has collapsed by ten orders.
+      (b) the same deviation for the Palatini xi family; the plateau onset
+          moves as 1/sqrt(xi), which is the only shape knob at this order.
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -1606,42 +1645,60 @@ def plot_potential_compare(xi=15000.0, lam=0.13,
 
     plt.rcParams.update(PAPER_RCPARAMS)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.0, 2.7))
-
-    chi = np.logspace(-5, 1, 1200)
-
-    met = HiggsModel(lam=lam, xi=xi)
-    f_met = met.f(chi)
+    alpha = np.sqrt(2.0 / 3.0)
     pal = PalatiniHiggsModel(lam=lam, xi=xi)
-    f_pal = pal.f(chi)
+    sqrt_xi = pal.sqrt_xi
+    x0_anchor = pal.x0
 
-    ax1.plot(chi, f_met, color=TOL["blue"], lw=1.4,
-             label=fr"metric $(1-e^{{-\sqrt{{2/3}}\chi}})^2$")
-    ax1.plot(chi, f_pal, color=TOL["red"], lw=1.4,
-             label=fr"Palatini $\tanh^4(\sqrt{{\xi}}\chi)$, $\xi={xi:g}$")
-    ax1.set_xscale("log")
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.0, 2.8))
+
+    # -- (a) approach rate, common Palatini scale ---------------------------
+    # crop just past where the Palatini curve leaves the bottom axis; x beyond
+    # that is entirely empty while the metric line stays flat at ~1e-1
+    x_hi = 0.16
+    chi = np.linspace(1e-9, x_hi, 2000)
+    ax1.plot(chi, _deviation_metric(chi, alpha), color=TOL["blue"], lw=1.5,
+             label="metric")
+    ax1.plot(chi, _deviation_palatini(chi, sqrt_xi), color=TOL["red"], lw=1.5,
+             label=fr"Palatini $\xi={xi:g}$")
+    ax1.axvline(x0_anchor, color=TOL["grey"], lw=0.7, ls=":")
     ax1.set_yscale("log")
-    ax1.set_xlabel(r"canonical field $\chi$  $[M_{\rm Pl}]$")
-    ax1.set_ylabel(r"$U(\chi)\,/\,U_{\rm plateau}$")
-    ax1.set_title("(a) shape at " + fr"$\xi={xi:g}$", fontsize=10)
-    ax1.set_ylim(1e-30, 3)
-    ax1.legend(frameon=False, fontsize=6)
+    ax1.set_xlim(0.0, x_hi)
+    ax1.set_ylim(1e-14, 2.0)
+    ax1.set_xlabel(r"$\chi$  $[M_{\rm Pl}]$")
+    ax1.set_ylabel(r"$1 - U/U_{\rm plateau}$")
+    ax1.set_title("(a) approach to plateau", fontsize=9)
+    ax1.legend(frameon=False, fontsize=7, loc="lower left", handlelength=1.4)
+    # label the dotted line from the empty bottom-right corner; placing it near
+    # the line itself would sit the text on the Palatini curve
+    # label the dotted line from the empty upper-right region: below 1e-2 the
+    # only content is the Palatini curve, which would otherwise be overprinted
+    ax1.annotate(fr"SR anchor $\chi_0={x0_anchor:.3g}$",
+                 xy=(x0_anchor, 0.45), xytext=(0.095, 3e-2),
+                 fontsize=6, color=TOL["grey"], ha="left",
+                 arrowprops=dict(arrowstyle="-", lw=0.5, color=TOL["grey"]))
 
-    cmap = [TOL["blue"], TOL["green"], TOL["yellow"], TOL["red"],
-            TOL["purple"], TOL["teal"]]
+    # -- (b) the xi family --------------------------------------------------
+    colors = _tol_sequence(len(xi_list))
+    chi_b = np.linspace(1e-9, 0.3, 2000)
+    x_max_data = 0.0
     for i, x in enumerate(xi_list):
-        p = PalatiniHiggsModel(lam=lam, xi=x)
-        ax2.plot(chi, p.f(chi), color=cmap[i % len(cmap)], lw=1.2,
-                 label=fr"$\xi={x:g}$")
-    ax2.set_xscale("log")
+        pp = PalatiniHiggsModel(lam=lam, xi=x)
+        dev = _deviation_palatini(chi_b, pp.sqrt_xi)
+        ax2.plot(chi_b, dev, color=colors[i], lw=1.4, label=fr"$\xi={x:g}$")
+        below = np.where(dev > 1e-14)[0]
+        if below.size:
+            x_max_data = max(x_max_data, float(chi_b[below[-1]]))
     ax2.set_yscale("log")
-    ax2.set_xlabel(r"canonical field $\chi$  $[M_{\rm Pl}]$")
-    ax2.set_ylabel(r"$U(\chi)\,/\,U_{\rm plateau}$")
-    ax2.set_title("(b) Palatini: $\\xi$ sets the flatness", fontsize=10)
-    ax2.set_ylim(1e-30, 3)
-    ax2.legend(frameon=False, fontsize=6, ncol=2)
+    ax2.set_xlim(0.0, min(0.3, x_max_data * 1.05))
+    ax2.set_ylim(1e-14, 2.0)
+    ax2.set_xlabel(r"$\chi$  $[M_{\rm Pl}]$")
+    ax2.set_ylabel(r"$1 - U/U_{\rm plateau}$")
+    ax2.set_title(r"(b) Palatini: onset $\propto 1/\sqrt{\xi}$", fontsize=9)
+    ax2.legend(frameon=False, fontsize=6.5, ncol=2, loc="lower left",
+               handlelength=1.3, columnspacing=0.7, handletextpad=0.4)
 
-    fig.tight_layout()
+    fig.tight_layout(pad=0.4, w_pad=1.4)
     return save_fig(fig, filename, category="diagnostics", dpi=dpi)
 
 
