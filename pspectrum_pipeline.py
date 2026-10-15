@@ -34,7 +34,7 @@ from scripts.plotting import make_filename
 
 import inf_dyn_background as bg_solver
 import inf_dyn_MS_full as ms_solver
-from models.registry import MODEL_REGISTRY, model_names
+from models.registry import MODEL_REGISTRY, model_names, y0_for_initial_eps
 from numba_ms_solver import numba_run_ms, build_numba_splines, numba_run_ms_grid, _find_crossing_index
 
 # Fast CubicSpline-based interpolator (avoids interp1d overhead for per-step calls)
@@ -682,6 +682,8 @@ def model_from_config(config):
 
     if "x0" in ics:
         model.x0 = ics["x0"]
+    if "eps_init" in ics:
+        model.y0 = y0_for_initial_eps(model, ics["eps_init"])
     if "y0" in ics:
         model.y0 = ics["y0"]
     if "T_max" in params:

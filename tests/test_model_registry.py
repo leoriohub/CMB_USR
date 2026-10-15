@@ -7,6 +7,7 @@ observable contract so the dispatch can be restructured without silently
 changing which model a config produces, or with which parameters.
 """
 
+import numpy as np
 import pytest
 
 from models import (
@@ -82,6 +83,31 @@ def test_model_params_override_defaults():
     m = model_from_config({"model": "StarobinskyModel",
                            "model_params": {"v0": 1.2e-10}})
     assert m.v0 == pytest.approx(1.2e-10)
+
+
+def test_eps_init_sets_y0_from_kinetic_dominance():
+    # eps_init is frame-independent: it must reproduce the requested eps_H(0).
+    for name, params in [("HiggsModel", {}),
+                         ("PalatiniHiggsModel", {"xi": 15000.0})]:
+        for eps in (0.2, 0.6, 1.0, 2.5):
+            m = model_from_config({"model": name,
+                                   "model_params": params,
+                                   "ics": {"eps_init": eps}})
+            S = m.S
+            z0 = np.sqrt(m.y0**2 / 6.0 + m.v0 * m.f(m.x0) / (3.0 * S**2))
+            eps_back = m.y0**2 / (2.0 * z0**2)
+            assert eps_back == pytest.approx(eps, rel=1e-10), (name, eps)
+
+
+def test_explicit_y0_overrides_eps_init():
+    m = model_from_config({"model": "HiggsModel",
+                           "ics": {"eps_init": 1.0, "y0": -0.475}})
+    assert m.y0 == pytest.approx(-0.475)
+
+
+def test_eps_init_at_or_above_three_is_rejected():
+    with pytest.raises(ValueError, match="eps_init"):
+        model_from_config({"model": "HiggsModel", "ics": {"eps_init": 3.0}})
 
 
 def test_ics_override_wins_over_model_defaults():

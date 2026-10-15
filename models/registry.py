@@ -10,6 +10,8 @@ returns a configured `InflationModel`. Per-model constructor defaults live
 here so that a bare `{"model": "<Name>"}` always builds the same object.
 """
 
+import numpy as np
+
 from .higgs import HiggsModel, FullHiggsModel
 from .higgs_palatini import PalatiniHiggsModel
 from .punctuated import PunctuatedInflationModel
@@ -72,6 +74,27 @@ MODEL_REGISTRY = {
     "EzquiagaCHIModel": _ezquiaga,
     "StarobinskyModel": _starobinsky,
 }
+
+
+def y0_for_initial_eps(model, eps_init):
+    """Code-unit y0 giving eps_H(0) = eps_init at the model's current x0.
+
+    eps_H = y^2 / (2 z^2) with z0 = sqrt(y0^2/6 + v0 f(x0)/(3 S^2)), so
+    y0^2 (1 - eps/3) = 2 eps v0 f(x0)/(3 S^2). The negative root corresponds
+    to rolling down the potential.
+
+    Parametrising initial conditions by eps_H(0) rather than by y0 keeps a
+    config comparable across gravity formulations: the code-unit y0 scale
+    differs by orders of magnitude between metric and Palatini frames, so the
+    same y0 is not the same physical initial state.
+    """
+    eps_init = float(eps_init)
+    denom = 1.0 - eps_init / 3.0
+    if denom <= 0:
+        raise ValueError(f"eps_init={eps_init} >= 3 has no solution")
+    S = model.S
+    v_pot = model.v0 * model.f(model.x0) / (3.0 * S ** 2)
+    return -float(np.sqrt(2.0 * eps_init * v_pot / denom))
 
 
 def model_names():
