@@ -248,6 +248,9 @@ USR suppression at CMB scales requires fine-tuned initial conditions. The mechan
 - `models/punctuated.py` — Punctuated inflaton (validation only) bg_steps=100k
 - `models/higgs_palatini.py` — Palatini Higgs (Bauer–Demir, $U\propto\tanh^4(\sqrt\xi\chi)$); registered in `models/registry.py`
 - `scripts/palatini_survey.py` — parallel background-observable survey over any registry model; sweeps initial kinetic dominance $\varepsilon_H(0)$ so configs are comparable across frames (y0 scales differ by orders of magnitude). JSONL output.
+- `scripts/palatini_end_of_inflation.py` — states the exit criterion directly (inflation ends iff $\varepsilon_H$ climbs back to $\ge1$ after the initial kinetic transient). Use this instead of `background_scan.find_end_of_inflation_simple` under kinetic dominance, which misidentifies the initial $\varepsilon_H$ spike and cannot be told apart from a horizon cap via its returned `N_total`.
+- `scripts/palatini_reproduce.py` — drives `scripts.camb_scan.evaluate_config` (P_S(k) → CAMB C_ℓ → D_ℓ → χ² vs Planck) for any registry model; emits the metric-Higgs reference rows alongside each record. Builds models via `model_from_config` so `ics.eps_init` is honoured.
+- `scripts/palatini_report.py` — comparison table from a `reproduce_*.jsonl`; fingerprints each P_S(k) array so two configs yielding identical spectra are flagged rather than read as independent evidence.
 - `scripts/pspectrum_pipeline.py` — Main CLI for P_S(k) pipelines
 - `scripts/test_camb_validation.py` — Higgs vs Punctuated validation comparison
 
