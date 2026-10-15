@@ -246,6 +246,8 @@ USR suppression at CMB scales requires fine-tuned initial conditions. The mechan
 
 ### Reference Files
 - `models/punctuated.py` — Punctuated inflaton (validation only) bg_steps=100k
+- `models/higgs_palatini.py` — Palatini Higgs (Bauer–Demir, $U\propto\tanh^4(\sqrt\xi\chi)$); registered in `models/registry.py`
+- `scripts/palatini_survey.py` — parallel background-observable survey over any registry model; sweeps initial kinetic dominance $\varepsilon_H(0)$ so configs are comparable across frames (y0 scales differ by orders of magnitude). JSONL output.
 - `scripts/pspectrum_pipeline.py` — Main CLI for P_S(k) pipelines
 - `scripts/test_camb_validation.py` — Higgs vs Punctuated validation comparison
 
