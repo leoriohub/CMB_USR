@@ -30,7 +30,7 @@ import json
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from models.registry import MODEL_REGISTRY
+from pspectrum_pipeline import model_from_config
 from scripts.camb_scan import (
     D2_LCDM,
     CHI2_LCDM,
@@ -66,11 +66,16 @@ def run_one(job):
     """Evaluate one config through the existing camb_scan chain."""
     (path, args_dict) = job
     cfg = load_config(path)
-    factory = MODEL_REGISTRY[cfg["model"]]
-    model = factory(cfg.get("model_params", {}), cfg.get("inflection", {}))
-    ics = cfg.get("ics", {})
-    x0 = float(ics.get("x0", model.x0))
-    y0 = float(ics.get("y0", model.y0))
+    # Build through model_from_config, NOT the raw registry factory: only the
+    # former resolves ics.eps_init -> y0 and applies model_params overrides.
+    model = model_from_config({
+        "model": cfg["model"],
+        "model_params": cfg.get("model_params", {}),
+        "inflection": cfg.get("inflection", {}),
+        "ics": cfg.get("ics", {}),
+    })
+    x0 = float(model.x0)
+    y0 = float(model.y0)
     n_star = float(cfg["N_star"])
 
     ns = argparse.Namespace(**args_dict)
