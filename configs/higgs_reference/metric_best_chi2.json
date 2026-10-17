@@ -1,0 +1,20 @@
+{
+  "model": "HiggsModel",
+  "description": "Metric Higgs best-chi2 USR config from AGENTS.md section 12 (phi0=6.40, y0=-0.475, N*=59). Reference row for the Palatini comparison, computed through the identical chain.",
+  "model_params": {
+    "lam": 0.13,
+    "xi": 15000.0,
+    "T_max": 5000.0,
+    "bg_steps": 50000
+  },
+  "ics": {
+    "x0": 6.4,
+    "y0": -0.475
+  },
+  "pipeline": {
+    "N_star": 59.0,
+    "k_pivot_phys": 0.002,
+    "ns_window": 4.0,
+    "backend": "fortran"
+  }
+}

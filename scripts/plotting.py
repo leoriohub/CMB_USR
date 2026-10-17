@@ -131,6 +131,7 @@ def save_fig(fig, filename, category="diagnostics", dpi=300):
     fig.savefig(path, dpi=dpi, bbox_inches="tight")
     print(f"  Saved: {path}")
     plt.close(fig)
+    return path
 
 
 def make_filename(
@@ -1584,6 +1585,117 @@ def plot_solar_ps_and_sigw(filename="fig_solar_pbh", category="pbh", dpi=300):
         return out
 
 
+def _deviation_metric(chi, alpha):
+    """1 - (1 - e^{-alpha chi})^2 written to avoid cancellation at large chi."""
+    e = np.exp(-alpha * chi)
+    return 2.0 * e - e * e
+
+
+def _deviation_palatini(chi, sqrt_xi):
+    """1 - tanh^4(sqrt(xi) chi), evaluated without float64 tanh saturation.
+
+    tanh(u) returns exactly 1.0 for u > ~19, so 1 - tanh(u)**4 underflows to
+    zero for large xi. Writing sech^2(u) = 4q/(1+q)^2 with q = e^{-2u} keeps the
+    deviation exact until sech^2 itself underflows.
+    """
+    u = sqrt_xi * chi
+    q = np.exp(-2.0 * u)
+    sech2 = 4.0 * q / (1.0 + q) ** 2
+    t = (1.0 - q) / (1.0 + q)
+    return np.clip(sech2 * (1.0 + t * t), 1e-300, None)
+
+
+def plot_potential_compare(xi=15000.0, lam=0.13,
+                           filename="potential_compare_metric_palatini",
+                           dpi=300):
+    """Fig: metric vs Palatini plateau flatness, and the xi dependence.
+
+    Shape, not normalisation, decides whether a frozen field can re-accelerate
+    onto the slow-roll attractor, so both potentials are normalised to their own
+    plateau height. Near the plateau f -> 1, so the informative quantity is the
+    deviation 1 - f; plotting f itself on a log axis would compress the
+    deviation into a sliver and emphasise the small-chi power-law rise instead.
+
+    Panel (a) spans the METRIC scale (chi up to 6): the metric deviation decays
+    gradually there, while the Palatini one has already reached the numerical
+    floor by chi ~ 0.1. That contrast is the result -- the Palatini plateau is
+    flat to 1e-14 while the metric one is still at 1e-2.
+
+    Panel (b) plots the plateau onset (the chi at which 1 - f = 1e-6) against
+    xi. Six family curves would overlap into an unreadable mass at the floor,
+    whereas the onset collapses onto a single clean 1/sqrt(xi) line, which is
+    the actual scaling: the plateau position is set by sqrt(xi) chi ~ 1.
+
+    Panel (a) uses a symmetric-log field axis and logarithmic deviation axis;
+    panel (b) uses logarithmic axes to show the field-scale power law.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from models.higgs_palatini import PalatiniHiggsModel
+
+    plt.rcParams.update(PAPER_RCPARAMS)
+
+    alpha = np.sqrt(2.0 / 3.0)
+    pal = PalatiniHiggsModel(lam=lam, xi=xi)
+    sqrt_xi = pal.sqrt_xi
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.0, 2.7))
+
+    # -- (a) both deviations on the metric scale ----------------------------
+    # symlog x: the two plateau scales differ by ~2 decades, so neither a pure
+    # linear axis (Palatini collapses to a wall at chi=0) nor a pure log axis
+    # (the chi -> 0 behaviour is lost) can show both curves at once.
+    chi = np.linspace(0.0, 6.0, 4000)
+    ax1.plot(chi, _deviation_metric(chi, alpha), color=TOL["blue"], lw=1.5)
+    ax1.plot(chi, _deviation_palatini(chi, sqrt_xi), color=TOL["red"], lw=1.5)
+    ax1.set_xscale("symlog", linthresh=1e-3, linscale=0.45)
+    ax1.set_yscale("log")
+    ax1.set_xlim(0.0, 6.0)
+    ax1.set_ylim(1e-15, 3.0)
+    ax1.set_xlabel(r"$\chi$  $[M_{\rm Pl}]$")
+    ax1.set_ylabel(r"$1 - U/U_{\rm plateau}$")
+    ax1.set_title("(a) approach to plateau", fontsize=9)
+    # direct labels: a legend box would sit on top of the curves here
+    ax1.text(0.45, 5.5e-1, "metric", color=TOL["blue"], fontsize=7.5)
+    ax1.text(1.6e-3, 3.0e-9, fr"Palatini $\xi={xi:g}$",
+             color=TOL["red"], fontsize=7.5, va="bottom", ha="left")
+    ax1.axhline(1e-6, color=TOL["grey"], lw=0.6, ls=":")
+    ax1.text(2.6e-3, 2.4e-6, r"$1-f=10^{-6}$", color=TOL["grey"], fontsize=6)
+
+    # -- (b) plateau onset vs xi: the 1/sqrt(xi) scaling --------------------
+    target = 1e-6
+    xi_arr = np.logspace(1.0, 9.0, 120)
+    onset = np.array([
+        _chi_onset(target, PalatiniHiggsModel(lam=lam, xi=x).sqrt_xi)
+        for x in xi_arr
+    ])
+    ax2.plot(xi_arr, onset, color=TOL["red"], lw=1.6)
+    # reference 1/sqrt(xi), anchored at the largest sampled xi
+    ref = onset[-1] * np.sqrt(xi_arr[-1] / xi_arr)
+    ax2.plot(xi_arr, ref, color=TOL["grey"], lw=0.9, ls="--")
+    ax2.text(2.0e7, ref[-1] * 2.2, r"$\propto 1/\sqrt{\xi}$",
+             color=TOL["grey"], fontsize=7)
+    ax2.set_xscale("log")
+    ax2.set_yscale("log")
+    ax2.set_xlabel(r"$\xi$")
+    ax2.set_ylabel(r"$\chi$ at which $1-f = 10^{-6}$  $[M_{\rm Pl}]$")
+    ax2.set_title(r"(b) plateau onset $\propto 1/\sqrt{\xi}$", fontsize=9)
+
+    fig.tight_layout(pad=0.4, w_pad=1.5)
+    return save_fig(fig, filename, category="diagnostics", dpi=dpi)
+
+
+def _chi_onset(target, sqrt_xi):
+    """Smallest chi satisfying 1 - tanh^4(sqrt(xi) chi) <= target.
+
+    Invert tanh^4(u) = 1 - target analytically.
+    """
+    t = (1.0 - target) ** 0.25
+    u = np.arctanh(t)
+    return u / sqrt_xi
+
+
 def main():
     import argparse
 
@@ -1602,6 +1714,12 @@ def main():
     p.add_argument("--nstar", type=float, default=60)
     p.add_argument("--xi", type=float, default=15000.0)
     p.add_argument("--lam", type=float, default=0.13)
+
+    p = sub.add_parser("potential-compare",
+                       help="Metric vs Palatini potential shape, plus the xi knob")
+    p.add_argument("--xi", type=float, default=15000.0)
+    p.add_argument("--lam", type=float, default=0.13)
+    p.add_argument("--filename", default="potential_compare_metric_palatini")
 
     p = sub.add_parser("usr-map", help="Fig 3: USR duration heatmap")
     p.add_argument("--phi-min", type=float, default=5.18)
@@ -1640,6 +1758,9 @@ def main():
         _cli_epsilon2(phi0=args.phi0, y0=args.y0, xi=args.xi, lam=args.lam)
     elif args.command == "potential":
         _cli_potential(phi0=args.phi0, nstar=args.nstar, xi=args.xi, lam=args.lam)
+    elif args.command == "potential-compare":
+        plot_potential_compare(xi=args.xi, lam=args.lam,
+                               filename=args.filename)
     elif args.command == "usr-map":
         _cli_usr_map(
             phi_min=args.phi_min, phi_max=args.phi_max, n_phi=args.n_phi,

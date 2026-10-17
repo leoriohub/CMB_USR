@@ -1,0 +1,20 @@
+{
+  "model": "HiggsModel",
+  "description": "Metric Higgs best-D2 USR config (phi0=5.75, y0=-0.170, N*=55). Reference row for the Palatini comparison.",
+  "model_params": {
+    "lam": 0.13,
+    "xi": 15000.0,
+    "T_max": 5000.0,
+    "bg_steps": 50000
+  },
+  "ics": {
+    "x0": 5.75,
+    "y0": -0.17
+  },
+  "pipeline": {
+    "N_star": 55.0,
+    "k_pivot_phys": 0.002,
+    "ns_window": 4.0,
+    "backend": "fortran"
+  }
+}

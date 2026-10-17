@@ -1,0 +1,20 @@
+{
+  "model": "PalatiniHiggsModel",
+  "description": "Palatini Higgs mild kinetic kick eps_H(0)=0.1 at xi=15000, lam=0.13. Background diagnostic: inflation ends at N~4.1, far too short for CMB scales.",
+  "model_params": {
+    "lam": 0.13,
+    "xi": 15000.0,
+    "T_max": 6000.0,
+    "bg_steps": 30000
+  },
+  "ics": {
+    "x0": 0.07,
+    "eps_init": 0.1
+  },
+  "pipeline": {
+    "N_star": 3.0,
+    "k_pivot_phys": 0.002,
+    "ns_window": 4.0,
+    "backend": "fortran"
+  }
+}

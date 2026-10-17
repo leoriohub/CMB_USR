@@ -810,17 +810,20 @@ def main():
     # a pure relabeling it is invisible in P_S(k) itself, so it must be
     # reported rather than assumed.
     _piv_cfg = _resolve("k_pivot_phys", args.k_pivot_phys, config)
-    k_pivot_phys = _piv_cfg if _piv_cfg is not None else k_pivot_phys
+    # NOTE: this must NOT assign back to k_pivot_phys. That name is imported at
+    # module scope, and assigning it anywhere in main() makes it local to the
+    # whole function, so the fallback read below raises UnboundLocalError.
+    k_pivot_resolved = k_pivot_phys if _piv_cfg is None else _piv_cfg
     _piv_src = ("--k-pivot-phys" if args.k_pivot_phys is not None
                 else "config" if _piv_cfg is not None
                 else "package default")
-    print(f"  k_pivot_phys={k_pivot_phys:g} Mpc^-1 (from {_piv_src}), "
+    print(f"  k_pivot_phys={k_pivot_resolved:g} Mpc^-1 (from {_piv_src}), "
           f"N_star={N_star:g} -> pivot exits at N={N_star:g} before end")
 
     k_grid = None
     if use_weighted:
         k_grid = build_weighted_kgrid(
-            k_min, k_max, k_pivot_phys,
+            k_min, k_max, k_pivot_resolved,
             dense_min=dense_min, dense_max=dense_max,
             n_dense=n_dense, n_outer=n_outer,
         )
@@ -832,7 +835,7 @@ def main():
         k_min=k_min,
         k_max=k_max,
         num_k=num_k,
-        k_pivot_phys=k_pivot_phys,
+        k_pivot_phys=k_pivot_resolved,
         N_star=N_star,
         k_start_factor=k_start_factor,
         T_span_bg=None,
