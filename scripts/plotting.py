@@ -1288,7 +1288,7 @@ def plot_inflection_zoom(parameter_sets, x_range=(0.7, 0.9),
                 fp = _filter_params(parameter_sets[label])
                 ax.plot(x_grid, _V_shape(x_grid, **fp),
                         color=color, ls=ls, lw=1.2)
-                ax.axvline(0.784, color=TOL["green"], ls=":", lw=1.3, alpha=0.9)
+                ax.axvline(0.784, color=TOL["grey"], ls=":", lw=1.3, alpha=1.0)
                 ax.set_xlabel(r"$x = \phi/\mu$")
                 ax.set_ylabel(r"$\hat{V}(x)$")
                 ax.set_xlim(*x_range)
@@ -1305,7 +1305,7 @@ def plot_inflection_zoom(parameter_sets, x_range=(0.7, 0.9),
                 ls = parameter_sets[label].get("ls", "-")
                 ax.plot(x_grid, _V_shape(x_grid, **fp),
                         color=color, ls=ls, lw=1.2)
-                ax.axvline(0.784, color=TOL["green"], ls=":", lw=1.3, alpha=0.9)
+                ax.axvline(0.784, color=TOL["grey"], ls=":", lw=1.3, alpha=1.0)
                 ax.set_xlabel(r"$x = \phi/\mu$")
                 ax.set_ylabel(r"$\hat{V}(x)$")
                 ax.set_xlim(*x_range)
@@ -1331,7 +1331,7 @@ def plot_full_potential(a, b, c=0.77, x_range=(0.01, 10),
         fig, ax = plt.subplots(figsize=(3.5, 2.5))
         ax.plot(x_grid, _V_shape(x_grid, a, b, c),
                 color=color or TOL["blue"], lw=1.2)
-        ax.axvline(0.784, color=TOL["green"], ls=":", lw=1.3, alpha=0.9)
+        ax.axvline(0.784, color=TOL["grey"], ls=":", lw=1.3, alpha=1.0)
         ax.set_xlabel(r"$x = \phi/\mu$")
         ax.set_ylabel(r"$\hat{V}(x)$")
         ax.set_xlim(*x_range)
