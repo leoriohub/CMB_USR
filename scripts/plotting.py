@@ -1335,6 +1335,7 @@ def plot_full_potential(a, b, c=0.77, x_range=(0.01, 10),
         ax.set_xlabel(r"$x = \phi/\mu$")
         ax.set_ylabel(r"$\hat{V}(x)$")
         ax.set_xlim(*x_range)
+        ax.grid(True, alpha=0.2)
         fig.tight_layout()
         save_fig(fig, filename, category)
         plt.close(fig)
