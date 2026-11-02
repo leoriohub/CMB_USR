@@ -55,6 +55,45 @@ def frac_N_end(derived_bg, end_idx):
     return N_total
 
 
+def exact_N_end(model, bg_sol, T_span, derived_bg, end_idx):
+    """N at ε_H = 1 located by an LSODA event root.
+
+    ``frac_N_end`` interpolates linearly between two grid points and is only
+    accurate to ~2e-5 e-folds, which is fatal for second differences
+    (δN ~ 2e-5 over h² = 4e-6 gives N_xx ~ 5). Here the crossing of the
+    bracketing interval is re-integrated with a terminal event, so the root is
+    found by the integrator to its own tolerance.
+    """
+    from scipy.integrate import solve_ivp
+
+    epsH = derived_bg['epsH']
+    N_arr = derived_bg['N']
+    k = end_idx
+    if not (0 < k < len(epsH)) or not (epsH[k] > 1.0 >= epsH[k - 1]):
+        return frac_N_end(derived_bg, end_idx)
+
+    v0, S = model.v0, model.S
+    Ni = model.get_initial_conditions()[3]
+
+    def rhs(T, var):
+        x, y, z, n = var
+        return [y, -3.0 * z * y - v0 * model.dfdx(x) / S ** 2, -0.5 * y ** 2, z]
+
+    def crossing(T, var):
+        x, y, z, n = var
+        return y * y / (2.0 * z * z) - 1.0
+    crossing.terminal = True
+    crossing.direction = 1
+
+    T0 = float(T_span[k - 1])
+    dT = float(T_span[k]) - T0
+    sol = solve_ivp(rhs, (T0, T0 + 2.0 * dT), bg_sol[:, k - 1], method='LSODA',
+                    rtol=1e-10, atol=1e-12, events=crossing)
+    if sol.t_events[0].size:
+        return float(sol.y_events[0][0][3] - Ni)
+    return frac_N_end(derived_bg, end_idx)
+
+
 def model_factory(cfg=None, lam=0.13, xi=15000.0):
     """Return a zero-argument callable that builds a fresh model instance.
 
@@ -109,7 +148,7 @@ def run_patch_N_total(make_model, x_p, y_p, T_span, max_doublings=2):
         der = get_derived_quantities(bg, model)
         end_idx = find_end_of_inflation(der['epsH'])
         if end_idx != -1:
-            return frac_N_end(der, end_idx)
+            return exact_N_end(model, bg, span, der, end_idx)
         span = np.linspace(0.0, span[-1] * 2.0, len(span))
     raise RuntimeError(
         f"patch (x={x_p:.6g}, y={y_p:.6g}) never ends inflation within "
@@ -302,7 +341,7 @@ def main():
     if end_idx == -1:
         print("ERROR: Inflation never ends or never starts.", file=sys.stderr)
         sys.exit(1)
-    N_total = frac_N_end(derived_bg, end_idx)
+    N_total = exact_N_end(model, bg_sol, T_span, derived_bg, end_idx)
     N_pivot = N_total - args.nstar
     print(f"  N_total={N_total:.6f}, N_pivot={N_pivot:.6f}, end_idx={end_idx}")
 
