@@ -1,0 +1,39 @@
+{
+  "tag": "higgs_fixed_nstar60_a",
+  "seed": 20261030,
+  "nwalkers": 32,
+  "nsteps": 1500,
+  "workers": 16,
+  "checkpoint_interval": 10,
+  "full_chi2": true,
+  "ell_max": 2508,
+  "k_min": 1e-05,
+  "k_max": 1.0,
+  "num_k": 160,
+  "xi": 15000.0,
+  "lam": 0.13,
+  "prior": {
+    "phi0": [
+      5.9,
+      6.01
+    ],
+    "y0": [
+      -0.27,
+      -0.16
+    ],
+    "N_star": [
+      59.998,
+      60.002
+    ]
+  },
+  "init": {
+    "phi0": 5.953,
+    "y0": -0.213,
+    "N_star": 60.0,
+    "scatter": [
+      0.01,
+      0.01,
+      0.0005
+    ]
+  }
+}

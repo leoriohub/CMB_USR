@@ -1,0 +1,26 @@
+{
+  "tag": "higgs_wide_prior",
+  "seed": 20261101,
+  "nwalkers": 32,
+  "nsteps": 500,
+  "workers": 32,
+  "checkpoint_interval": 10,
+  "full_chi2": true,
+  "ell_max": 2508,
+  "k_min": 0.00001,
+  "k_max": 1.0,
+  "num_k": 120,
+  "xi": 15000.0,
+  "lam": 0.13,
+  "prior": {
+    "phi0": [5.80, 6.30],
+    "y0": [-0.30, -0.02],
+    "N_star": [58.5, 61.0]
+  },
+  "init": {
+    "phi0": 6.0,
+    "y0": -0.10,
+    "N_star": 60.0,
+    "scatter": [0.05, 0.05, 0.3]
+  }
+}

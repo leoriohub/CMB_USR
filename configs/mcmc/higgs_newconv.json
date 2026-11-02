@@ -1,0 +1,39 @@
+{
+  "tag": "higgs_newconv_seed1",
+  "seed": 20261029,
+  "nwalkers": 32,
+  "nsteps": 1500,
+  "workers": 32,
+  "checkpoint_interval": 10,
+  "full_chi2": true,
+  "ell_max": 2508,
+  "k_min": 1e-05,
+  "k_max": 1.0,
+  "num_k": 160,
+  "xi": 15000.0,
+  "lam": 0.13,
+  "prior": {
+    "phi0": [
+      6.22,
+      6.35
+    ],
+    "y0": [
+      -0.45,
+      -0.33
+    ],
+    "N_star": [
+      59.5,
+      61.4
+    ]
+  },
+  "init": {
+    "phi0": 6.285,
+    "y0": -0.389,
+    "N_star": 60.47,
+    "scatter": [
+      0.01,
+      0.01,
+      0.15
+    ]
+  }
+}

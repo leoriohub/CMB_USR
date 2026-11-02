@@ -1,0 +1,26 @@
+{
+  "tag": "higgs_full_seed1",
+  "seed": 20261028,
+  "nwalkers": 32,
+  "nsteps": 2000,
+  "workers": 8,
+  "checkpoint_interval": 10,
+  "full_chi2": true,
+  "ell_max": 2508,
+  "k_min": 0.00001,
+  "k_max": 1.0,
+  "num_k": 80,
+  "xi": 15000.0,
+  "lam": 0.13,
+  "prior": {
+    "phi0": [6.3, 6.9],
+    "y0": [-0.85, -0.50],
+    "N_star": [56.0, 62.0]
+  },
+  "init": {
+    "phi0": 6.6167,
+    "y0": -0.675,
+    "N_star": 59.0,
+    "scatter": [0.02, 0.02, 0.2]
+  }
+}
