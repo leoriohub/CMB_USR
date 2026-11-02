@@ -15,7 +15,7 @@ Method (tree-level local bispectrum — hybrid linear + classical):
   3. Phase-space response N(x, y): re-integrate 9 separate-universe patches
      from (x_s ± hx, y_s ± hy) to ε_H = 1; centered finite differences →
      N_x, N_y, N_xx, N_xy, N_yy.
-  4. f_NL^(local)(k) = (5/6) (N_xx + 2 N_xy r + N_yy r²) / (2 (N_x + N_y r)²),
+  4. f_NL^(local)(k) = (5/6) (N_xx + 2 N_xy r + N_yy r²) / (N_x + N_y r)²,
      with r = δy/δx the mode direction at the slice.
   5. Sanity anchors: r = r_adia ≡ ẏ/ẋ (time-shift direction) must give
      f_NL ≈ 0 (Maldacena consistency); deep-SR scales must give
