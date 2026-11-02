@@ -88,7 +88,8 @@ def exact_N_end(model, bg_sol, T_span, derived_bg, end_idx):
     T0 = float(T_span[k - 1])
     dT = float(T_span[k]) - T0
     sol = solve_ivp(rhs, (T0, T0 + 2.0 * dT), bg_sol[:, k - 1], method='LSODA',
-                    rtol=1e-10, atol=1e-12, events=crossing)
+                    rtol=1e-12, atol=1e-14, max_step=dT / 50.0,
+                    events=crossing)
     if sol.t_events[0].size:
         return float(sol.y_events[0][0][3] - Ni)
     return frac_N_end(derived_bg, end_idx)
@@ -421,12 +422,13 @@ def main():
                 x_s = float(np.interp(N_slice, derived_bg['N'], bg_sol[0]))
                 y_s = float(np.interp(N_slice, derived_bg['N'], bg_sol[1]))
                 N0 = run_patch_N_total(make_model, x_s, y_s, T_span)
-                dscan = [directional_response(make_model, x_s, y_s, md['r'],
-                                              T_span, N0, lam) for lam in lams]
-                cols = ' '.join(f"{d['f_NL']:10.4g}" for d in dscan)
-                print(f"{N_exit:6.2f} dir r={md['r']:9.4g}  {cols}   "
-                      f"| dN(+/-)={dscan[0]['dN_p']:+.3g}/{dscan[0]['dN_m']:+.3g}")
-                rec['directional'] = dscan
+                for tag, rr in (('mode', md['r']), ('adia', md['r_adia'])):
+                    dscan = [directional_response(make_model, x_s, y_s, rr,
+                                                  T_span, N0, lam) for lam in lams]
+                    cols = ' '.join(f"{d['f_NL']:10.4g}" for d in dscan)
+                    print(f"{N_exit:6.2f} {tag:>4} r={rr:9.4g}  {cols}   "
+                          f"| dN(+/-)={dscan[0]['dN_p']:+.3g}/{dscan[0]['dN_m']:+.3g}")
+                    rec[f'directional_{tag}'] = dscan
                 rec['N_center_dir'] = N0
 
             results.append(rec)
