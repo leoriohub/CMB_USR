@@ -1697,6 +1697,100 @@ def _chi_onset(target, sqrt_xi):
     return u / sqrt_xi
 
 
+def _N_at_eps1(N, eps1):
+    """N where eps1 first reaches 1, linearly interpolated."""
+    idx = np.where(eps1 >= 1.0)[0]
+    if len(idx) == 0:
+        return float(N[-1])
+    i = int(idx[0])
+    if i == 0:
+        return float(N[0])
+    e0, e1 = eps1[i - 1], eps1[i]
+    f = (1.0 - e0) / (e1 - e0) if e1 != e0 else 0.0
+    return float(N[i - 1] + f * (N[i] - N[i - 1]))
+
+
+def plot_eps1_eps2(config_paths, labels=None,
+                   filename="eps1_eps2_comparison_pbh_windows",
+                   category="diagnostics", bg_steps=20000):
+    """epsilon_1 and epsilon_2 evolution for a list of model configs.
+
+    eps1 = -Hdot/H^2, eps2 = dln(eps1)/dN = 2(eps1 - eta_H). Ultra-slow-roll is
+    eps2 = -6 (eps1 propto a^-6); eps2 > 0 is ordinary slow roll with eps1 growing.
+    """
+    import json
+    from models.registry import MODEL_REGISTRY
+    from inf_dyn_background import run_background_simulation, get_derived_quantities
+
+    plt.rcParams.update(PAPER_RCPARAMS)
+    cols = [TOL["blue"], TOL["red"], TOL["green"], TOL["purple"]]
+
+    fig, (ax1, ax2) = plt.subplots(
+        2, 1, figsize=(3.4, 4.3), sharex=True,
+        gridspec_kw={"height_ratios": [1.0, 1.15], "hspace": 0.07})
+
+    usr_lo, usr_hi = [], []
+    for i, path in enumerate(config_paths):
+        cfg = json.load(open(path))
+        name = (labels[i] if labels and i < len(labels)
+                else os.path.basename(path).replace(".json", ""))
+        m = MODEL_REGISTRY[cfg["model"]](cfg.get("model_params", {}),
+                                         cfg.get("inflection", {}))
+        ics = cfg.get("ics", {})
+        m.x0 = ics.get("x0", m.x0)
+        m.y0 = ics.get("y0", m.y0)
+        T = np.linspace(0.0, m.T_max, bg_steps)
+        bg = run_background_simulation(m, T)
+        der = get_derived_quantities(bg, m)
+        N, eps1, eta = der["N"], der["epsH"], der["etaH"]
+        eps2 = 2.0 * (eps1 - eta)
+        N_end = _N_at_eps1(N, eps1)
+        keep = N <= N_end
+        col = cols[i % len(cols)]
+
+        ax1.semilogy(N[keep], eps1[keep], color=col, lw=1.0, label=name)
+        ax2.plot(N[keep], eps2[keep], color=col, lw=1.0)
+
+        nstar = cfg.get("pipeline", {}).get("N_star")
+        N_piv = N_end - nstar if nstar is not None else None
+        if N_piv is not None:
+            for ax in (ax1, ax2):
+                ax.axvline(N_piv, color=col, ls=":", lw=0.7, alpha=0.9)
+
+        usr = (eps2 < -5.0) & keep
+        dur = float(np.sum(np.diff(N[usr], prepend=N[usr][0]))) if usr.any() else 0.0
+        if usr.any():
+            usr_lo.append(float(N[usr][0]))
+            usr_hi.append(float(N[usr][-1]))
+        print(f"  {name:10s} N_end={N_end:7.3f}  "
+              f"N_pivot={N_piv if N_piv is not None else float('nan'):7.3f}  "
+              f"min(eps2)={eps2[keep].min():+7.2f}  USR span={dur:5.2f} e-folds")
+
+    ax2.axhline(0.0, color=TOL["grey"], lw=0.6)
+    ax2.axhline(-6.0, color=TOL["grey"], ls="--", lw=0.8)
+    if usr_lo:
+        lo, hi = min(usr_lo), max(usr_hi)
+        for ax in (ax1, ax2):
+            ax.axvspan(lo, hi, color=TOL["grey"], alpha=0.16, lw=0)
+        ax2.text(lo - 1.0, -7.4, "USR", fontsize=6.5, color=TOL["grey"],
+                 ha="right", va="bottom")
+    ax2.text(0.99, -5.8, r"$\epsilon_2=-6$", transform=ax2.get_yaxis_transform(),
+             ha="right", va="bottom", color=TOL["grey"], fontsize=6.5)
+
+    ax2.set_ylim(-8.0, 4.0)
+    ax2.set_xlabel(r"$N$  (e-folds from start)")
+    ax1.set_ylabel(r"$\epsilon_1=-\dot H/H^2$")
+    ax2.set_ylabel(r"$\epsilon_2=d\ln\epsilon_1/dN$")
+    ax1.set_xlim(0, None)
+    ax1.legend(loc="lower left", frameon=False, fontsize=6.5)
+    for ax in (ax1, ax2):
+        ax.grid(True, which="major", ls=":", lw=0.4, color=TOL["grey"], alpha=0.35)
+        ax.tick_params(direction="in", top=True, right=True)
+
+    save_fig(fig, filename, category)
+    return fig
+
+
 def main():
     import argparse
 
@@ -1753,6 +1847,17 @@ def main():
     p.add_argument("--lam", type=float, default=0.13)
     p.add_argument("--quick", action="store_true")
 
+    p = sub.add_parser("epsilon12",
+                       help="epsilon_1 and epsilon_2 evolution for model configs")
+    p.add_argument("--configs", type=str, required=True,
+                   help="Comma-separated config JSON paths")
+    p.add_argument("--labels", type=str, default="",
+                   help="Comma-separated curve labels")
+    p.add_argument("--filename", type=str,
+                   default="eps1_eps2_comparison_pbh_windows")
+    p.add_argument("--category", type=str, default="diagnostics",
+                   help="OUTPUT_DIRS category")
+
     args = parser.parse_args()
 
     if args.command == "epsilon2":
@@ -1768,6 +1873,13 @@ def main():
             y_min_abs=args.y_min_abs, y_max_abs=args.y_max_abs, n_y=args.n_y,
             workers=args.workers, xi=args.xi, lam=args.lam,
             bg_steps=args.bg_steps, x_star=args.x_star,
+        )
+    elif args.command == "epsilon12":
+        plot_eps1_eps2(
+            config_paths=[c.strip() for c in args.configs.split(",") if c.strip()],
+            labels=[s.strip() for s in args.labels.split(",") if s.strip()] or None,
+            filename=args.filename,
+            category=args.category,
         )
     elif args.command == "compare-configs":
         _cli_compare_configs(
