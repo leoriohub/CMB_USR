@@ -156,6 +156,25 @@ def phase_space_response(model, bg_sol, derived_bg, end_idx, T_span_bg, N_slice,
     }
 
 
+def directional_response(make_model, x_s, y_s, r, T_span, N_center, lam):
+    """N(x, y) sampled along the mode ray δ = (lam, r·lam).
+
+    Two patches instead of eight: A = dN/dλ and B = d²N/dλ² are second-order
+    accurate along the actual perturbation direction, so no cross-cancellation
+    between N_xx and N_yy·r² can occur.
+    """
+    N_p = run_patch_N_total(make_model, x_s + lam, y_s + r * lam, T_span)
+    N_m = run_patch_N_total(make_model, x_s - lam, y_s - r * lam, T_span)
+    A = (N_p - N_m) / (2.0 * lam)
+    B = (N_p - 2.0 * N_center + N_m) / lam ** 2
+    fnl = (5.0 / 6.0) * B / A ** 2 if abs(A) > 1e-300 else float('inf')
+    return {
+        'lam': lam, 'N_p': N_p, 'N_m': N_m,
+        'dN_p': N_p - N_center, 'dN_m': N_m - N_center,
+        'A': A, 'B': B, 'f_NL': fnl,
+    }
+
+
 def mode_direction(model, bg_sol, derived_bg, T_span_bg, end_idx, k_code, N_slice,
                    bg_coefs=None, k_start_factor=100.0, ms_steps=4000):
     """Flat-gauge (δx, δy) direction r = δy/δx of the mode at N_slice.
@@ -245,6 +264,13 @@ def main():
     parser.add_argument('--bg-steps', type=int, default=50000)
     parser.add_argument('--ms-steps', type=int, default=4000)
     parser.add_argument('--k-start-factor', type=float, default=100.0)
+    parser.add_argument('--method', choices=['quad', 'directional', 'both'],
+                        default='both',
+                        help='quad = 9-patch quadratic form (old); '
+                             'directional = second difference along the mode ray; '
+                             'both = run and compare')
+    parser.add_argument('--lams', type=str, default='2e-3,5e-3,1e-2,2e-2',
+                        help='Directional step sizes in x (mode-ray parameter)')
     parser.add_argument('--json', type=str, default=None)
     args = parser.parse_args()
 
@@ -261,6 +287,7 @@ def main():
     make_model = model_factory(cfg if args.config else None, args.lam, args.xi)
 
     nexits = [float(v) for v in args.nexits.split(',')]
+    lams = [float(v) for v in args.lams.split(',')]
 
     model = make_model(quiet=False)
     model.x0 = args.x0
@@ -303,11 +330,17 @@ def main():
           f"N_total−N_pivot={N_total - N_pivot:.6f}")
 
     print()
-    header = (f"{'N_exit':>6} {'k_phys':>10} {'r_mode':>10} {'r_adia':>10} "
-              f"{'f_NL(mode)':>10} {'f_NL(adia)':>10} {'N_x':>8} {'N_y':>8} "
-              f"{'N_xx':>9} {'N_yy':>9}")
-    print(header)
-    print('-' * len(header))
+    if args.method in ('quad', 'both'):
+        header = (f"{'N_exit':>6} {'k_phys':>10} {'r_mode':>10} {'r_adia':>10} "
+                  f"{'f_NL(mode)':>10} {'f_NL(adia)':>10} {'N_x':>8} {'N_y':>8} "
+                  f"{'N_xx':>9} {'N_yy':>9}")
+        print(header)
+        print('-' * len(header))
+    if args.method in ('directional', 'both'):
+        hdr = (f"{'N_exit':>6} {'dir':>4} {'r':>10} "
+               + ' '.join(f"{('lam=' + format(l, 'g')):>10}" for l in lams))
+        print(hdr)
+        print('-' * len(hdr))
 
     results = []
     for N_exit in nexits:
@@ -326,25 +359,38 @@ def main():
                                 k_code, N_slice, bg_coefs=bg_coefs,
                                 k_start_factor=args.k_start_factor,
                                 ms_steps=args.ms_steps)
-            resp = phase_space_response(model, bg_sol, derived_bg, end_idx,
-                                        T_span, N_slice, args.hx, hy,
-                                        make_model)
-            fnl_mode = fnl_from_response(resp['N_x'], resp['N_y'], resp['N_xx'],
-                                         resp['N_xy'], resp['N_yy'], md['r'])
-            fnl_adia = fnl_from_response(resp['N_x'], resp['N_y'], resp['N_xx'],
-                                         resp['N_xy'], resp['N_yy'], md['r_adia'])
             k_phys = k_code * k_cal
-            print(f"{N_exit:6.2f} {k_phys:10.3e} {md['r']:10.4g} {md['r_adia']:10.4g} "
-                  f"{fnl_mode:10.4g} {fnl_adia:10.4g} {resp['N_x']:8.3g} {resp['N_y']:8.3g} "
-                  f"{resp['N_xx']:9.3g} {resp['N_yy']:9.3g}")
-            results.append({
-                'N_exit': N_exit, 'k_phys': k_phys, 'N_slice': N_slice,
-                'r_mode': md['r'], 'r_adia': md['r_adia'],
-                'f_NL_mode': fnl_mode, 'f_NL_adia': fnl_adia,
-                '|u/v|': md['|u/v|'],
-                **{k2: resp[k2] for k2 in
-                   ('N_x', 'N_y', 'N_xx', 'N_xy', 'N_yy', 'N_center', 'hx', 'hy')},
-            })
+            rec = {'N_exit': N_exit, 'k_phys': k_phys, 'N_slice': N_slice,
+                   'r_mode': md['r'], 'r_adia': md['r_adia'], '|u/v|': md['|u/v|']}
+
+            if args.method in ('quad', 'both'):
+                resp = phase_space_response(model, bg_sol, derived_bg, end_idx,
+                                            T_span, N_slice, args.hx, hy,
+                                            make_model)
+                fnl_mode = fnl_from_response(resp['N_x'], resp['N_y'], resp['N_xx'],
+                                             resp['N_xy'], resp['N_yy'], md['r'])
+                fnl_adia = fnl_from_response(resp['N_x'], resp['N_y'], resp['N_xx'],
+                                             resp['N_xy'], resp['N_yy'], md['r_adia'])
+                print(f"{N_exit:6.2f} {k_phys:10.3e} {md['r']:10.4g} {md['r_adia']:10.4g} "
+                      f"{fnl_mode:10.4g} {fnl_adia:10.4g} {resp['N_x']:8.3g} {resp['N_y']:8.3g} "
+                      f"{resp['N_xx']:9.3g} {resp['N_yy']:9.3g}")
+                rec.update({'f_NL_mode': fnl_mode, 'f_NL_adia': fnl_adia})
+                rec.update({k2: resp[k2] for k2 in
+                            ('N_x', 'N_y', 'N_xx', 'N_xy', 'N_yy', 'N_center', 'hx', 'hy')})
+
+            if args.method in ('directional', 'both'):
+                x_s = float(np.interp(N_slice, derived_bg['N'], bg_sol[0]))
+                y_s = float(np.interp(N_slice, derived_bg['N'], bg_sol[1]))
+                N0 = run_patch_N_total(make_model, x_s, y_s, T_span)
+                dscan = [directional_response(make_model, x_s, y_s, md['r'],
+                                              T_span, N0, lam) for lam in lams]
+                cols = ' '.join(f"{d['f_NL']:10.4g}" for d in dscan)
+                print(f"{N_exit:6.2f} dir r={md['r']:9.4g}  {cols}   "
+                      f"| dN(+/-)={dscan[0]['dN_p']:+.3g}/{dscan[0]['dN_m']:+.3g}")
+                rec['directional'] = dscan
+                rec['N_center_dir'] = N0
+
+            results.append(rec)
         except Exception as e:
             print(f"{N_exit:6.2f} ERROR: {e}")
             results.append({'N_exit': N_exit, 'error': str(e)})
