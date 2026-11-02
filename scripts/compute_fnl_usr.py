@@ -27,6 +27,8 @@ Usage:
 """
 
 import argparse
+import contextlib
+import io
 import json
 import sys
 import time
@@ -34,6 +36,7 @@ import time
 import numpy as np
 
 from models.higgs import HiggsModel
+from models.registry import MODEL_REGISTRY
 from inf_dyn_background import run_background_simulation, get_derived_quantities
 from pspectrum_pipeline import find_end_of_inflation, extract_mode_initial_conditions
 from numba_ms_solver import numba_run_ms, build_numba_splines
@@ -52,32 +55,73 @@ def frac_N_end(derived_bg, end_idx):
     return N_total
 
 
-def run_patch_N_total(lam, xi, x_p, y_p, T_span):
+def model_factory(cfg=None, lam=0.13, xi=15000.0):
+    """Return a zero-argument callable that builds a fresh model instance.
+
+    ``cfg`` is a config dict, or None. When given, construction goes through
+    ``models.registry`` so any registered model works; otherwise a plain
+    ``HiggsModel(lam, xi)`` is built, preserving the historical CLI behaviour.
+
+    The returned callable takes ``quiet=True``: registered factories print a
+    one-line summary, which is silenced for the many separate-universe patches
+    and shown once (``quiet=False``) for the reference model.
+    """
+    if cfg is not None:
+        name = cfg.get('model', 'HiggsModel')
+        if name not in MODEL_REGISTRY:
+            raise SystemExit(f"unknown model {name!r}; known: {sorted(MODEL_REGISTRY)}")
+        params = cfg.get('model_params', {})
+        inflection = cfg.get('inflection', {})
+
+        def make(quiet=True):
+            sink = (contextlib.redirect_stdout(io.StringIO()) if quiet
+                    else contextlib.nullcontext())
+            with sink:
+                return MODEL_REGISTRY[name](params, inflection)
+        return make
+
+    def make(quiet=True):
+        return HiggsModel(lam=lam, xi=xi)
+    return make
+
+
+def run_patch_N_total(make_model, x_p, y_p, T_span, max_doublings=2):
     """N_total (e-folds from the patch start to the end of inflation).
 
     A separate-universe patch: homogeneous universe with initial data
     (x_p, y_p); z comes from the Friedmann constraint via
     InflationModel.get_initial_conditions().
+
+    ``make_model`` is a zero-argument callable returning a fresh model, so this
+    works for any registered model, not just HiggsModel.
+
+    Patches offset toward an inflection can roll far more slowly than the
+    reference trajectory. If inflation has not ended within ``T_span`` the
+    integration window is doubled (up to ``max_doublings`` times) before giving
+    up, which separates "too slow for the window" from "never ends".
     """
-    model = HiggsModel(lam=lam, xi=xi)
+    model = make_model()
     model.x0 = x_p
     model.y0 = y_p
-    bg = run_background_simulation(model, T_span)
-    der = get_derived_quantities(bg, model)
-    end_idx = find_end_of_inflation(der['epsH'])
-    if end_idx == -1:
-        raise RuntimeError(f"patch (x={x_p:.6g}, y={y_p:.6g}) never ends inflation")
-    return frac_N_end(der, end_idx)
+    span = T_span
+    for _ in range(max_doublings + 1):
+        bg = run_background_simulation(model, span)
+        der = get_derived_quantities(bg, model)
+        end_idx = find_end_of_inflation(der['epsH'])
+        if end_idx != -1:
+            return frac_N_end(der, end_idx)
+        span = np.linspace(0.0, span[-1] * 2.0, len(span))
+    raise RuntimeError(
+        f"patch (x={x_p:.6g}, y={y_p:.6g}) never ends inflation within "
+        f"T={T_span[-1]:.4g} (extended to {span[-1]:.4g})")
 
 
-def phase_space_response(model, bg_sol, derived_bg, end_idx, T_span_bg, N_slice, hx, hy):
+def phase_space_response(model, bg_sol, derived_bg, end_idx, T_span_bg, N_slice, hx, hy,
+                         make_model):
     """9-patch response of N(x, y) at the slice N_slice -> (N_x, N_y, N_xx, N_xy, N_yy)."""
     N_arr = derived_bg['N']
     x_s = float(np.interp(N_slice, N_arr, bg_sol[0]))
     y_s = float(np.interp(N_slice, N_arr, bg_sol[1]))
-
-    lam = model.lam
-    xi = model.xi_val
 
     pts = {
         'c':  (x_s,       y_s),
@@ -92,7 +136,7 @@ def phase_space_response(model, bg_sol, derived_bg, end_idx, T_span_bg, N_slice,
     }
     N = {}
     for key, (x_p, y_p) in pts.items():
-        N[key] = run_patch_N_total(lam, xi, x_p, y_p, T_span_bg)
+        N[key] = run_patch_N_total(make_model, x_p, y_p, T_span_bg)
 
     Nc = N['c']
     N_x = (N['xp'] - N['xm']) / (2.0 * hx)
@@ -194,15 +238,31 @@ def main():
                         help='Finite-difference step in y (default: 0.1·|y_s|)')
     parser.add_argument('--lam', type=float, default=0.13)
     parser.add_argument('--xi', type=float, default=15000.0)
+    parser.add_argument('--config', type=str, default=None,
+                        help='Config JSON resolved through models.registry '
+                             '(e.g. configs/ezquiaga/a1_stellar.json). Overrides '
+                             '--lam/--xi and takes ics/N_star from the config.')
     parser.add_argument('--bg-steps', type=int, default=50000)
     parser.add_argument('--ms-steps', type=int, default=4000)
     parser.add_argument('--k-start-factor', type=float, default=100.0)
     parser.add_argument('--json', type=str, default=None)
     args = parser.parse_args()
 
+    cfg = {}
+    if args.config:
+        with open(args.config) as f:
+            cfg = json.load(f)
+        ics = cfg.get('ics', {})
+        pipe = cfg.get('pipeline', {})
+        args.x0 = ics.get('x0', args.x0)
+        args.y0 = ics.get('y0', args.y0)
+        args.nstar = pipe.get('N_star', args.nstar)
+
+    make_model = model_factory(cfg if args.config else None, args.lam, args.xi)
+
     nexits = [float(v) for v in args.nexits.split(',')]
 
-    model = HiggsModel(lam=args.lam, xi=args.xi)
+    model = make_model(quiet=False)
     model.x0 = args.x0
     model.y0 = args.y0
     T_span = np.linspace(0.0, model.T_max, args.bg_steps)
@@ -238,7 +298,7 @@ def main():
     # Center patch: one run shared by all scales
     x_c = float(np.interp(N_pivot, derived_bg['N'], bg_sol[0]))
     y_c = float(np.interp(N_pivot, derived_bg['N'], bg_sol[1]))
-    N_center_shared = run_patch_N_total(args.lam, args.xi, x_c, y_c, T_span)
+    N_center_shared = run_patch_N_total(make_model, x_c, y_c, T_span)
     print(f"  [consistency] center patch N={N_center_shared:.6f} vs "
           f"N_total−N_pivot={N_total - N_pivot:.6f}")
 
@@ -267,7 +327,8 @@ def main():
                                 k_start_factor=args.k_start_factor,
                                 ms_steps=args.ms_steps)
             resp = phase_space_response(model, bg_sol, derived_bg, end_idx,
-                                        T_span, N_slice, args.hx, hy)
+                                        T_span, N_slice, args.hx, hy,
+                                        make_model)
             fnl_mode = fnl_from_response(resp['N_x'], resp['N_y'], resp['N_xx'],
                                          resp['N_xy'], resp['N_yy'], md['r'])
             fnl_adia = fnl_from_response(resp['N_x'], resp['N_y'], resp['N_xx'],
@@ -292,7 +353,8 @@ def main():
     if args.json:
         with open(args.json, 'w') as f:
             json.dump({
-                'config': {'x0': args.x0, 'y0': args.y0, 'nstar': args.nstar,
+                'config': {'config_file': args.config,
+                           'x0': args.x0, 'y0': args.y0, 'nstar': args.nstar,
                            'N_total': N_total, 'N_pivot': N_pivot},
                 'trajectory_fnl': traj['f_NL'],
                 'results': results,
