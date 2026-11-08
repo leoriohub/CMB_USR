@@ -89,6 +89,17 @@ M_eq_default = 3.0e17  # M_sun, horizon mass at matter-radiation equality
 # M_eq = c^3/(2G) * 1/H_eq (approximate from ΛCDM)
 ACCRETION = 3e7  # mass growth from equality to present day (Chisholm 2006)
 
+# ── Present-day PBH density (Carr & Kuhnel, arXiv:2110.02821, Eq. 1.5) ─────
+#
+# Omega_PBH = beta * Omega_R * (1+z), where beta is the formation-time
+# collapse fraction and (1+z) is the redshift at which a PBH of mass M
+# forms.  In radiation domination 1+z ~ (M_eq/M)^(1/2), so the conversion
+# from beta to Omega_PBH is mass dependent.  Dividing by Omega_CDM gives
+# f(M) = Omega_PBH/Omega_DM, the fraction of dark matter in PBHs, which is
+# the quantity every observational constraint (LIGO, EROS, HSC, ...) uses.
+Omega_R_default = 1.0e-4    # radiation density parameter (Carr & Kuhnel 1.2)
+Omega_CDM_default = 0.25    # dark matter density parameter (Carr & Kuhnel 1.2)
+
 
 class NumpyJSONEncoder(json.JSONEncoder):
     """JSON encoder that handles NumPy types (ndarray, int, float, etc.) by
