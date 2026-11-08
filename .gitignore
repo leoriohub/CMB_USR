@@ -30,6 +30,14 @@ Thumbs.db
 docs/
 .vscode/
 
+# Literature (papers, PDFs, reading notes) — machine-local, never tracked
+# The Higgs inflation corpus lives in the Obsidian vault:
+#   ~/Obsidian/papers/Higgs_Inflation_Literature/
+literature/
+papers/
+*.pdf
+!data/PBHbounds/plots/*.pdf
+
 # Obsidian vault integration (local symlink to external vault)
 {env:OBSIDIAN_VAULT_PATH}/
 .opencode/
