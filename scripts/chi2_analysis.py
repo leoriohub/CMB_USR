@@ -1,6 +1,7 @@
 """
-Modular χ² analysis vs Planck 2018 TT data.
-Supports Commander low-ℓ, unbinned PLIK, and binned PLIK.
+Modular χ² analysis vs Planck 2018 data.
+Supports Commander low-ℓ TT, unbinned PLIK TT, and binned PLIK TT,
+plus binned EE and TE polarization spectra.
 """
 import os
 
@@ -12,6 +13,9 @@ from scripts.planck_data import (
     get_planck_data_asymmetric,
     load_planck_unbinned,
     load_planck_binned,
+    load_planck_ee_low,
+    load_planck_ee_binned,
+    load_planck_te_binned,
 )
 
 
@@ -96,6 +100,71 @@ def chi2_binned(D_model, ells_model, D_lcdm, ells_lcdm):
         chi2_l += ((dl - dp) / sigma) ** 2
         n += 1
     return chi2_m, chi2_l, n
+
+
+def _chi2_binned_polarization(D_model, ells_model, D_lcdm, ells_lcdm, loader):
+    """Shared binned-polarization χ² loop for EE and TE.
+
+    Conventions are inherited from :func:`chi2_model_lcdm`: linear
+    interpolation of the model onto the data multipoles, and the error bar
+    selected by the sign of the residual (``D_err_upper`` when the model
+    exceeds the data, ``D_err_lower`` otherwise). For the R3.02 binned
+    polarization files both error columns are equal, so this reduces to a
+    symmetric χ² — exactly the convention used by :func:`chi2_binned` for
+    TT — but the code does not assume it.
+
+    ``D_ell^TE`` is signed; the sign is carried through unchanged.
+    """
+    b_ells, b_D, b_lo, b_hi = loader()
+    chi2_m = 0.0
+    chi2_l = 0.0
+    n = 0
+    for ell, dp, dlo, dhi in zip(b_ells, b_D, b_lo, b_hi):
+        dm = np.interp(ell, ells_model, D_model)
+        dl = np.interp(ell, ells_lcdm, D_lcdm)
+        rm = dm - dp
+        rl = dl - dp
+        chi2_m += (rm / (dhi if rm > 0 else dlo)) ** 2
+        chi2_l += (rl / (dhi if rl > 0 else dlo)) ** 2
+        n += 1
+    return chi2_m, chi2_l, n
+
+
+def chi2_ee_low(D_model, ells_model, D_lcdm, ells_lcdm):
+    """Low-ℓ EE χ² (ℓ=2-29): the reionization-bump range that measures τ."""
+    return _chi2_binned_polarization(
+        D_model, ells_model, D_lcdm, ells_lcdm, load_planck_ee_low
+    )
+
+
+def chi2_ee_binned(D_model, ells_model, D_lcdm, ells_lcdm):
+    """Binned EE χ² (ℓ≈47-2500, 66 bins). Returns (chi2_model, chi2_lcdm, n)."""
+    return _chi2_binned_polarization(
+        D_model, ells_model, D_lcdm, ells_lcdm, load_planck_ee_binned
+    )
+
+
+def chi2_te_binned(D_model, ells_model, D_lcdm, ells_lcdm):
+    """Binned TE χ² (ℓ≈47-2500, 66 bins). Returns (chi2_model, chi2_lcdm, n)."""
+    return _chi2_binned_polarization(
+        D_model, ells_model, D_lcdm, ells_lcdm, load_planck_te_binned
+    )
+
+
+def chi2_tt_combined(D_model, ells_model, D_lcdm, ells_lcdm):
+    """Non-redundant TT χ²: Commander (ℓ≤29) + binned PLIK (ℓ≈47-2500).
+
+    Why not Commander + unbinned: the "Commander low-ℓ" CSV in
+    ``data/Planck/`` is bitwise the ℓ≤29 slice of the unbinned Plik TT
+    file, so summing the two would count those 28 multipoles twice.
+    Commander (ℓ=2-29) and the binned spectrum (ℓ≥47) are complementary
+    and non-overlapping, which makes this the correct single TT dataset.
+
+    Returns (chi2_model, chi2_lcdm, n).
+    """
+    cm1, cl1, n1 = chi2_commander(D_model, ells_model, D_lcdm, ells_lcdm)
+    cm2, cl2, n2 = chi2_binned(D_model, ells_model, D_lcdm, ells_lcdm)
+    return cm1 + cm2, cl1 + cl2, n1 + n2
 
 
 def print_chi2_table(D_model, ells_model, D_lcdm, ells_lcdm, label="Config"):
