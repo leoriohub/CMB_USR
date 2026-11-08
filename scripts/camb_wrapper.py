@@ -47,9 +47,18 @@ except (ImportError, AttributeError):
 
 _LCDM_CACHE = {}
 
-@lru_cache(maxsize=4)
-def _make_camb_params_template(ell_max=2500):
+@lru_cache(maxsize=16)
+def _make_camb_params_template(ell_max=2500, tau=None):
     """Build a CAMBparams object with Planck 2018 LCDM cosmology (cached template).
+
+    Parameters
+    ----------
+    ell_max : int, maximum multipole
+    tau : float or None
+        Reionization optical depth. ``None`` (default) uses
+        ``CAMB_COSMOLOGY["tau"]`` from ``scripts/constants.py``. Passing a
+        value leaves the module-level cosmology dict untouched, so τ can be
+        scanned without mutating global state.
 
     The template is NEVER handed out directly: callers mutate the object
     (e.g. ``set_initial_power_table``), so caching the template itself would
@@ -57,22 +66,26 @@ def _make_camb_params_template(ell_max=2500):
     returns a fresh ``.copy()`` instead.
     """
     import camb
+    tau_val = CAMB_COSMOLOGY["tau"] if tau is None else float(tau)
     params = camb.CAMBparams()
     params.set_cosmology(
         H0=CAMB_COSMOLOGY["H0"], ombh2=CAMB_COSMOLOGY["ombh2"],
-        omch2=CAMB_COSMOLOGY["omch2"], tau=CAMB_COSMOLOGY["tau"],
+        omch2=CAMB_COSMOLOGY["omch2"], tau=tau_val,
         mnu=CAMB_COSMOLOGY["mnu"],
     )
     params.set_for_lmax(ell_max)
     params.Want_CMB = True
     params.WantScalars = True
     params.WantTensors = False
+    # Lensing is left at the CAMB default, which is True since CAMB 1.4;
+    # the returned "total" spectrum is therefore lensed, matching Planck's
+    # lensed TT/EE/TE. (Set params.DoLensing explicitly if this ever moves.)
     return params
 
 
-def _make_camb_params(ell_max=2500):
-    """Return a fresh, mutable CAMBparams (Planck 2018 LCDM) for the given ell_max."""
-    return _make_camb_params_template(ell_max).copy()
+def _make_camb_params(ell_max=2500, tau=None):
+    """Return a fresh, mutable CAMBparams (Planck 2018 LCDM) for ell_max and τ."""
+    return _make_camb_params_template(ell_max, tau).copy()
 
 
 def _extend_pspectrum(k_phys, P_S, k_min=1e-6, k_max=10.0, n_extend=200):
@@ -140,9 +153,10 @@ def _extend_pspectrum(k_phys, P_S, k_min=1e-6, k_max=10.0, n_extend=200):
     return k_full, P_S_full
 
 
-def compute_cl_full_camb(pspectrum_data, ell_max=2500, k_min=1e-6, k_max=10.0):
+def compute_cl_full_camb(pspectrum_data, ell_max=2500, k_min=1e-6, k_max=10.0,
+                         tau=None):
     """
-    Compute full C_ell^TT via CAMB using a custom primordial P_S(k).
+    Compute full C_ell^TT/TE/EE via CAMB using a custom primordial P_S(k).
 
     Parameters
     ----------
@@ -151,6 +165,9 @@ def compute_cl_full_camb(pspectrum_data, ell_max=2500, k_min=1e-6, k_max=10.0):
     ell_max : int, maximum multipole (default 2500)
     k_min : float, minimum k for CAMB spline (default 1e-6)
     k_max : float, maximum k for CAMB spline (default 10.0)
+    tau : float or None
+        Reionization optical depth override; ``None`` keeps the project
+        default from ``scripts/constants.py``.
 
     Returns
     -------
@@ -173,7 +190,7 @@ def compute_cl_full_camb(pspectrum_data, ell_max=2500, k_min=1e-6, k_max=10.0):
 
     k_full, P_S_full = _extend_pspectrum(k_ok, P_S_ok, k_min=k_min, k_max=k_max)
 
-    params = _make_camb_params(ell_max=ell_max)
+    params = _make_camb_params(ell_max=ell_max, tau=tau)
     params.set_initial_power_table(k_full, P_S_full)
 
     results = camb.get_results(params)
@@ -192,16 +209,18 @@ def compute_cl_full_camb(pspectrum_data, ell_max=2500, k_min=1e-6, k_max=10.0):
     return ells, C_ell_TT, C_ell_TE, C_ell_EE
 
 
-def compute_cl_camb_powerlaw(ell_max=2500, As=As, ns=ns_sr_default, k_pivot=k_pivot_phys):
+def compute_cl_camb_powerlaw(ell_max=2500, As=As, ns=ns_sr_default,
+                             k_pivot=k_pivot_phys, tau=None):
     """
-    Compute full C_ell^TT for a power-law primordial spectrum via CAMB.
+    Compute full C_ell^TT/TE/EE for a power-law primordial spectrum via CAMB.
 
     This is the LCDM baseline for chi^2 comparisons, computed with the
-    same CAMB setup as the custom P_S(k) runs.
+    same CAMB setup as the custom P_S(k) runs. ``tau=None`` keeps the
+    project default reionization optical depth.
     """
     import camb
 
-    params = _make_camb_params(ell_max=ell_max)
+    params = _make_camb_params(ell_max=ell_max, tau=tau)
     params.InitPower.set_params(As=As, ns=ns, r=0, pivot_scalar=k_pivot)
 
     results = camb.get_results(params)
