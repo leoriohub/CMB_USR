@@ -31,6 +31,8 @@ from scripts.constants import (
     M_eq_default,
     ACCRETION,
     NumpyJSONEncoder,
+    Omega_R_default,
+    Omega_CDM_default,
 )
 from scripts.plotting import get_path, make_filename
 from scripts.observables import extract_ns, interpolate_As
@@ -185,28 +187,57 @@ def beta_equality(beta_f, k_phys, k_eq=k_eq_default):
     return np.asarray(beta_f) * np.asarray(k_phys) / k_eq
 
 
+def f_pbh_present_day(beta_f, M, M_eq=M_eq_default,
+                      Omega_R=Omega_R_default, Omega_CDM=Omega_CDM_default):
+    """Present-day PBH fraction of dark matter, f(M) = Omega_PBH/Omega_DM.
+
+    Uses Carr & Kuhnel (arXiv:2110.02821) Eq. 1.5,
+
+        Omega_PBH = beta * Omega_R * (1+z),
+
+    with the redshift of formation of a PBH of mass M in radiation
+    domination, 1+z = (M_eq/M)^(1/2).  This is the quantity the
+    observational constraints in the abundance figures are expressed in,
+    so it is what the y-axis of those figures claims to show.
+
+    Parameters
+    ----------
+    beta_f : array_like
+        Formation-time collapse fraction beta(M).
+    M : array_like
+        PBH mass in solar masses (formation mass; accretion is applied
+        separately by the caller).
+    """
+    M = np.asarray(M, dtype=float)
+    one_plus_z = np.sqrt(np.clip(M_eq / np.clip(M, 1e-300, None), 0.0, None))
+    return np.asarray(beta_f) * Omega_R * one_plus_z / Omega_CDM
+
+
 def compute_pbh_abundance(
     k_phys, P_S, gamma=gamma_default, zeta_c=0.052, k_eq=k_eq_default, M_eq=M_eq_default
 ):
     """Press-Schechter PBH abundance from P_S(k).
 
-    Returns dict with M (formation mass), beta_f, f_pbh.
+    Returns dict with M (formation mass), beta_f, and f_pbh, where f_pbh is
+    the present-day fraction of dark matter in PBHs, f(M) = Omega_PBH/Omega_DM
+    (Carr & Kuhnel Eq. 1.5).  This matches the y-axis of the abundance
+    figures and the convention of the observational constraints.
     """
     k = np.asarray(k_phys, dtype=float)
     M = mass_from_k(k, gamma, k_eq, M_eq)
     bf = beta_f_press_schechter(P_S, zeta_c)
-    beq = beta_equality(bf, k, k_eq)
+    f_pbh = f_pbh_present_day(bf, M, M_eq=M_eq)
 
-    ok = np.isfinite(M) & np.isfinite(beq) & (M > 0) & (beq >= 0)
+    ok = np.isfinite(M) & np.isfinite(f_pbh) & (M > 0) & (f_pbh >= 0)
     M_ok = M[ok]
-    beq_ok = np.maximum(beq[ok], 0.0)
+    f_ok = np.maximum(f_pbh[ok], 0.0)
     bf_ok = bf[ok]
 
     order = np.argsort(M_ok)
     return {
         "M": M_ok[order],
         "beta_f": bf_ok[order],
-        "f_pbh": beq_ok[order],
+        "f_pbh": f_ok[order],
     }
 
 
@@ -492,8 +523,8 @@ def run_full_pbh_pipeline(
             beta_f, M_pbh_form, meta_comp = beta_f_compaction(
                 k_phys, P_S, gamma=gamma_default, mu=zc, n_workers=nw,
             )
-            # Convert to equality-normalised DM fraction
-            f_pbh = beta_equality(beta_f, k_phys, k_eq_default)
+            # Convert to the present-day dark-matter fraction f(M).
+            f_pbh = f_pbh_present_day(beta_f, M_pbh_form, M_eq=M_eq_default)
 
             # Only apply accretion to modes with non-zero formation fraction.
             M_pbh_ok = np.where(beta_f > 0, M_pbh_form, 0.0)
