@@ -1,0 +1,53 @@
+{
+  "_comment": "\u03c4-profile scan: Delta chi2(tau) for the four 'good' Higgs-USR configs of AGENTS.md section 12. Dataset combinations: TT only (commander + binned), TT+EE+TE, and TT+EE+TE with the BAO tau prior.",
+  "tag": "higgs_usr_good",
+  "ell_max": 2500,
+  "tau_grid": {
+    "min": 0.04,
+    "max": 0.12,
+    "n": 17
+  },
+  "tt_components": [
+    "commander",
+    "binned"
+  ],
+  "bao_prior": {
+    "tau": 0.09,
+    "sigma": 0.012
+  },
+  "configs": [
+    {
+      "label": "best_chi2",
+      "phi0": 6.4,
+      "y0": -0.475,
+      "n_star": 59.0,
+      "note": "chi2_full=2574.2 (+1.2 vs LCDM), D2=997 uK^2 (3% suppression)"
+    },
+    {
+      "label": "best_balance",
+      "phi0": 5.7,
+      "y0": -0.17,
+      "n_star": 52.0,
+      "note": "chi2_full=2582.6 (+9.6 vs LCDM), D2=851 uK^2 (17% suppression)"
+    },
+    {
+      "label": "best_quadrupole",
+      "phi0": 5.75,
+      "y0": -0.17,
+      "n_star": 55.0,
+      "note": "chi2_full=2613.8 (+40.7 vs LCDM), D2=784 uK^2 (24% suppression) per AGENTS.md section 12 -- NOT reproduced: the cached P_S was generated with k_pivot=0.05 instead of the config's 0.002, which moved the dip to ell~150. The file was archived to outputs/archive/pspectra_pivot_mismatch/ and regenerated from configs/higgs_reference/metric_best_d2.json, which yields a smooth (unsuppressed) spectrum. Treat this row as unresolved."
+    },
+    {
+      "label": "deep_suppression",
+      "phi0": 6.55,
+      "y0": -0.78,
+      "n_star": 50.0,
+      "note": "chi2_full=2637.6 (+64.6 vs LCDM), D2=811 uK^2 (21% suppression)"
+    }
+  ],
+  "polarization_components": [
+    "ee_low",
+    "ee_binned",
+    "te_binned"
+  ]
+}
