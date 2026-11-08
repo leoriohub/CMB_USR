@@ -39,6 +39,12 @@ TARGET_F_TOTAL = 0.42  # Omega_PBH / Omega_DM
 
 MS_N_WORKERS = 8  # overridden by --workers CLI arg
 
+# Accretion growth factor A = M_present / M_form applied to the formation
+# mass before it is reported.  The paper's baseline is A = 1 (no growth,
+# `--accretion Chisholm1` in full_pbh_pipeline.py); the legacy maximal-growth
+# value is ACCRETION = 3e7.  Overridden by --accretion-factor.
+ACCRETION_FACTOR = 1.0
+
 # ── Per-config worker (module-level for ProcessPoolExecutor pickling) ────────
 
 def _run_one_ms_config(config):
@@ -98,7 +104,7 @@ def _run_one_ms_config(config):
             gamma_default
             * M_eq_default
             * (k_eq_default / peak["k_peak"]) ** 2
-            * ACCRETION
+            * ACCRETION_FACTOR
         )
         mass_bin = classify_mass_range(M_kpeak)
         ps_ratio = peak["P_S_peak"] / TARGET_As
@@ -254,15 +260,19 @@ def find_pbh_peak(k_phys, P_S, k_min=None, k_max=None):
     }
 
 
-def compute_pbh_metrics(k_phys, P_S, zeta_c=0.052):
+def compute_pbh_metrics(k_phys, P_S, zeta_c=0.052, accretion_factor=None):
     """PBH abundance (present-day masses) from P_S(k).
 
-    Thin wrapper around full_pbh_pipeline.compute_pbh_abundance.
+    Thin wrapper around full_pbh_pipeline.compute_pbh_abundance.  The
+    formation mass is multiplied by ``accretion_factor`` (default: the
+    module-level ACCRETION_FACTOR, which is A = 1 for the paper baseline).
     """
+    if accretion_factor is None:
+        accretion_factor = ACCRETION_FACTOR
     pbh = compute_pbh_abundance(
         k_phys, P_S, gamma_default, zeta_c, k_eq_default, M_eq_default
     )
-    M_present = pbh["M"] * ACCRETION
+    M_present = pbh["M"] * accretion_factor
     f_pbh = pbh["f_pbh"]
 
     f_total = float(trapz(f_pbh, np.log(np.maximum(M_present, 1e-300))))
@@ -295,11 +305,15 @@ def run_sweep(
     resume=False,
     f_max=1.0,
     sweep_workers=1,
+    accretion_factor=1.0,
 ):
     """Run the full sweep over parameter grid.
 
     Parameters
     ----------
+    accretion_factor : float
+        Mass growth factor A = M_present/M_form applied before reporting
+        masses. 1.0 (default) is the paper baseline (no growth).
     target : str
         k-grid target ("subsolar", "asteroid", "all")
     N_total_min : float
@@ -313,6 +327,9 @@ def run_sweep(
         per worker and results are written to log after collection (not
         incrementally). Default 1 (serial, existing behaviour).
     """
+    global ACCRETION_FACTOR
+    ACCRETION_FACTOR = float(accretion_factor)
+
     if N_star_vals is None:
         N_star_vals = [65]
 
@@ -474,7 +491,7 @@ def run_sweep(
                                 gamma_default
                                 * M_eq_default
                                 * (k_eq_default / peak["k_peak"]) ** 2
-                                * ACCRETION
+                                * ACCRETION_FACTOR
                             )
                             mass_bin = classify_mass_range(M_kpeak)
                             ps_ratio = peak["P_S_peak"] / TARGET_As
@@ -809,6 +826,14 @@ def main():
         default=1.0,
         help="Exclude configs with f_total > this threshold (default: 1.0)",
     )
+    p.add_argument(
+        "--accretion-factor",
+        type=float,
+        default=1.0,
+        help="Mass growth factor A = M_present/M_form applied before reporting "
+        "masses. Default 1.0 (no growth, the paper baseline); the legacy "
+        "maximal-growth value is 3e7.",
+    )
     # Pre-parse to check for --config (needed before full parse)
     pre_args, _ = p.parse_known_args()
     if pre_args.config:
@@ -880,6 +905,7 @@ def main():
         log_path=args.log,
         resume=args.resume,
         f_max=args.f_max,
+        accretion_factor=args.accretion_factor,
         sweep_workers=args.sweep_workers,
     )
     print(f"\n  Done in {time.time() - t0:.1f}s")
