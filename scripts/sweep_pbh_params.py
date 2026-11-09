@@ -879,7 +879,10 @@ def main():
     def progress(i, n, xc, c, beta, chi0, N_star, zeta_c=None):
         elapsed = time.time() - t0
         rate = i / max(elapsed, 0.01)
-        eta = (n - i) / rate
+        # rate is 0 on the first callback (i=0), and n - i can be negative
+        # once every config has reported; guard both so the progress bar
+        # cannot abort the run.
+        eta = (n - i) / rate if rate > 0 else float("nan")
         zc_str = f"ζ_c={zeta_c:.4f}" if zeta_c is not None else "ζ_c=*"
         sys.stdout.write(
             f"\r  [{i}/{n}] x_c={xc:.4f} c={c:.3f} β={beta:.1e} χ₀={chi0:.1f} "
