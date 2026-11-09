@@ -1,6 +1,6 @@
 {
   "model": "EzquiagaCHIModel",
-  "description": "Curvature-perturbation f(M) convention (Carr & Kuhnel Eq. 1.5): stellar-range PBH at A=1, M_peak=1.18 M_sun, f=0.405, n_s=0.900, N_total=86.0. Best abundance match to the pre-correction stellar config (f=0.419) under N_star>=50. Verified: on_grid_boundary=False.",
+  "description": "Curvature-perturbation f(M) convention (Carr and Kuhnel Eq. 1.5): stellar-range PBH at A=1, M_peak=3.0 M_sun, f_crest=0.057, f_total=0.564, n_s=0.900. Verified: on_grid_boundary=False. N_star is bounded below by 50: at 50.0 the P_S peak sits on the k-grid edge and M_peak is an artefact.",
   "formation": "press_schechter",
   "accretion": "Chisholm1",
   "model_params": {
@@ -17,7 +17,7 @@
     "y0": -0.0001
   },
   "pipeline": {
-    "N_star": 51.0,
+    "N_star": 50.5,
     "k_min": 1e-10,
     "k_max": 1e+20,
     "num_k": 1000,
