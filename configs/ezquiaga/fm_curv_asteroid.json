@@ -1,6 +1,6 @@
 {
   "model": "EzquiagaCHIModel",
-  "description": "Curvature-perturbation f(M) convention (Carr and Kuhnel Eq. 1.5): asteroid-mass gap at A=1, M_peak=1.1e-16 M_sun, f_crest=0.070, f_total=0.129, n_s=0.955. Reproduces the position of the pre-correction asteroid configuration (M=1.5e-16, f=0.127) in the new convention at k_pivot=0.05.",
+  "description": "Curvature-perturbation f(M) convention (Carr and Kuhnel Eq. 1.5): asteroid-mass gap at A=1, M_peak=1.65e-16 M_sun, f_crest=0.057, f_total=0.106, n_s=0.955. Sits in the middle of the gap and clears the EGB bound (max model/EGB = 0.74).",
   "formation": "press_schechter",
   "accretion": "Chisholm1",
   "model_params": {
@@ -17,7 +17,7 @@
     "y0": -0.0001
   },
   "pipeline": {
-    "N_star": 64.0,
+    "N_star": 63.8,
     "k_min": 1e-10,
     "k_max": 1e+20,
     "num_k": 1000,
