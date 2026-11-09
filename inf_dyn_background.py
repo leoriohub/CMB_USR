@@ -60,6 +60,20 @@ def get_derived_quantities(sol_data, model):
         yz_safe = np.where(yz >= 0, np.maximum(yz, 1e-30), np.minimum(yz, -1e-30))
         etaH = -(-3*z*y - v0*model.dfdx(x)/S**2)/yz_safe
         
+        # Standard slow-roll flow parameters.
+        #
+        # eps1 is the first flow parameter and coincides with the Hubble
+        # parameter epsH above.  eps2 = d ln eps1 / dN is the second flow
+        # parameter; it is NOT etaH.  The two are related by
+        #     etaH = eps1 - eps2/2
+        # so they agree only in the slow-roll limit and differ sharply
+        # during ultra-slow roll, which is exactly the regime of interest
+        # here.  Differentiate on the e-fold grid and guard eps1 <= 0,
+        # where ln eps1 is undefined.
+        eps1 = epsH
+        log_eps1 = np.log(np.where(eps1 > 0, eps1, np.nan))
+        eps2 = np.gradient(log_eps1, N)
+
         #Slow roll approximations
         # Observables
         ns = 1 + 2*etaH - 4*epsH
@@ -77,6 +91,8 @@ def get_derived_quantities(sol_data, model):
         'N': N,
         'epsH': epsH,
         'etaH': etaH,
+        'eps1': eps1,
+        'eps2': eps2,
         'ns': ns,
         'r': r,
         'Ps': Ps,
