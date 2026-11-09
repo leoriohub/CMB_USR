@@ -1,0 +1,31 @@
+{
+  "model": "EzquiagaCHIModel",
+  "description": "Curvature-perturbation f(M) convention (Carr & Kuhnel Eq. 1.5): stellar-range PBH at A=1, M_peak=1.18 M_sun, f=0.405, n_s=0.900, N_total=86.0. Best abundance match to the pre-correction stellar config (f=0.419) under N_star>=50. Verified: on_grid_boundary=False.",
+  "formation": "press_schechter",
+  "accretion": "Chisholm1",
+  "model_params": {
+    "lambda_0": 2.23e-07,
+    "xi_0": 7.55,
+    "c": 0.77
+  },
+  "inflection": {
+    "x_c": 0.784,
+    "beta": 3e-05
+  },
+  "ics": {
+    "x0": 8.0,
+    "y0": -0.0001
+  },
+  "pipeline": {
+    "N_star": 51.0,
+    "k_min": 1e-10,
+    "k_max": 1e+20,
+    "num_k": 1000,
+    "k_pivot_phys": 0.05,
+    "n_cores": 20,
+    "no_plot": false,
+    "normalize_to_As": false,
+    "ns_window": 3.0
+  },
+  "zeta_c": 0.044
+}

@@ -1,0 +1,31 @@
+{
+  "model": "EzquiagaCHIModel",
+  "description": "Curvature-perturbation f(M) convention (Carr and Kuhnel Eq. 1.5): asteroid-mass gap at A=1, M_peak=1.6e-15 M_sun, f_crest=0.099, f_total=0.191, n_s=0.956. Peak placed at the upper edge of the gap to clear EGB by a factor 52 (max model/EGB = 0.019). Verified: on_grid_boundary=False.",
+  "formation": "press_schechter",
+  "accretion": "Chisholm1",
+  "model_params": {
+    "lambda_0": 2.23e-07,
+    "xi_0": 7.55,
+    "c": 0.77
+  },
+  "inflection": {
+    "x_c": 0.784,
+    "beta": 0.00015
+  },
+  "ics": {
+    "x0": 8.0,
+    "y0": -0.0001
+  },
+  "pipeline": {
+    "N_star": 63.0,
+    "k_min": 1e-10,
+    "k_max": 1e+20,
+    "num_k": 1000,
+    "k_pivot_phys": 0.05,
+    "n_cores": 20,
+    "no_plot": false,
+    "normalize_to_As": false,
+    "ns_window": 3.0
+  },
+  "zeta_c": 0.042
+}
