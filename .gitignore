@@ -57,6 +57,9 @@ scripts/legacy/
 
 # Ezquiaga inflection parameters manuscript (root-level manuscript + outputs)
 /ezquiaga/
+
+# n_s-r constraint plots (own repo; ACT/Planck chains in nsr/data/ not tracked)
+/nsr/
 outputs/Ezquiaga/
 
 # Project-level AI assistant config (local workflow preferences)

@@ -1920,6 +1920,95 @@ def export_deck_figures(phi0, y0, nstar, plot_dir="powerloss"):
     print(f"  Source C_ell: {cl_path}")
 
 
+PS_THREE_CONFIGS = [
+    ("Stellar", "configs/ezquiaga/fm_curv_stellar.json"),
+    ("Sub-solar", "configs/ezquiaga/fm_curv_subsolar.json"),
+    ("Asteroid", "configs/ezquiaga/fm_curv_asteroid.json"),
+]
+
+
+def _ps_ms_from_config(cfg):
+    """MS P_R(k) for an Ezquiaga CHI config, via the full PBH pipeline."""
+    import contextlib
+    import io
+    from scripts.full_pbh_pipeline import run_full_pbh_pipeline
+
+    p = cfg["pipeline"]
+    with contextlib.redirect_stdout(io.StringIO()):
+        res = run_full_pbh_pipeline(
+            chi0=cfg["ics"]["x0"], y0=cfg["ics"]["y0"], N_star=p["N_star"],
+            beta=cfg["inflection"]["beta"], xc=cfg["inflection"]["x_c"],
+            c=cfg["model_params"]["c"], workers=p.get("n_cores", 8),
+            zeta_c_vals=[cfg["zeta_c"]], plot=False,
+            k_min=p["k_min"], k_max=p["k_max"], num_k=p["num_k"],
+            k_pivot=p["k_pivot_phys"], ns_window=p["ns_window"],
+            accretion_model=cfg["accretion"],
+        )
+    k, ps = np.asarray(res["k_phys"]), np.asarray(res["P_S"])
+    ok = np.isfinite(ps) & (ps > 0)
+    o = np.argsort(k[ok])
+    return k[ok][o], ps[ok][o]
+
+
+def _ps_sr_from_config(cfg):
+    """Slow-roll P_R(k) for an Ezquiaga CHI config, mapped to physical k with
+    the same N_star pivot convention as the MS run."""
+    from inf_dyn_background import run_background_simulation, get_derived_quantities
+    from models.ezquiaga_chi import EzquiagaCHIModel, inflection_parameters
+    from scripts.compute_sr_ms import compute_ps_sr
+    from scripts.constants import S
+
+    p = cfg["pipeline"]
+    model = EzquiagaCHIModel(c=cfg["model_params"]["c"])
+    model.a, model.b = inflection_parameters(cfg["inflection"]["x_c"],
+                                             cfg["model_params"]["c"],
+                                             beta=cfg["inflection"]["beta"])
+    model.v0 = model._V0 * model.a / (model.b * model.c) ** 2
+    model.x0, model.y0 = cfg["ics"]["x0"], cfg["ics"]["y0"]
+    model.patch_background_solver()
+    T = np.linspace(0, model.T_max, model.bg_steps)
+    bg = run_background_simulation(model, T)
+    der = get_derived_quantities(bg, model)
+    eps = der["epsH"]
+    end = np.where(eps >= 1.0)[0]
+    end = int(end[0]) if len(end) else len(eps) - 1
+    N = der["N"]
+    k_cu, ps, _ = compute_ps_sr(bg, end)
+    Np = float(N[end]) - p["N_star"]
+    k_piv = float(np.exp(np.interp(Np, N, bg[3])) * np.interp(Np, N, bg[2])) * S
+    k = k_cu * (p["k_pivot_phys"] / k_piv)
+    ok = np.isfinite(ps) & (ps > 0) & np.isfinite(k) & (k > 0)
+    o = np.argsort(k[ok])
+    return k[ok][o], ps[ok][o]
+
+
+def plot_ps_three(configs=None, filename="fig_ps_three", category="pbh"):
+    """Three-panel MS vs slow-roll P_R(k) for the PBH paper configurations."""
+    import json
+
+    configs = configs or PS_THREE_CONFIGS
+    with plt.rc_context(PAPER_RCPARAMS):
+        fig, axes = plt.subplots(1, len(configs), figsize=(7.0, 2.4), sharey=True)
+        for ax, (title, path) in zip(np.atleast_1d(axes), configs):
+            if not os.path.isabs(path):
+                path = os.path.join(ROOT_DIR, path)
+            with open(path) as f:
+                cfg = json.load(f)
+            k_ms, p_ms = _ps_ms_from_config(cfg)
+            k_sr, p_sr = _ps_sr_from_config(cfg)
+            ax.loglog(k_sr, p_sr, "--", color=TOL["blue"], lw=1.0, label="Slow roll")
+            ax.loglog(k_ms, p_ms, "-", color=TOL["red"], lw=1.3, label="MS")
+            ax.set_title(title, fontsize=9)
+            ax.set_xlabel(r"$k$ [Mpc$^{-1}$]")
+            ax.set_xlim(1e-4, 1e20)
+            ax.grid(True, which="major", alpha=0.15, lw=0.4)
+        axes[0].set_ylabel(r"$\mathcal{P}_\mathcal{R}(k)$")
+        axes[0].set_ylim(1e-16, 1e-2)
+        axes[0].legend(loc="upper left", frameon=False)
+        fig.tight_layout(w_pad=0.6)
+        return save_fig(fig, filename, category)
+
+
 def main():
     import argparse
 
@@ -1982,6 +2071,12 @@ def main():
     p.add_argument("--y0", type=float, required=True)
     p.add_argument("--nstar", type=float, required=True)
 
+    p = sub.add_parser("ps-three",
+                       help="PBH paper: 3-panel MS vs slow-roll P_R(k) (fig_ps_three)")
+    p.add_argument("--filename", type=str, default="fig_ps_three")
+    p.add_argument("--category", type=str, default="pbh",
+                   help="OUTPUT_DIRS category")
+
     p = sub.add_parser("epsilon12",
                        help="epsilon_1 and epsilon_2 evolution for model configs")
     p.add_argument("--configs", type=str, required=True,
@@ -2011,6 +2106,8 @@ def main():
         )
     elif args.command == "deck-figures":
         export_deck_figures(phi0=args.phi0, y0=args.y0, nstar=args.nstar)
+    elif args.command == "ps-three":
+        plot_ps_three(filename=args.filename, category=args.category)
     elif args.command == "epsilon12":
         plot_eps1_eps2(
             config_paths=[c.strip() for c in args.configs.split(",") if c.strip()],
