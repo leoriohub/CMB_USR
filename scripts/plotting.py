@@ -1118,6 +1118,7 @@ def _draw_pbh_bounds(ax, use_old_bounds=False, smooth_bounds=False,
         "EROS": "#4477AA",           # Blue
         "OGLE hc": "#CC6677",  # Rose
         "LIGO": "#33BBEE",           # Cyan
+        "LIGO O1-O3": "#33BBEE",     # Cyan
         "Eri-II": "#228833",         # Green
         "Planck": "#222222"          # Dark
     }
@@ -1145,7 +1146,7 @@ def _draw_pbh_bounds(ax, use_old_bounds=False, smooth_bounds=False,
             ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 0.4, 0)),
             ("MACHO", "M.txt", TOL["grey"], 0.08, (0.5, 0.5, 0)),
             ("EROS", "EROS.txt", TOL["blue"], 0.08, (1.5e-3, 0.15, 0)),
-            ("LIGO", "LIGO.txt", TOL["purple"], 0.08, (2.0, 0.05, -60)),
+            ("LIGO O1-O3", "LIGO-SGWB-O1-O2-O3.txt", TOL["purple"], 0.08, (2.0, 0.025, -20)),
             ("OGLE hc", "OGLE-highcadence.txt", "#CC6677", 0.08, (1e-7, 2e-2, 0)),
             ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (2e4, 0.3, 0)),
             ("Planck", "CMB.txt", TOL["dark"], 0.08, (2e3, 1.5e-3, 0))
