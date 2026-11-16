@@ -272,6 +272,7 @@ def run_full_pbh_pipeline(
     sigw_num_f=150,
     sigw_num_grid=150,
     sigw_t_obs_yr=4.0,
+    label_positions=None,
 ):
     """Run the full PBH pipeline and produce the abundance plot.
 
@@ -301,6 +302,9 @@ def run_full_pbh_pipeline(
         Use 2017 paper observational bounds.
     smooth_bounds : bool
         PCHIP-interpolate sparse bound datasets.
+    label_positions : dict or None
+        Override individual bound-label anchors, keyed by dataset label
+        (e.g. ``{"OGLE hc": (1e-5, 1.4e-3, 0)}``).
     force : bool
         Re-run MS solver even if cached P_S(k) exists.
 
@@ -606,6 +610,7 @@ def run_full_pbh_pipeline(
                 category="pbh",
                 use_old_bounds=use_old_bounds,
                 smooth_bounds=smooth_bounds,
+                label_positions=label_positions,
             )
         else:
             import matplotlib
@@ -781,6 +786,12 @@ if __name__ == "__main__":
     p.add_argument("--sigw-num-f", type=int, default=150)
     p.add_argument("--sigw-num-grid", type=int, default=150)
     p.add_argument("--sigw-t-obs-yr", type=float, default=4.0)
+    p.add_argument("--ogle-label-x", type=float, default=None,
+                   help="Override the x anchor of the 'OGLE hc' bound label "
+                        "[M_sun]. Default keeps the shared anchor.")
+    p.add_argument("--ogle-label-y", type=float, default=None,
+                   help="Override the y anchor of the 'OGLE hc' bound label "
+                        "[Omega_PBH/Omega_DM].")
 
     pre, _ = p.parse_known_args()
     config_accretion = None
@@ -795,6 +806,10 @@ if __name__ == "__main__":
 
     accretion_val = args.accretion or config_accretion or "Chisholm"
     formation_val = args.formation or config_formation or "press_schechter"
+
+    label_positions = None
+    if args.ogle_label_x is not None and args.ogle_label_y is not None:
+        label_positions = {"OGLE hc": (args.ogle_label_x, args.ogle_label_y, 0)}
 
     from scripts.constants import ROOT_DIR
     import os, json, shutil
@@ -816,6 +831,7 @@ if __name__ == "__main__":
         sigw_num_f=args.sigw_num_f,
         sigw_num_grid=args.sigw_num_grid,
         sigw_t_obs_yr=args.sigw_t_obs_yr,
+        label_positions=label_positions,
     )
 
     target_dir = os.path.join(ROOT_DIR, args.output_dir)
@@ -848,6 +864,7 @@ if __name__ == "__main__":
                     zeta_c=zc, gamma=0.4,
                     model_label=f"beta={args.beta:.1e}, N*={args.N_star:.0f}, zeta_c={zc:.4f} (f={ft:.3e})",
                     filename=pid, category="pbh",
+                    label_positions=label_positions,
                 )
             else:
                 import matplotlib

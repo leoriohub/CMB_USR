@@ -538,14 +538,16 @@ def plot_ps(k_phys, P_S, label="Higgs USR", filename="ps", category="powerloss",
                     arrowprops=dict(arrowstyle="->", color=TOL["red"], lw=1.5),
                     fontsize=7, color=TOL["red"])
 
-    ax.tick_params(labelsize=12)
-    ax.tick_params(axis="y", labelsize=12)
+    ax.tick_params(labelsize=PAPER_RCPARAMS["xtick.labelsize"])
+    ax.tick_params(axis="y", labelsize=PAPER_RCPARAMS["ytick.labelsize"])
     ax.yaxis.set_major_formatter(plt.ScalarFormatter(useMathText=True))
     ax.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
-    ax.yaxis.get_offset_text().set_fontsize(10)
-    ax.set_xlabel(r"$k\ [{\rm Mpc}^{-1}]$", fontsize=14)
-    ax.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$", fontsize=14)
-    ax.legend(fontsize=11)
+    ax.yaxis.get_offset_text().set_fontsize(PAPER_RCPARAMS["xtick.labelsize"])
+    ax.set_xlabel(r"$k\ [{\rm Mpc}^{-1}]$",
+                  fontsize=PAPER_RCPARAMS["axes.labelsize"])
+    ax.set_ylabel(r"$\mathcal{P}_{\mathcal{R}}(k)$",
+                  fontsize=PAPER_RCPARAMS["axes.labelsize"])
+    ax.legend(loc="upper right", fontsize=PAPER_RCPARAMS["legend.fontsize"])
     ax.grid(True, alpha=0.25, which="major")
 
     fig.tight_layout()
@@ -1089,17 +1091,154 @@ def _cli_compare_configs(phi0_str="", y0_str="", nstar_str="",
     save_fig(fig, f"dell_comparison_{suffix}", "diagnostics")
 
 
+def _draw_pbh_bounds(ax, use_old_bounds=False, smooth_bounds=False,
+                     label_fontsize=5, right_limit=1e8,
+                     label_positions=None):
+    """Draw the bradkav/PBHbounds constraint bands on ``ax``.
+
+    Shared by the single- and multi-configuration abundance plots so
+    that the constraint overlays cannot drift apart.
+
+    ``label_positions`` optionally overrides the default ``(x, y, rot)``
+    anchor of individual bound labels, keyed by dataset label.  Used to
+    re-centre a label on its own band when a model curve occupies the
+    default spot.
+    """
+    label_positions = label_positions or {}
+    bounds_dir = os.path.join(ROOT_DIR, "data", "PBHbounds", "bounds")
+
+    # Define a unique color for each constraint dataset to avoid repeats (Paul Tol colorblind-safe)
+    colors_dict = {
+        "EGB": "#EE7733",            # Orange
+        "femto-lensing": "#EEDD88",  # Sand/Yellow
+        "GRB-parallax": "#FFAABB",   # Rose
+        "HSC": "#44BB99",            # Teal
+        "Kepler": "#AA3377",         # Purple
+        "MACHO": "#666666",          # Grey
+        "EROS": "#4477AA",           # Blue
+        "OGLE hc": "#CC6677",  # Rose
+        "LIGO": "#33BBEE",           # Cyan
+        "Eri-II": "#228833",         # Green
+        "Planck": "#222222"          # Dark
+    }
+
+    if use_old_bounds:
+        datasets = [
+            # (label, filename, color, alpha, (x, y, rotation))
+            ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (8e-19, 5e-3, 65)),
+            ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 0.3, 0)),
+            ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (1e-13, 0.08, 0)),
+            ("HSC", "old_bounds/HSC_original.txt", TOL["teal"], 0.08, (3e-9, 4e-2, 0)),
+            ("Kepler", "K.txt", TOL["purple"], 0.08, (1e-8, 0.4, 0)),
+            ("MACHO", "M.txt", TOL["grey"], 0.08, (0.5, 0.5, 0)),
+            ("EROS", "EROS.txt", TOL["blue"], 0.08, (1.5e-3, 0.15, 0)),
+            ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (2e2, 0.3, 0)),
+            ("Planck", "old_bounds/CMB_withoutDM.txt", TOL["dark"], 0.08, (2e3, 1.5e-3, 0))
+        ]
+    else:
+        datasets = [
+            # (label, filename, color, alpha, (x, y, rotation))
+            ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (8e-19, 5e-3, 65)),
+            ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 0.3, 0)),
+            ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (1e-13, 0.08, 0)),
+            ("HSC", "HSC.txt", TOL["teal"], 0.08, (3e-9, 4e-2, 0)),
+            ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 0.4, 0)),
+            ("MACHO", "M.txt", TOL["grey"], 0.08, (0.5, 0.5, 0)),
+            ("EROS", "EROS.txt", TOL["blue"], 0.08, (1.5e-3, 0.15, 0)),
+            ("LIGO", "LIGO.txt", TOL["purple"], 0.08, (2.0, 0.05, -60)),
+            ("OGLE hc", "OGLE-highcadence.txt", "#CC6677", 0.08, (1e-7, 2e-2, 0)),
+            ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (2e4, 0.3, 0)),
+            ("Planck", "CMB.txt", TOL["dark"], 0.08, (2e3, 1.5e-3, 0))
+        ]
+
+    if os.path.exists(bounds_dir):
+        for label, fname, color_default, alpha, pos in datasets:
+            color = colors_dict.get(label, color_default)
+            path = os.path.join(bounds_dir, fname)
+            if os.path.exists(path):
+                try:
+                    data = np.loadtxt(path, comments='#')
+                    m_b, f_b = data[:, 0], data[:, 1]
+
+                    # Sort to ensure monotonic mass coordinates
+                    sort_idx = np.argsort(m_b)
+                    m_b, f_b = m_b[sort_idx], f_b[sort_idx]
+
+                    # Extend boundaries to prevent visual clipping/patchiness
+                    if label == "EGB":
+                        # Discard the first two points which are flat digitization artifacts along the bottom axis
+                        m_b = m_b[2:]
+                        f_b = f_b[2:]
+                        if len(m_b) < 2:
+                            continue
+                        # Extrapolate to the left plot limit (1e-19) following the log-log slope of the first two points
+                        log_m1, log_m2 = np.log10(m_b[0]), np.log10(m_b[1])
+                        log_f1, log_f2 = np.log10(f_b[0]), np.log10(f_b[1])
+                        slope = (log_f2 - log_f1) / (log_m2 - log_m1)
+
+                        log_m_left = np.log10(1e-19)
+                        log_f_left = log_f1 + slope * (log_m_left - log_m1)
+                        f_left = 10**log_f_left
+
+                        m_b = np.insert(m_b, 0, 1e-19)
+                        f_b = np.insert(f_b, 0, f_left)
+                    elif label == "Eri-II" and m_b[-1] < right_limit:
+                        if len(m_b) < 2:
+                            continue
+                        # Extrapolate to the right plot limit following the log-log slope of the last two points
+                        log_m1, log_m2 = np.log10(m_b[-2]), np.log10(m_b[-1])
+                        log_f1, log_f2 = np.log10(f_b[-2]), np.log10(f_b[-1])
+                        slope = (log_f2 - log_f1) / (log_m2 - log_m1)
+
+                        log_m_right = np.log10(right_limit)
+                        log_f_right = log_f2 + slope * (log_m_right - log_m2)
+                        f_right = 10**log_f_right
+
+                        m_b = np.append(m_b, right_limit)
+                        f_b = np.append(f_b, f_right)
+
+
+                    # Apply shape-preserving interpolation if smoothing is requested
+                    if smooth_bounds and len(m_b) > 3:
+                        from scipy.interpolate import PchipInterpolator
+                        log_m = np.log10(m_b)
+                        log_f = np.log10(f_b)
+                        log_m, unique_idx = np.unique(log_m, return_index=True)
+                        log_f = log_f[unique_idx]
+
+                        if len(log_m) > 3:
+                            interp = PchipInterpolator(log_m, log_f)
+                            m_dense = np.logspace(log_m.min(), log_m.max(), 300)
+                            f_dense = np.clip(10**interp(np.log10(m_dense)), 1e-30, 10.0)
+                            m_b, f_b = m_dense, f_dense
+
+                    ax.plot(m_b, f_b, color=color, lw=0.8)
+                    ax.fill_between(m_b, f_b, 10.0, color=color, alpha=alpha, lw=0)
+                    tx, ty, rot = label_positions.get(label, pos)
+                    ax.text(tx, ty, label, color=color,
+                            fontsize=label_fontsize,
+                            rotation=rot, ha='center', va='center', zorder=10,
+                            path_effects=[path_effects.withStroke(linewidth=1.5, foreground="white")])
+                except Exception as e:
+                    print(f"  WARNING: Failed to load {fname}: {e}")
+    else:
+        print("  WARNING: PBHbounds data not found at", bounds_dir)
+
+
 # -- PBH abundance plot ----------------------------------------------------
 
 
 def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
                        model_label="PBH-CHI", filename="pbh_abundance",
-                       category="pbh", use_old_bounds=False, smooth_bounds=False):
+                       category="pbh", use_old_bounds=False, smooth_bounds=False,
+                       label_positions=None):
     """
     Plot Omega_PBH/Omega_DM vs M/M_sun (Figure 3 style).
 
     log-log, solid TOL line, paper-style legend.
     Observational constraint overlays included from bradkav/PBHbounds.
+    ``label_positions`` overrides individual bound-label anchors, keyed by
+    dataset label.
     """
     mask = np.isfinite(M) & np.isfinite(f_pbh) & (M > 0) & (f_pbh > 0)
     M, f_pbh = M[mask], f_pbh[mask]
@@ -1109,133 +1248,71 @@ def plot_pbh_abundance(M, f_pbh, zeta_c=0.052, gamma=0.4,
 
     with plt.rc_context(PAPER_RCPARAMS):
         fig, ax = plt.subplots(figsize=(3.4, 2.6))
-        
-        bounds_dir = os.path.join(ROOT_DIR, "data", "PBHbounds", "bounds")
-        
-        # Define a unique color for each constraint dataset to avoid repeats (Paul Tol colorblind-safe)
-        colors_dict = {
-            "EGB": "#EE7733",            # Orange
-            "femto-lensing": "#EEDD88",  # Sand/Yellow
-            "GRB-parallax": "#FFAABB",   # Rose
-            "HSC": "#44BB99",            # Teal
-            "Kepler": "#AA3377",         # Purple
-            "MACHO": "#666666",          # Grey
-            "EROS": "#4477AA",           # Blue
-            "LIGO": "#33BBEE",           # Cyan
-            "Eri-II": "#228833",         # Green
-            "Planck": "#222222"          # Dark
-        }
-        
-        if use_old_bounds:
-            datasets = [
-                # (label, filename, color, alpha, (x, y, rotation))
-                ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (8e-19, 5e-3, 65)),
-                ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 0.3, 0)),
-                ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (1e-13, 0.08, 0)),
-                ("HSC", "old_bounds/HSC_original.txt", TOL["teal"], 0.08, (3e-9, 4e-2, 0)),
-                ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 0.4, 0)),
-                ("MACHO", "M.txt", TOL["grey"], 0.08, (0.5, 0.5, 0)),
-                ("EROS", "EROS.txt", TOL["blue"], 0.08, (1.5e-3, 0.15, 0)),
-                ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (2e4, 0.3, 0)),
-                ("Planck", "old_bounds/CMB_withoutDM.txt", TOL["dark"], 0.08, (2e3, 1.5e-3, 0))
-            ]
-        else:
-            datasets = [
-                # (label, filename, color, alpha, (x, y, rotation))
-                ("EGB", "EGRB.txt", TOL["yellow"], 0.08, (8e-19, 5e-3, 65)),
-                ("femto-lensing", "FL.txt", TOL["yellow"], 0.08, (3e-16, 0.3, 0)),
-                ("GRB-parallax", "GRB-parallax.txt", TOL["yellow"], 0.08, (1e-13, 0.08, 0)),
-                ("HSC", "HSC.txt", TOL["teal"], 0.08, (3e-9, 4e-2, 0)),
-                ("Kepler", "K.txt", TOL["purple"], 0.08, (2e-8, 0.4, 0)),
-                ("MACHO", "M.txt", TOL["grey"], 0.08, (0.5, 0.5, 0)),
-                ("EROS", "EROS.txt", TOL["blue"], 0.08, (1.5e-3, 0.15, 0)),
-                ("LIGO", "LIGO.txt", TOL["purple"], 0.08, (2.0, 0.05, -60)),
-                ("Eri-II", "UFdwarfs.txt", TOL["green"], 0.08, (2e4, 0.3, 0)),
-                ("Planck", "CMB.txt", TOL["dark"], 0.08, (2e3, 1.5e-3, 0))
-            ]
-        
-        if os.path.exists(bounds_dir):
-            for label, fname, color_default, alpha, pos in datasets:
-                color = colors_dict.get(label, color_default)
-                path = os.path.join(bounds_dir, fname)
-                if os.path.exists(path):
-                    try:
-                        data = np.loadtxt(path, comments='#')
-                        m_b, f_b = data[:, 0], data[:, 1]
-                        
-                        # Sort to ensure monotonic mass coordinates
-                        sort_idx = np.argsort(m_b)
-                        m_b, f_b = m_b[sort_idx], f_b[sort_idx]
-                        
-                        # Extend boundaries to prevent visual clipping/patchiness
-                        if label == "EGB":
-                            # Discard the first two points which are flat digitization artifacts along the bottom axis
-                            m_b = m_b[2:]
-                            f_b = f_b[2:]
-                            if len(m_b) < 2:
-                                continue
-                            # Extrapolate to the left plot limit (1e-19) following the log-log slope of the first two points
-                            log_m1, log_m2 = np.log10(m_b[0]), np.log10(m_b[1])
-                            log_f1, log_f2 = np.log10(f_b[0]), np.log10(f_b[1])
-                            slope = (log_f2 - log_f1) / (log_m2 - log_m1)
-                            
-                            log_m_left = np.log10(1e-19)
-                            log_f_left = log_f1 + slope * (log_m_left - log_m1)
-                            f_left = 10**log_f_left
-                            
-                            m_b = np.insert(m_b, 0, 1e-19)
-                            f_b = np.insert(f_b, 0, f_left)
-                        elif label == "Eri-II" and m_b[-1] < 1e8:
-                            if len(m_b) < 2:
-                                continue
-                            # Extrapolate to the right plot limit (1e8) following the log-log slope of the last two points
-                            log_m1, log_m2 = np.log10(m_b[-2]), np.log10(m_b[-1])
-                            log_f1, log_f2 = np.log10(f_b[-2]), np.log10(f_b[-1])
-                            slope = (log_f2 - log_f1) / (log_m2 - log_m1)
-                            
-                            log_m_right = np.log10(1e8)
-                            log_f_right = log_f2 + slope * (log_m_right - log_m2)
-                            f_right = 10**log_f_right
-                            
-                            m_b = np.append(m_b, 1e8)
-                            f_b = np.append(f_b, f_right)
 
-                        
-                        # Apply shape-preserving interpolation if smoothing is requested
-                        if smooth_bounds and len(m_b) > 3:
-                            from scipy.interpolate import PchipInterpolator
-                            log_m = np.log10(m_b)
-                            log_f = np.log10(f_b)
-                            log_m, unique_idx = np.unique(log_m, return_index=True)
-                            log_f = log_f[unique_idx]
-                            
-                            if len(log_m) > 3:
-                                interp = PchipInterpolator(log_m, log_f)
-                                m_dense = np.logspace(log_m.min(), log_m.max(), 300)
-                                f_dense = np.clip(10**interp(np.log10(m_dense)), 1e-30, 10.0)
-                                m_b, f_b = m_dense, f_dense
-
-                        ax.plot(m_b, f_b, color=color, lw=0.8)
-                        ax.fill_between(m_b, f_b, 10.0, color=color, alpha=alpha, lw=0)
-                        tx, ty, rot = pos
-                        ax.text(tx, ty, label, color=color, fontsize=5, 
-                                rotation=rot, ha='center', va='center', zorder=10,
-                                path_effects=[path_effects.withStroke(linewidth=1.5, foreground="white")])
-                    except Exception as e:
-                        print(f"  WARNING: Failed to load {fname}: {e}")
-        else:
-            print("  WARNING: PBHbounds data not found at", bounds_dir)
+        _draw_pbh_bounds(ax, use_old_bounds, smooth_bounds, label_fontsize=5,
+                         label_positions=label_positions)
 
         # Plot our model's PBH abundance curve
         ax.loglog(M, f_pbh, "-.", color=TOL["red"], lw=1.5, label=model_label)
-        
+
         ax.set_xlabel(r"$M / M_\odot$")
         ax.set_ylabel(r"$\Omega_{\mathrm{PBH}} / \Omega_{\mathrm{DM}}$")
         ax.set_xlim(1e-19, 1e8)
         ax.set_ylim(1e-4, 1.0)
-        # ax.legend(loc="lower left", fontsize=7)
         # Use a gray grid
         ax.grid(True, alpha=0.2, color='gray', which="both", ls='--')
+        fig.tight_layout()
+        save_fig(fig, filename, category)
+
+
+def plot_pbh_abundance_multi(curves, filename="pbh_abundance_multi",
+                             category="pbh", use_old_bounds=False,
+                             smooth_bounds=False, figsize=(3.4, 2.6),
+                             label_positions=None):
+    """Plot several PBH mass functions in a single frame.
+
+    The three mass windows of the CHI paper share the same axes and the
+    same observational bounds, so drawing them separately wastes space and
+    hides the comparison.  This draws one constraint overlay and every
+    curve on top of it.
+
+    Parameters
+    ----------
+    curves : list of dict
+        Each entry supplies ``M`` and ``f`` (arrays in M_sun and
+        Omega_PBH/Omega_DM), plus ``label`` and ``color``.  Entries are
+        drawn in the order given; list them dark-to-light so no curve
+        hides another.
+    """
+    usable = []
+    for c in curves:
+        M = np.asarray(c["M"], dtype=float)
+        f = np.asarray(c["f"], dtype=float)
+        mask = np.isfinite(M) & np.isfinite(f) & (M > 0) & (f > 0)
+        if mask.sum() >= 3:
+            usable.append((M[mask], f[mask], c["label"], c["color"]))
+    if not usable:
+        print("  WARNING: no usable curves for the comparison plot")
+        return
+
+    with plt.rc_context(PAPER_RCPARAMS):
+        fig, ax = plt.subplots(figsize=figsize)
+        _draw_pbh_bounds(ax, use_old_bounds, smooth_bounds, label_fontsize=5,
+                         label_positions=label_positions)
+
+        for M, f, label, color in usable:
+            order = np.argsort(M)
+            ax.loglog(M[order], f[order], "-", color=color, lw=1.6,
+                      label=label, zorder=5)
+
+        ax.set_xlabel(r"$M / M_\odot$")
+        ax.set_ylabel(r"$\Omega_{\mathrm{PBH}} / \Omega_{\mathrm{DM}}$")
+        ax.set_xlim(1e-19, 1e8)
+        ax.set_ylim(1e-4, 1.0)
+        # Use a gray grid
+        ax.grid(True, alpha=0.2, color='gray', which="both", ls='--')
+        ax.legend(loc="lower center", fontsize=7, framealpha=0.95,
+                  ncol=1, handlelength=1.6)
         fig.tight_layout()
         save_fig(fig, filename, category)
 
@@ -1791,6 +1868,57 @@ def plot_eps1_eps2(config_paths, labels=None,
     return fig
 
 
+def export_deck_figures(phi0, y0, nstar, plot_dir="powerloss"):
+    """Re-render the presentation figures from cached pipeline outputs.
+
+    Writes ``ps_usr_dip.png`` and ``planck_fullsky_dip.png`` (the filenames the
+    slide deck includes) from the cached P_S and CAMB JSON records of one
+    configuration, without recomputing the background or the MS spectrum.
+    """
+    import json
+    import glob
+
+    def _find(prefix, ext):
+        pat = get_path("pspectra" if prefix == "ps" else "c_ell",
+                       make_filename(prefix, phi0, y0, nstar, ".json"))
+        if os.path.exists(pat):
+            return pat
+        alt = sorted(glob.glob(os.path.join(
+            OUTPUT_DIRS["pspectra" if prefix == "ps" else "c_ell"],
+            f"{prefix}_phi{phi0:.2f}_y0{y0:+.3f}_nstar*.json")))
+        return alt[-1] if alt else None
+
+    ps_path = _find("ps", ".json")
+    cl_path = _find("camb", ".json")
+    if ps_path is None or cl_path is None:
+        raise SystemExit(f"Missing cached outputs for {phi0}, {y0}, {nstar}")
+
+    with open(ps_path) as f:
+        ps_rec = json.load(f)
+    with open(cl_path) as f:
+        cl_rec = json.load(f)
+
+    k_phys = np.asarray(ps_rec["spectrum"]["k_phys"], dtype=float)
+    P_S = np.asarray(ps_rec["spectrum"]["P_S"], dtype=float)
+    plot_ps(k_phys, P_S, label="Higgs USR", filename="ps_usr_dip",
+            category=plot_dir)
+
+    ce = cl_rec["c_ell"]
+    camb_data = {
+        "ells": np.asarray(ce["model"]["ells"], dtype=float),
+        "D_camb": np.asarray(ce["model"]["D_ell"], dtype=float),
+        "ells_lcdm": np.asarray(ce["lcdm"]["ells"], dtype=float),
+        "D_pl": np.asarray(ce["lcdm"]["D_ell"], dtype=float),
+        "planck_ells": np.asarray(ce["planck_data"]["ells"], dtype=float),
+        "D_planck": np.asarray(ce["planck_data"]["D_ell"], dtype=float),
+        "D_err_lower": np.asarray(ce["planck_data"]["D_ell_err_lower"], dtype=float),
+        "D_err_upper": np.asarray(ce["planck_data"]["D_ell_err_upper"], dtype=float),
+    }
+    plot_camb_fullsky(camb_data, filename="planck_fullsky_dip", category=plot_dir)
+    print(f"  Source P_S : {ps_path}")
+    print(f"  Source C_ell: {cl_path}")
+
+
 def main():
     import argparse
 
@@ -1847,6 +1975,12 @@ def main():
     p.add_argument("--lam", type=float, default=0.13)
     p.add_argument("--quick", action="store_true")
 
+    p = sub.add_parser("deck-figures",
+                       help="re-render presentation figures from cached outputs")
+    p.add_argument("--phi0", type=float, required=True)
+    p.add_argument("--y0", type=float, required=True)
+    p.add_argument("--nstar", type=float, required=True)
+
     p = sub.add_parser("epsilon12",
                        help="epsilon_1 and epsilon_2 evolution for model configs")
     p.add_argument("--configs", type=str, required=True,
@@ -1874,6 +2008,8 @@ def main():
             workers=args.workers, xi=args.xi, lam=args.lam,
             bg_steps=args.bg_steps, x_star=args.x_star,
         )
+    elif args.command == "deck-figures":
+        export_deck_figures(phi0=args.phi0, y0=args.y0, nstar=args.nstar)
     elif args.command == "epsilon12":
         plot_eps1_eps2(
             config_paths=[c.strip() for c in args.configs.split(",") if c.strip()],

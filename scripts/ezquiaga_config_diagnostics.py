@@ -41,6 +41,11 @@ from models.ezquiaga_chi import inflection_parameters
 
 
 COLORS = [TOL["red"], TOL["blue"], TOL["green"], TOL["yellow"], TOL["purple"]]
+# The stellar and sub-solar configs share x_c, c and beta, so they have the
+# same potential and therefore identical background trajectories.  Distinct
+# linestyles keep the coincident curves visible instead of hiding one under
+# the other.
+STYLES = ["-", "--", "-.", ":", "-"]
 
 
 def load_config(path):
@@ -58,7 +63,7 @@ def label_for(cfg):
     inf = cfg.get("inflection", {})
     return (
         rf"$x_c$={inf.get('x_c'):.3f}, $c$={cfg['model_params']['c']:.3f}, "
-        rf"$\beta$={inf.get('beta'):.1e}, $N_\star$={cfg['pipeline']['N_star']:.0f}"
+        rf"$\beta$={inf.get('beta'):.1e}, $N_\star$={cfg['pipeline']['N_star']:.1f}"
     )
 
 
@@ -154,7 +159,7 @@ def main():
     with plt.rc_context(PAPER_RCPARAMS):
         fig, axes = plt.subplots(1, 3, figsize=(7.4, 2.5))
 
-        for cfg, model, lab, col in zip(cfgs, models, labels, COLORS):
+        for cfg, model, lab, col, sty in zip(cfgs, models, labels, COLORS, STYLES):
             sol, derived = background(cfg, model)
             N = derived["N"]
             eps1 = derived["eps1"]
@@ -172,10 +177,10 @@ def main():
             N_end = N[i_end]
             N_std = N_end - N[: i_end + 1]
 
-            axes[0].semilogy(N_std, eps1[: i_end + 1], "-", color=col, lw=1.2, label=lab)
-            axes[1].plot(N_std, eps2[: i_end + 1], "-", color=col, lw=1.2, label=lab)
+            axes[0].semilogy(N_std, eps1[: i_end + 1], sty, color=col, lw=1.2, label=lab)
+            axes[1].plot(N_std, eps2[: i_end + 1], sty, color=col, lw=1.2, label=lab)
             axes[2].semilogy(N_std, np.abs(z_bg[: i_end + 1]) * S,
-                             "-", color=col, lw=1.2, label=lab)
+                             sty, color=col, lw=1.2, label=lab)
 
         axes[0].set_xlabel(r"$N$ (e-folds before end)")
         axes[0].set_ylabel(r"$\varepsilon_1$")
