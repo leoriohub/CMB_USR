@@ -26,7 +26,7 @@ import numpy as np
 from models.higgs import HiggsModel
 from pspectrum_pipeline import build_weighted_kgrid, run_pspectrum_pipeline
 from scripts.camb_wrapper import compute_chi2_camb, compute_cl_full_camb
-from scripts.constants import As
+from scripts.constants import As, As_planck, ns_sr_default
 from scripts.planck_data import C_ell_to_d_ell
 from scripts.plotting import get_path
 
@@ -59,15 +59,34 @@ ROWS = [
 ]
 
 REF_LABEL = "grid-300"
+REF_Y0 = -0.170
 
 
 def run_row(row, args):
     """Run the full pipeline once and extract the convergence observables."""
     model = HiggsModel(lam=0.13, xi=15000.0)
-    # run_pspectrum_pipeline mutates model.x0/y0 — re-set S and y0 each iteration
+    # run_pspectrum_pipeline mutates model.x0/y0 — re-set S and y0 each iteration.
+    # The ROWS table pins y0 for the S=PROD_S fiducial trajectory; other S rows
+    # rescale it to hold the physical initial velocity fixed. --y0 replaces the
+    # fiducial value, and the same rescaling is applied from there.
+    y0_fid = args.y0 if args.y0 is not None else REF_Y0
+    y0_used = y0_fid * (PROD_S / row["S"])
     model.S = row["S"]
     model.x0 = args.phi0
-    model.y0 = row["y0_used"]
+    model.y0 = y0_used
+
+    # T_max is a code-time interval. An explicit --t-max defines the fiducial
+    # value at S = PROD_S; S-sweep rows scale it by S/PROD_S so the physical
+    # interval stays fixed (same convention as the built-in ROWS table).
+    t_max = (args.t_max * (row["S"] / PROD_S)) if args.t_max is not None else row["T_max"]
+    bg_steps = args.bg_steps if args.bg_steps is not None else PROD_BG_STEPS
+
+    # A_s is pinned to k_pivot=0.002 at module scope; extrapolate it to the
+    # requested pivot the same way scripts/run_full_analysis.py does.
+    if abs(args.k_pivot - 0.002) > 1e-12:
+        As_eff = As_planck * (args.k_pivot / 0.05) ** (ns_sr_default - 1.0)
+    else:
+        As_eff = As
 
     k_grid = build_weighted_kgrid(
         k_min=1e-5, k_max=1.0, k_pivot_phys=args.k_pivot,
@@ -79,14 +98,14 @@ def run_row(row, args):
     result = run_pspectrum_pipeline(
         model=model,
         phi0=args.phi0,
-        y0=row["y0_used"],
+        y0=y0_used,
         N_star=args.nstar,
         k_phys_grid=k_grid,
         ms_steps=PROD_MS_STEPS,
-        T_max=row["T_max"],
-        bg_steps=PROD_BG_STEPS,
+        T_max=t_max,
+        bg_steps=bg_steps,
         normalize_to_As=True,
-        As=As,
+        As=As_eff,
         k_pivot_phys=args.k_pivot,
         save_outputs=False,
         n_workers=max(1, os.cpu_count() or 1),
@@ -181,9 +200,14 @@ def main():
         description="Numerical convergence test (k-grid resolution + code-time scaling S)"
     )
     parser.add_argument("--phi0", type=float, default=5.75, help="Field initial value")
-    parser.add_argument("--y0", type=float, default=-0.170, help="Reference velocity")
+    parser.add_argument("--y0", type=float, default=None,
+                        help="Reference velocity (default: -0.170, the built-in benchmark)")
     parser.add_argument("--nstar", type=float, default=55.0, help="N_star for pivot alignment")
     parser.add_argument("--k-pivot", type=float, default=0.002, help="Pivot scale (Mpc^-1)")
+    parser.add_argument("--t-max", type=float, default=None,
+                        help="Override T_max for the fiducial S (S-sweep rows rescale it)")
+    parser.add_argument("--bg-steps", type=int, default=None,
+                        help="Override the background grid size")
     parser.add_argument("--backend", choices=["fortran", "numba"], default="fortran",
                         help="MS solver backend (default: fortran)")
     parser.add_argument("--out", type=str, default=None,
@@ -202,7 +226,7 @@ def main():
     runs = []
     for row in ROWS:
         print(f"\n--- {row['label']}  (n_dense={row['n_dense']}, n_outer={row['n_outer']}, "
-              f"S={row['S']:g}, y0={row['y0_used']}, T_max={row['T_max']:g}) ---")
+              f"S={row['S']:g}, y0={row['y0_used']}) ---")
         rec = run_row(row, args)
         print(f"  {rec['n_completed']}/{rec['n_modes']} modes, {rec['elapsed_s']}s | "
               f"D2={rec['D2']:.1f}, k_dip={rec['k_dip']:.3e}, "
