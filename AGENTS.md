@@ -364,6 +364,81 @@ Current pipeline (post solve_ivp refactor, T_max=500) shifts the reference confi
 - Unbinned TT/TE/EE spectrum (ℓ=2-2508)
 - Low-ℓ Commander data (ℓ=2-29)
 
+### 12.1 Pivot at k=0.05 — Reference Configs and Their Null Result
+
+**Why the pivot matters.** All Δχ² figures in §12 were computed with
+`k_pivot_phys = 0.002`, which anchors `A_s = 2.1e-9` at ℓ ≈ 28 — inside the
+cosmic-variance-dominated quadrupole band. The whole spectrum then rescales by
+`(A_s/A_s^Planck)`, and that rescaling is what produced the apparent
+high-ℓ penalty. Anchoring instead at `k = 0.05` (ℓ ≈ 700) removes it.
+
+**Reference configs** (`configs/higgs_reference/usr_p005_top{1..5}.json`),
+ranked by full-spectrum χ² against unbinned Planck 2018 TT (ℓ = 2–2508) subject
+to `D₂ < D₂^ΛCDM`. Selected from a 14000-config random scan (8854 converged,
+1662 with a real dip, 1228 satisfying `D₂ < 1028.69`); pivot 0.05, seed 777,
+`φ₀ ∈ [5.8, 7.0]`, `y₀ ∈ [−0.88, −0.18]`, `N_star ∈ [44, 60]`.
+
+| Config (φ₀, y₀, N★) | D₂ [μK²] | P_S supp. | ℓ_dip | Δχ²_low | Δχ²_full |
+|---|---|---|---|---|---|
+| 6.36, −0.445, 56.8 | 686.8 | 89% | 2.1 | −2.05 | −2.07 |
+| 6.22, −0.364, 56.0 | 696.3 | 80% | 2.2 | −1.90 | −1.96 |
+| 6.14, −0.314, 56.3 | 707.8 | 71% | 2.4 | −1.90 | −1.95 |
+| 6.15, −0.327, 55.6 | 707.3 | 74% | 2.3 | −1.82 | −1.86 |
+| 6.22, −0.366, 55.8 | 703.0 | 80% | 2.2 | −1.78 | −1.79 |
+
+ΛCDM baselines: χ²_low(ℓ=2–29) = 20.47, χ²_unbinned(ℓ=2–2508) = 2573.04,
+D₂ = 1028.69 μK².
+
+**The high-ℓ penalty is absent.** Band-resolved Δχ² (USR − ΛCDM, unbinned), rank 1:
+
+| Band | Δχ² |
+|---|---|
+| 2–29 | −2.05 |
+| 30–100 | −0.12 |
+| 101–300 | −0.03 |
+| 301–1000 | +0.02 |
+| 1001–2500 | +0.12 |
+| **30–2500 sum** | **−0.01** |
+
+All of the improvement sits at ℓ < 30; the high-ℓ spectrum is untouched. The
+correct claim is *"no high-ℓ penalty"*, not *"fits better at high ℓ"*. Ranks 2–5
+give the same pattern to within ±0.05.
+
+**−2 is the ceiling, not a shortfall.** ΛCDM already fits the low-ℓ TT plateau:
+χ² = 20.47 over 28 multipoles (χ²/dof = 0.73). The ℓ = 2 residual alone is only
+χ² = 2.27 (Planck 225.9 vs ΛCDM 1028.7), so
+
+$$\Delta\chi^2_{\max}\big|_{\ell=2} = -2.27$$
+
+Rank 1 captures 90% of it; the scan's absolute floor over 1662 configs is −2.43.
+A single smooth `P_S(k)` dip cannot thread 28 scattered low-ℓ points with
+50–100% error bars, so no config in this model class will do materially better.
+
+**Significance — not a detection.** With k = 2 initial-condition parameters
+(φ₀, y₀):
+
+`p = chi2.sf(|Δχ²|, k)` → rank 1 gives **p = 0.359** (0.92σ).
+The most generous reading (k = 1, one-sided, φ₀/y₀ treated as an initial
+condition rather than a coupling) gives p = 0.076 (1.43σ). For reference, 3σ at
+k = 2 needs Δχ² > 11.8; the model delivers 2.05.
+
+A look-elsewhere correction makes it worse, not better: 1662 configs were
+searched and the best reported, so `p_global = 1 − (1 − p_local)^N_eff` exceeds
+0.5 for any plausible `N_eff ≳ 10`.
+
+Defensible summary: *the low-ℓ tension in the quadrupole is reduced from
+1.5σ to 0.9σ at no cost elsewhere in the spectrum.* That is a real correction
+to the k = 0.002 literature result, but it is not evidence for USR.
+
+**Caveats for anyone reusing these configs.**
+- These Δχ² values are **scan-stage** (209 k-modes, `ms_steps=5000`,
+  `k_start_factor=100`, `T_max=5000`, `bg_steps=50000`). Re-run through the full
+  pipeline before quoting in a manuscript.
+- Δχ²_binned disagrees in sign with Δχ²_unbinned for all five configs
+  (+0.43 to +1.06 vs −1.78 to −2.07). Quote both; use unbinned as the arbiter.
+- Do **not** rank by binned χ². That surfaces configs with D₂ ≈ 180–600 and
+  Δχ²_binned ≈ −4, but those have Δχ²_unbinned ≈ +47 and wreck the low-ℓ fit.
+
 ### 13. Background Evolution — Standard Higgs
 
 **Standard Higgs** (`models/higgs.py:HiggsModel`): ODE variable `x = φ` (Jordan

@@ -1,0 +1,20 @@
+{
+  "model": "HiggsModel",
+  "description": "Rank 1 of 5 USR configs at k_pivot=0.05 Mpc^-1, ordered by full-spectrum chi2 (unbinned Planck 2018 TT, ell=2-2508). D2=686.8 muK^2 (33.2% below LCDM), Delta_chi2_low=-2.05, Delta_chi2_full=-2.07. See AGENTS.md section 12.1 for the band-resolved breakdown and the significance caveat.",
+  "model_params": {
+    "lam": 0.13,
+    "xi": 15000.0,
+    "T_max": 5000.0,
+    "bg_steps": 50000
+  },
+  "ics": {
+    "x0": 6.36,
+    "y0": -0.445
+  },
+  "pipeline": {
+    "N_star": 56.8,
+    "k_pivot_phys": 0.05,
+    "ns_window": 4.0,
+    "backend": "fortran"
+  }
+}
